@@ -1,0 +1,32 @@
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    command: --config /etc/livekit.yaml
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+
+  call-api:
+    build:
+      context: .
+    env_file:
+      - .env
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - livekit
+
+  caddy:
+    image: caddy:2.10.2
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

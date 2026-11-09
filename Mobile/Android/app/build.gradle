@@ -1,0 +1,16 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+}
+
+android { namespace "com.ussdapp.mobile"; compileSdk 34
+    defaultConfig { applicationId "com.ussdapp.mobile"; minSdk 26; targetSdk 34; versionCode 1; versionName "1.0" }
+    sourceSets { main.java.srcDirs += ["../src/main/java"] }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+    kotlinOptions { jvmTarget = "1.8" }
+}
+
+dependencies {
+    implementation "io.livekit:livekit-android:2.30.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.0"
+}

@@ -1,0 +1,21 @@
+{
+  "name": "ussdapp-calling-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Invitation and short-lived token service for self-hosted LiveKit calls",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "5.1.0",
+    "livekit-server-sdk": "2.13.3"
+  },
+  "devDependencies": {
+    "supertest": "7.1.4"
+  }
+}

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="Official USSD Manager Pro downloads for Windows, Android, and iOS.">
+  <title>USSD Manager Pro — Downloads</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #101827;
+      color: #eef4ff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    main { width: min(940px, calc(100% - 32px)); margin: 0 auto; padding: 64px 0; }
+    header { margin-bottom: 32px; }
+    h1 { margin: 0 0 10px; font-size: clamp(2rem, 6vw, 3.4rem); }
+    .lead { max-width: 680px; color: #b7c5d9; line-height: 1.65; }
+    .notice {
+      margin: 24px 0;
+      padding: 16px 18px;
+      border: 1px solid #53627a;
+      border-radius: 12px;
+      background: #182438;
+      color: #d7e5fa;
+      line-height: 1.55;
+    }
+    .notice strong { color: #fff; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+    .card { padding: 22px; border: 1px solid #34445d; border-radius: 16px; background: #172235; }
+    .card h2 { margin: 0 0 8px; font-size: 1.2rem; }
+    .card p { min-height: 52px; color: #b7c5d9; line-height: 1.5; }
+    .download {
+      display: inline-block;
+      padding: 10px 15px;
+      border-radius: 9px;
+      background: #4c8dff;
+      color: #071426;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .download[aria-disabled="true"] { background: #46566e; color: #d1d9e5; cursor: not-allowed; }
+    .meta, footer { color: #9eacc1; font-size: .9rem; }
+    #release-state { margin: 18px 0 0; color: #b7c5d9; }
+    footer { margin-top: 40px; line-height: 1.6; }
+    a { color: #8db9ff; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>USSD Manager Pro</h1>
+      <p class="lead">Downloads for Windows, Android, and iOS. Install only builds published in the official GitHub releases for this project.</p>
+    </header>
+
+    <div class="notice" role="status">
+      <strong>Release status:</strong> no verified app builds have been published yet.
+      Cross-platform native calling is still under development, and the calling VPS has not
+      been provisioned. Do not treat this page as evidence that friend-to-friend calls are
+      ready.
+    </div>
+
+    <section class="grid" aria-label="Platform downloads">
+      <article class="card">
+        <h2>Windows</h2>
+        <p>Single-file desktop app. The download will appear here after a verified release is published.</p>
+        <a class="download" data-kind="windows" aria-disabled="true">Not released</a>
+        <p class="meta" data-meta="windows"></p>
+      </article>
+      <article class="card">
+        <h2>Android</h2>
+        <p>Android install package. Only install APKs published from this official release page.</p>
+        <a class="download" data-kind="android" aria-disabled="true">Not released</a>
+        <p class="meta" data-meta="android"></p>
+      </article>
+      <article class="card">
+        <h2>iOS</h2>
+        <p>An installable iOS build requires an Apple-signed package. This project has not yet been built and signed on macOS.</p>
+        <a class="download" data-kind="ios" aria-disabled="true">Not available</a>
+        <p class="meta" data-meta="ios">A source project is not an installable iPhone app.</p>
+      </article>
+    </section>
+
+    <p id="release-state" aria-live="polite">Checking official releases…</p>
+    <footer>
+      <p>Downloads are provided through <a href="https://github.com/adminat233-new/ussdapp-downloads/releases">GitHub Releases</a>. Never enter your relay token or private keys on a download page.</p>
+      <p>Calls and file transfer are not advertised as available until the native clients, relay service, and cross-platform tests are complete.</p>
+    </footer>
+  </main>
+  <script>
+    (function () {
+      var api = "https://api.github.com/repos/adminat233-new/ussdapp-downloads/releases/latest";
+      var state = document.getElementById("release-state");
+      function setDownload(kind, asset, release) {
+        var link = document.querySelector('[data-kind="' + kind + '"]');
+        var meta = document.querySelector('[data-meta="' + kind + '"]');
+        if (!link || !asset) return;
+        link.href = asset.browser_download_url;
+        link.textContent = "Download " + asset.name;
+        link.removeAttribute("aria-disabled");
+        link.setAttribute("download", asset.name);
+        if (meta) meta.textContent = release.tag_name + " · " + asset.size + " bytes";
+      }
+      fetch(api, { headers: { "Accept": "application/vnd.github+json" } })
+        .then(function (response) {
+          if (!response.ok) throw new Error("No published release is available.");
+          return response.json();
+        })
+        .then(function (release) {
+          var assets = release.assets || [];
+          var windows = assets.find(function (asset) { return /\.exe$/i.test(asset.name); });
+          var android = assets.find(function (asset) { return /\.apk$/i.test(asset.name); });
+          setDownload("windows", windows, release);
+          setDownload("android", android, release);
+          var available = [];
+          if (windows) available.push("Windows");
+          if (android) available.push("Android");
+          state.textContent = available.length
+            ? "Latest release: " + release.tag_name + ". Available downloads: " + available.join(", ") + ". iOS is not available until an Apple-signed release is published."
+            : "A release exists, but no verified Windows or Android assets are attached yet. iOS is not available until an Apple-signed release is published.";
+        })
+        .catch(function () {
+          state.textContent = "No app release is published yet. Downloads will appear here when release assets are available.";
+        });
+    }());
+  </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ===== Design tokens - DARK SLATE ===== -->
+  <SolidColorBrush x:Key="AppBg"        Color="#0F172A"/>
+  <SolidColorBrush x:Key="PanelBrush"   Color="#1E293B"/>
+  <SolidColorBrush x:Key="CardBrush"    Color="#1E293B"/>
+  <SolidColorBrush x:Key="CardBorder"   Color="#334155"/>
+  <SolidColorBrush x:Key="ChromeBrush"  Color="#0F172A"/>
+
+  <SolidColorBrush x:Key="TextBrush"    Color="#E2E8F0"/>
+  <SolidColorBrush x:Key="SubtextBrush" Color="#94A3B8"/>
+  <SolidColorBrush x:Key="GrayBrush"    Color="#94A3B8"/>
+
+  <SolidColorBrush x:Key="AccentBrush"    Color="#3B82F6"/>
+  <SolidColorBrush x:Key="AccentHover"    Color="#60A5FA"/>
+  <SolidColorBrush x:Key="AccentSoft"     Color="#1D3F73"/>
+  <SolidColorBrush x:Key="CallBrush"      Color="#0084FF"/>
+  <SolidColorBrush x:Key="CallHover"      Color="#33A3FF"/>
+
+  <SolidColorBrush x:Key="DangerBrush"    Color="#EF4444"/>
+  <SolidColorBrush x:Key="DangerHover"    Color="#F87171"/>
+  <SolidColorBrush x:Key="DangerSoft"     Color="#4C1D1D"/>
+  <SolidColorBrush x:Key="ErrorBrush"     Color="#FF5252"/>
+  <SolidColorBrush x:Key="SuccessBrush"   Color="#22C55E"/>
+  <SolidColorBrush x:Key="WarnBrush"      Color="#F59E0B"/>
+  <SolidColorBrush x:Key="GreenBrush"     Color="#16A34A"/>
+  <SolidColorBrush x:Key="RedBrush"       Color="#DC2626"/>
+
+  <!-- Keypad must stay visible on CardBrush (#1E293B): lighter ladder -->
+  <SolidColorBrush x:Key="KeypadBrush"    Color="#2C3E56"/>
+  <SolidColorBrush x:Key="KeypadHover"    Color="#3C5070"/>
+  <SolidColorBrush x:Key="KeypadPress"    Color="#4A6382"/>
+  <SolidColorBrush x:Key="PillBrush"      Color="#0F172A"/>
+  <SolidColorBrush x:Key="OnlineBrush"    Color="#22C55E"/>
+
+</ResourceDictionary>

@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: ussdapp-downloads
+    runtime: static
+    plan: free
+    buildCommand: ""
+    staticPublishPath: .
