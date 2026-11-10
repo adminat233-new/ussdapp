@@ -14,7 +14,9 @@ device configuration, user message history, recordings, or runtime credentials.
   production release.
 - **iOS:** open `Mobile\iOS\UssdMobile.xcodeproj` on macOS with Xcode. An
   installable distribution requires Apple signing and provisioning configured
-  locally or in a protected CI environment.
+  locally or in a protected CI environment. GitHub Actions workflows for
+  simulator builds, TestFlight, App Store Connect, and private Ad Hoc delivery
+  are in `.github\workflows\`.
 - **Calling service:** see `CallingServer\README.md`. Copy `.env.example` to a
   local `.env` and configure service credentials outside source control.
 

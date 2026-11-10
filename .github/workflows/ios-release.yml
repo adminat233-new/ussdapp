@@ -1,0 +1,290 @@
+name: iOS signed distribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      distribution:
+        description: Distribution channel
+        required: true
+        type: choice
+        options:
+          - testflight
+          - app-store
+          - ad-hoc
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-signed-distribution
+  cancel-in-progress: false
+
+jobs:
+  distribute:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15
+    environment: ios-release
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Validate release settings and install signing credentials
+        shell: bash
+        env:
+          DISTRIBUTION: ${{ inputs.distribution }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_APP_STORE_PROFILE_BASE64: ${{ secrets.IOS_APP_STORE_PROFILE_BASE64 }}
+          IOS_ADHOC_PROFILE_BASE64: ${{ secrets.IOS_ADHOC_PROFILE_BASE64 }}
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+          IOS_BUNDLE_IDENTIFIER: ${{ vars.IOS_BUNDLE_IDENTIFIER }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Signed distribution is only allowed from main." >&2
+            exit 1
+          fi
+
+          for name in IOS_TEAM_ID IOS_CERTIFICATE_P12_BASE64 IOS_CERTIFICATE_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Required iOS release secret is not configured: $name" >&2
+              exit 1
+            fi
+          done
+
+          case "$DISTRIBUTION" in
+            testflight|app-store)
+              PROFILE_BASE64="${IOS_APP_STORE_PROFILE_BASE64:-}"
+              if [[ -z "$PROFILE_BASE64" ]]; then
+                echo "Configure IOS_APP_STORE_PROFILE_BASE64 with the App Store distribution profile." >&2
+                exit 1
+              fi
+              for name in APP_STORE_CONNECT_API_KEY_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_API_PRIVATE_KEY; do
+                if [[ -z "${!name:-}" ]]; then
+                  echo "Required App Store Connect secret is not configured: $name" >&2
+                  exit 1
+                fi
+              done
+              ;;
+            ad-hoc)
+              PROFILE_BASE64="${IOS_ADHOC_PROFILE_BASE64:-}"
+              if [[ -z "$PROFILE_BASE64" ]]; then
+                echo "Configure IOS_ADHOC_PROFILE_BASE64 with the Ad Hoc profile containing the tester devices." >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unsupported iOS distribution channel." >&2
+              exit 1
+              ;;
+          esac
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/ussdapp-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          PROFILE_PATH="$RUNNER_TEMP/ussdapp.mobileprovision"
+          PROFILE_PLIST="$RUNNER_TEMP/ussdapp-profile.plist"
+          P12_PATH="$RUNNER_TEMP/ussdapp-distribution.p12"
+          IOS_BUNDLE_IDENTIFIER="${IOS_BUNDLE_IDENTIFIER:-com.ussdapp.mobile}"
+
+          if [[ ! "$IOS_BUNDLE_IDENTIFIER" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+            echo "IOS_BUNDLE_IDENTIFIER must be a reverse-DNS bundle identifier." >&2
+            exit 1
+          fi
+
+          export PROFILE_BASE64 P12_PATH PROFILE_PATH
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          for variable, destination in (
+              ("PROFILE_BASE64", os.environ["PROFILE_PATH"]),
+              ("IOS_CERTIFICATE_P12_BASE64", os.environ["P12_PATH"]),
+          ):
+              try:
+                  encoded = b"".join(os.environ[variable].encode("ascii").split())
+                  decoded = base64.b64decode(encoded, validate=True)
+              except Exception as error:
+                  raise SystemExit(f"{variable} must contain valid base64 data") from error
+              Path(destination).write_bytes(decoded)
+              os.chmod(destination, 0o600)
+          PY
+
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$PROFILE_PLIST")
+          if [[ ! "$PROFILE_UUID" =~ ^[A-Fa-f0-9-]{36}$ ]]; then
+            echo "The provisioning profile has an invalid UUID." >&2
+            exit 1
+          fi
+
+          PROFILE_DIRECTORY="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIRECTORY"
+          cp "$PROFILE_PATH" "$PROFILE_DIRECTORY/$PROFILE_UUID.mobileprovision"
+          echo "IOS_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$P12_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$IOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          {
+            echo "IOS_KEYCHAIN_PATH=$KEYCHAIN_PATH"
+            echo "IOS_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD"
+            echo "IOS_BUNDLE_IDENTIFIER=$IOS_BUNDLE_IDENTIFIER"
+          } >> "$GITHUB_ENV"
+
+          rm -f "$P12_PATH" "$PROFILE_PATH" "$PROFILE_PLIST"
+
+      - name: Archive and export signed IPA
+        shell: bash
+        env:
+          DISTRIBUTION: ${{ inputs.distribution }}
+          IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          case "$DISTRIBUTION" in
+            testflight|app-store) EXPORT_METHOD="app-store-connect" ;;
+            ad-hoc) EXPORT_METHOD="ad-hoc" ;;
+            *) echo "Unsupported iOS distribution channel." >&2; exit 1 ;;
+          esac
+
+          PROJECT_DIRECTORY="Mobile/iOS"
+          ARCHIVE_PATH="$RUNNER_TEMP/USSDManager.xcarchive"
+          EXPORT_DIRECTORY="$RUNNER_TEMP/ios-export"
+          EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions.plist"
+
+          xcodebuild archive \
+            -project "$PROJECT_DIRECTORY/UssdMobile.xcodeproj" \
+            -scheme USSDManager \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_IDENTIFIER" \
+            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_UUID" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+
+          export EXPORT_METHOD IOS_TEAM_ID IOS_PROFILE_UUID EXPORT_OPTIONS
+          python3 - <<'PY'
+          import os
+          import plistlib
+
+          options = {
+              "destination": "export",
+              "method": os.environ["EXPORT_METHOD"],
+              "provisioningProfiles": {
+                  os.environ["IOS_BUNDLE_IDENTIFIER"]: os.environ["IOS_PROFILE_UUID"],
+              },
+              "signingStyle": "manual",
+              "stripSwiftSymbols": True,
+              "teamID": os.environ["IOS_TEAM_ID"],
+          }
+          with open(os.environ["EXPORT_OPTIONS"], "wb") as output:
+              plistlib.dump(options, output)
+          PY
+
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_DIRECTORY" \
+            -exportOptionsPlist "$EXPORT_OPTIONS"
+
+          IPA_PATH="$(find "$EXPORT_DIRECTORY" -maxdepth 1 -name '*.ipa' -print -quit)"
+          if [[ -z "$IPA_PATH" || ! -f "$IPA_PATH" ]]; then
+            echo "Xcode did not produce an IPA." >&2
+            exit 1
+          fi
+          echo "IOS_EXPORTED_IPA=$IPA_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload to App Store Connect
+        if: inputs.distribution == 'testflight' || inputs.distribution == 'app-store'
+        shell: bash
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          PRIVATE_KEY_DIRECTORY="$HOME/.appstoreconnect/private_keys"
+          PRIVATE_KEY_PATH="$PRIVATE_KEY_DIRECTORY/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          mkdir -p "$PRIVATE_KEY_DIRECTORY"
+          chmod 700 "$PRIVATE_KEY_DIRECTORY"
+          printf '%s' "$APP_STORE_CONNECT_API_PRIVATE_KEY" > "$PRIVATE_KEY_PATH"
+          chmod 600 "$PRIVATE_KEY_PATH"
+
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            --file "$IOS_EXPORTED_IPA" \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+
+          rm -f "$PRIVATE_KEY_PATH"
+
+      - name: Deliver Ad Hoc build to a private repository
+        if: inputs.distribution == 'ad-hoc'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.IOS_ADHOC_DESTINATION_TOKEN }}
+          IOS_ADHOC_DESTINATION_REPOSITORY: ${{ secrets.IOS_ADHOC_DESTINATION_REPOSITORY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" || -z "${IOS_ADHOC_DESTINATION_REPOSITORY:-}" ]]; then
+            echo "Configure the private Ad Hoc destination repository and token." >&2
+            exit 1
+          fi
+          if [[ ! "$IOS_ADHOC_DESTINATION_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+            echo "IOS_ADHOC_DESTINATION_REPOSITORY must be owner/repository." >&2
+            exit 1
+          fi
+
+          IS_PRIVATE="$(gh api "repos/$IOS_ADHOC_DESTINATION_REPOSITORY" --jq '.private')"
+          if [[ "$IS_PRIVATE" != "true" ]]; then
+            echo "The Ad Hoc destination must be a private GitHub repository." >&2
+            exit 1
+          fi
+
+          RELEASE_TAG="adhoc-build-$GITHUB_RUN_NUMBER"
+          gh release create "$RELEASE_TAG" "$IOS_EXPORTED_IPA" \
+            --repo "$IOS_ADHOC_DESTINATION_REPOSITORY" \
+            --title "USSD Manager iOS Ad Hoc build $GITHUB_RUN_NUMBER" \
+            --notes "Device-restricted Ad Hoc IPA. Share only with the registered testers. Source commit: $GITHUB_SHA"
+
+      - name: Remove signing material
+        if: always()
+        shell: bash
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/ussdapp-signing.keychain-db"
+          if [[ -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi
+          if [[ -n "${IOS_PROFILE_UUID:-}" && -f "${HOME}/Library/MobileDevice/Provisioning Profiles/${IOS_PROFILE_UUID}.mobileprovision" ]]; then
+            rm -f "${HOME}/Library/MobileDevice/Provisioning Profiles/${IOS_PROFILE_UUID}.mobileprovision"
+          fi
+          if [[ -n "${APP_STORE_CONNECT_API_KEY_ID:-}" ]]; then
+            rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          fi
+          rm -f "$RUNNER_TEMP/ExportOptions.plist"
+          rm -rf "$RUNNER_TEMP/USSDManager.xcarchive" "$RUNNER_TEMP/ios-export"
