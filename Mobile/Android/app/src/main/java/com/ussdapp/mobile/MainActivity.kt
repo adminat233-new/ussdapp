@@ -10,6 +10,7 @@ import android.graphics.drawable.GradientDrawable
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognizerIntent
@@ -58,6 +59,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var trackerDeviceInput: EditText
     private lateinit var trackerStatusView: TextView
     private lateinit var trackerOutputView: TextView
+    private lateinit var trackerMapLinks: LinearLayout
     private lateinit var locationButton: Button
     private lateinit var ai: GeminiAssistant
     private val trackerCredentials by lazy { TrackerCredentialStore(this) }
@@ -279,7 +281,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         relayPanel.addView(relayEventsView)
 
         val trackerPanel = addSectionCard(content, "Device tracking session",
-            "Pair your own devices with your tracker. Lost mode only changes status. Location is shared once, only after you request it and grant foreground permission.")
+            "Pair devices you control. Refresh status to see their last reported locations and open a point in Maps. This is not a live feed: a device must share its location while available. Lost mode changes status only.")
         trackerUrlInput = EditText(this).apply {
             hint = "Tracker service URL (https://...)"
             isSingleLine = true
@@ -331,6 +333,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setPadding(0, 4, 0, 12)
         }
         trackerPanel.addView(trackerOutputView)
+        trackerMapLinks = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        trackerPanel.addView(trackerMapLinks)
         setContentView(ScrollView(this).apply {
             setBackgroundColor(Color.rgb(246, 248, 250))
             addView(content)
@@ -471,8 +475,63 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 val heading = "$action ${if (reply.ok) "completed" else "failed"}" +
                     if (reply.status > 0) " (HTTP ${reply.status})." else "."
                 showTrackerResult(heading, trackerDisplayBody(reply.body))
+                if (action == "Refresh status" && reply.ok) {
+                    renderTrackerLocations(reply.body)
+                }
             }
         }, "ussd-tracker-action").start()
+    }
+
+    private fun renderTrackerLocations(body: String) {
+        trackerMapLinks.removeAllViews()
+        try {
+            val devices = JSONObject(body).optJSONArray("devices")
+            var found = 0
+            if (devices != null) {
+                for (index in 0 until devices.length()) {
+                    val device = devices.optJSONObject(index) ?: continue
+                    val location = device.optJSONObject("location") ?: continue
+                    val lat = location.optDouble("lat", Double.NaN)
+                    val lng = location.optDouble("lng", Double.NaN)
+                    if (!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) continue
+                    val deviceId = device.optString("deviceId", "paired device")
+                    val updatedAt = location.optLong("updatedAt", 0L)
+                    val status = if (device.optBoolean("online", false)) "online" else "offline"
+                    val lost = if (device.optBoolean("isLost", false)) " · marked lost" else ""
+                    val timestamp = if (updatedAt > 0L) {
+                        " · last report ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(updatedAt))}"
+                    } else ""
+                    trackerMapLinks.addView(TextView(this).apply {
+                        text = "$deviceId · $status$lost$timestamp"
+                        setTextColor(Color.rgb(89, 99, 110))
+                        setPadding(0, dp(8), 0, dp(4))
+                    })
+                    trackerMapLinks.addView(Button(this).apply {
+                        text = "Open last reported location in Maps"
+                        isAllCaps = false
+                        setOnClickListener {
+                            val label = Uri.encode(deviceId)
+                            val uri = Uri.parse("geo:$lat,$lng?q=$lat,$lng($label)")
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            } catch (error: android.content.ActivityNotFoundException) {
+                                showTrackerResult("No map app is installed.", error.message ?: "")
+                            }
+                        }
+                    })
+                    found++
+                }
+            }
+            if (found == 0) {
+                trackerMapLinks.addView(TextView(this).apply {
+                    text = "No paired-device location has been reported. The device must share a location while it is available."
+                    setTextColor(Color.rgb(89, 99, 110))
+                    setPadding(0, dp(8), 0, dp(4))
+                })
+            }
+        } catch (error: Exception) {
+            showTrackerResult("Could not read paired-device location data.", error.message ?: "")
+        }
     }
 
     private fun requestLocationCheckin() {

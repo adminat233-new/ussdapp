@@ -482,7 +482,7 @@
           </div>
         </div>
         <div class="architecture-grid">
-          <div class="architecture-step"><strong>1. Install a matching preview</strong><p>Use the Windows executable and Android debug APK from the same preview release. iOS requires a TestFlight invitation or a developer-signed build; simulator output is not installable on an iPhone.</p></div>
+          <div class="architecture-step"><strong>1. Install a matching preview</strong><p>Use the Windows executable and Android debug APK from the same preview release. iOS builds are coming soon and are not included in these downloads.</p></div>
           <div class="architecture-step"><strong>2. Configure trusted services</strong><p>Connect compatible clients to a reachable relay with valid TLS identity. Calls also need the configured calling/media service; tracking and AI each require their own endpoint and credentials.</p></div>
           <div class="architecture-step"><strong>3. Pair and test deliberately</strong><p>Register each app identity, then test a message and call between devices on different networks. Grant location only for an intentional one-time share. Never publish or reuse pairing secrets.</p></div>
         </div>
@@ -522,14 +522,14 @@
             <p class="asset-meta" data-meta="android"></p>
           </article>
           <article class="download-card">
-            <div class="download-top"><span class="platform-icon" aria-hidden="true">iOS</span><span class="availability" data-availability="ios">Apple distribution</span></div>
+            <div class="download-top"><span class="platform-icon" aria-hidden="true">iOS</span><span class="availability">Coming soon</span></div>
             <h3>iPhone and iPad</h3>
-            <p>Use an official App Store or TestFlight link. Ad Hoc builds stay private and are never published here as IPAs.</p>
-            <a class="asset-link" data-download="ios" aria-disabled="true">No Apple link in this release</a>
-            <p class="asset-meta" data-meta="ios"></p>
+            <p>iOS builds are not available in this preview. Windows and Android are the current test targets.</p>
+            <span class="asset-link" aria-disabled="true">Coming soon</span>
+            <p class="asset-meta"></p>
           </article>
         </div>
-        <p class="release-note">Preview builds are for testing, may contain unfinished features, and are not app-store releases. Android APKs are debug-signed. iOS device builds require Apple signing and are distributed through Apple. Public download links do not make the required relay, tracker, calling, or AI services public.</p>
+        <p class="release-note">Preview builds are for testing, may contain unfinished features, and are not app-store releases. Android APKs are debug-signed. iOS downloads are coming soon. Public download links do not make the required relay, tracker, calling, or AI services public.</p>
       </section>
 
       <footer class="site-foot">
@@ -549,7 +549,7 @@
             all: "The Windows desktop app and native Android and iOS clients provide platform-specific interfaces. A build for one platform cannot be installed on another.",
             windows: "The Windows client is a standalone .NET Framework desktop application. It needs a compatible modem for USSD features and user-configured endpoints for network features.",
             android: "The Android client is a native app. Android permissions are requested when a feature needs them; tracking location is only read after the user starts a one-time share.",
-            ios: "The iOS client is a native SwiftUI app. Installable builds must be signed with a matching Apple distribution profile."
+            ios: "The native iOS client is not included in these test downloads yet. iOS builds are coming soon."
           }
         },
         communications: {
@@ -585,7 +585,7 @@
             all: "Relays and calling servers are separate infrastructure. Configure trusted HTTPS/WSS endpoints and credentials; the app installer does not provision a server.",
             windows: "Connect only to a relay whose identity you trust. Server identity and reachability are separate from an open network socket.",
             android: "Use an HTTPS tracker endpoint and a trusted relay. Tracker credentials are encrypted locally on the device.",
-            ios: "Use an HTTPS tracker endpoint and a trusted relay. App Store Connect and Apple signing secrets belong in protected CI settings."
+            ios: "The iOS app and its configured services are not included in the current public test downloads."
           }
         }
       };
@@ -684,7 +684,7 @@
         link.removeAttribute("download");
         link.textContent = message;
         meta.textContent = "";
-        availability.textContent = platform === "ios" ? "Apple distribution" : "Not in this release";
+        availability.textContent = "Not in this release";
         availability.classList.remove("ready");
       }
 
@@ -709,19 +709,10 @@
         return true;
       }
 
-      function findAppleLink(release) {
-        var text = typeof release.body === "string" ? release.body : "";
-        var testFlight = text.match(/https:\/\/testflight\.apple\.com\/join\/[A-Za-z0-9]+/);
-        if (testFlight) return testFlight[0];
-        var appStore = text.match(/https:\/\/apps\.apple\.com\/[a-z]{2}\/app\/[A-Za-z0-9%._-]+(?:\/id[0-9]+)?/i);
-        return appStore ? appStore[0] : "";
-      }
-
       function renderRelease(release) {
         Object.keys(extensions).forEach(function (platform) {
           disableDownload(platform, platform === "windows" ? "No EXE in this release" : "No APK in this release");
         });
-        disableDownload("ios", "No Apple link in this release");
 
         var assets = Array.isArray(release.assets) ? release.assets : [];
         var available = [];
@@ -734,26 +725,11 @@
           }
         });
 
-        var appleLink = findAppleLink(release);
-        if (appleLink) {
-          var iosLink = document.querySelector('[data-download="ios"]');
-          var iosMeta = document.querySelector('[data-meta="ios"]');
-          var iosAvailability = document.querySelector('[data-availability="ios"]');
-          iosLink.href = appleLink;
-          iosLink.textContent = appleLink.indexOf("testflight") !== -1 ? "Open TestFlight" : "Open App Store";
-          iosLink.removeAttribute("aria-disabled");
-          iosLink.setAttribute("rel", "noopener noreferrer");
-          iosAvailability.textContent = "Apple hosted";
-          iosAvailability.classList.add("ready");
-          iosMeta.textContent = "Distribution stays with Apple.";
-          available.push("iOS");
-        }
-
         releaseBanner.dataset.state = available.length ? "ready" : "unavailable";
         var channel = release.prerelease ? "Preview release " : "Release ";
         releaseMessage.textContent = available.length
           ? channel + release.tag_name + " · available: " + available.join(", ") + "."
-          : "Release " + release.tag_name + " has no installable Windows or Android build or public Apple distribution link.";
+          : "Release " + release.tag_name + " has no installable Windows or Android build.";
       }
 
       function loadReleases() {
@@ -768,7 +744,7 @@
             releaseSelect.add(new Option("No published builds yet", ""));
             releaseSelect.disabled = true;
             releaseBanner.dataset.state = "unavailable";
-            releaseMessage.textContent = "No app release is published yet. Windows, Android, and Apple download buttons stay disabled until builds are released.";
+            releaseMessage.textContent = "No Windows or Android builds are published yet. Their download buttons will appear when the preview builds finish.";
             return;
           }
 

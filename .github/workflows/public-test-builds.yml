@@ -68,7 +68,7 @@ jobs:
 
       - name: Build Android debug preview
         working-directory: Mobile/Android
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew --no-daemon --max-workers=2 --stacktrace :app:assembleDebug
 
       - name: Name Android preview
         run: cp Mobile/Android/app/build/outputs/apk/debug/app-debug.apk USSDManager-Android-debug-preview.apk

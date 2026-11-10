@@ -115,6 +115,7 @@ private struct DeviceTrackingView: View {
     @State private var response = ""
     @State private var isBusy = false
     @StateObject private var locationProvider = OneShotLocationProvider()
+    @State private var trackedLocations: [TrackerLocation] = []
 
     private enum Action: String {
         case generate = "Generate pairing code"
@@ -128,7 +129,7 @@ private struct DeviceTrackingView: View {
     var body: some View {
         Form {
             Section("Device tracking session") {
-                Text("Pair this device with your tracker service using authenticated, one-time credentials. Lost mode is a server-side status only and does not lock or command a device. Location is read only after you tap the one-time location button and grant When In Use permission.")
+                Text("Pair devices you control with authenticated credentials. Refresh status to view their last reported locations. This is not a live feed: each device must share its location while available. Lost mode changes status only. This device shares its location only after you request it and grant When In Use permission.")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                 TextField("Tracker service URL (https://...)", text: $server)
@@ -150,6 +151,33 @@ private struct DeviceTrackingView: View {
                 Button("Share current location once") { shareCurrentLocationOnce() }
                 trackerButton(.lostOn)
                 trackerButton(.lostOff)
+            }
+            Section("Last reported locations") {
+                if trackedLocations.isEmpty {
+                    Text("No paired-device location loaded. Tap Refresh status; a device must share its location while available.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                } else {
+                    ForEach(trackedLocations) { location in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(location.deviceId + (location.isOnline ? " · online" : " · offline") +
+                                 (location.isLost ? " · marked lost" : ""))
+                                .font(.subheadline)
+                            Text(String(format: "%.6f, %.6f", location.latitude, location.longitude))
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                            if let updatedAt = location.updatedAt {
+                                Text("Last report " + updatedAt.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            if let url = location.mapsURL {
+                                Link("Open last reported location in Maps", destination: url)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
             }
             Section {
                 Text(status)
@@ -234,9 +262,14 @@ private struct DeviceTrackingView: View {
                             pairCode = code
                         }
                     }
+                    if action == .status {
+                        trackedLocations = parseTrackerLocations(reply.body)
+                    }
                     status = "\(action.rawValue) \(reply.ok ? "completed" : "failed")" +
                         (reply.status > 0 ? " (HTTP \(reply.status))." : ".")
-                    response = trackerDisplayBody(reply.body)
+                    response = reply.ok && action == .status && trackedLocations.isEmpty
+                        ? "No paired-device location has been reported yet."
+                        : trackerDisplayBody(reply.body)
                 } catch {
                     status = "\(action.rawValue) failed while securing credentials."
                     response = error.localizedDescription
@@ -352,20 +385,57 @@ private struct DeviceTrackingView: View {
                     : reply.body
             }
         }
+    }
 
-        private func trackerDisplayBody(_ body: String) -> String {
-            guard let data = body.data(using: .utf8),
-                  var payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                return String(body.prefix(6000))
-            }
-            guard payload["deviceToken"] != nil else { return String(body.prefix(6000)) }
-            payload["deviceToken"] = "[stored securely]"
-            guard let sanitized = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]),
-                  let text = String(data: sanitized, encoding: .utf8) else {
-                return "Credential response stored securely; details hidden."
-            }
-            return String(text.prefix(6000))
+    private func parseTrackerLocations(_ body: String) -> [TrackerLocation] {
+        guard let data = body.data(using: .utf8),
+              let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let devices = payload["devices"] as? [[String: Any]] else { return [] }
+        return devices.compactMap { device in
+            guard let deviceId = device["deviceId"] as? String,
+                  let location = device["location"] as? [String: Any],
+                  let latitude = location["lat"] as? Double,
+                  let longitude = location["lng"] as? Double,
+                  (-90...90).contains(latitude), (-180...180).contains(longitude) else { return nil }
+            let updatedAt = (location["updatedAt"] as? NSNumber)?.doubleValue
+            return TrackerLocation(deviceId: deviceId, latitude: latitude, longitude: longitude,
+                                   isOnline: device["online"] as? Bool ?? false,
+                                   isLost: device["isLost"] as? Bool ?? false,
+                                   updatedAt: updatedAt.map { Date(timeIntervalSince1970: $0 / 1000) })
         }
+    }
+
+    private func trackerDisplayBody(_ body: String) -> String {
+        guard let data = body.data(using: .utf8),
+              var payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return String(body.prefix(6000))
+        }
+        guard payload["deviceToken"] != nil else { return String(body.prefix(6000)) }
+        payload["deviceToken"] = "[stored securely]"
+        guard let sanitized = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]),
+              let text = String(data: sanitized, encoding: .utf8) else {
+            return "Credential response stored securely; details hidden."
+        }
+        return String(text.prefix(6000))
+    }
+}
+
+private struct TrackerLocation: Identifiable {
+    let deviceId: String
+    let latitude: Double
+    let longitude: Double
+    let isOnline: Bool
+    let isLost: Bool
+    let updatedAt: Date?
+
+    var id: String { deviceId }
+    var mapsURL: URL? {
+        var components = URLComponents(string: "https://maps.apple.com/")
+        components?.queryItems = [
+            URLQueryItem(name: "ll", value: "\(latitude),\(longitude)"),
+            URLQueryItem(name: "q", value: deviceId)
+        ]
+        return components?.url
     }
 }
 

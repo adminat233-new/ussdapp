@@ -3624,6 +3624,7 @@ namespace UssdApp
         private Button _agentAskButton;
         private TextBox _trackerServerBox, _trackerPairBox, _trackerDeviceBox, _trackerOutput;
         private TextBlock _trackerStatus;
+        private StackPanel _trackerMapLinks;
         private readonly List<Button> _trackerActionButtons = new List<Button>();
         private bool _trackerBusy;
         // modem setup popover (shown when user clicks COM pill)
@@ -6971,7 +6972,7 @@ namespace UssdApp
             });
             content.Children.Add(new TextBlock
             {
-                Text = "Connect to your configured tracker service for authenticated pairing, status, and lost-mode controls. This app never tracks in the background. Location is read and shared once only after you click Share current location once.",
+                Text = "Connect to the authenticated tracker service for paired-device status and last reported locations. Refresh status to view those points on a map. This app never tracks in the background; it reads and shares its own location only after you click Share current location once.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
                 Margin = new Thickness(4, 0, 4, 12)
@@ -7062,6 +7063,8 @@ namespace UssdApp
             _trackerOutput.HorizontalAlignment = HorizontalAlignment.Stretch;
             _trackerOutput.Margin = new Thickness(4, 4, 4, 4);
             results.Children.Add(_trackerOutput);
+            _trackerMapLinks = new StackPanel { Margin = new Thickness(4, 8, 4, 4) };
+            results.Children.Add(_trackerMapLinks);
             content.Children.Add(MakeServiceCard(results));
             return g;
         }
@@ -7223,6 +7226,8 @@ namespace UssdApp
                         SetTrackerResult(action + " failed: " + (failure.Length == 0 ? "No response." : failure), "");
                     else
                     {
+                        if (reply.Ok && action == "Refresh status")
+                            RenderTrackerLocations(reply.Body);
                         if (reply.Ok && (action == "Generate pairing code" || action == "Verify pairing"))
                         {
                             _trackerDeviceBox.Text = _cfg.tracker_device_id;
@@ -7236,6 +7241,56 @@ namespace UssdApp
                     }
                 });
             });
+        }
+
+        private void RenderTrackerLocations(string body)
+        {
+            if (_trackerMapLinks == null) return;
+            _trackerMapLinks.Children.Clear();
+            string json = body ?? "";
+            int devicesIndex = json.IndexOf("\"devices\"", StringComparison.Ordinal);
+            if (devicesIndex >= 0) json = json.Substring(devicesIndex);
+            MatchCollection locations = Regex.Matches(json,
+                "\"deviceId\"\\s*:\\s*\"([^\"]+)\"[^}]{0,800}?\"location\"\\s*:\\s*\\{\\s*\"lat\"\\s*:\\s*(-?[0-9]+(?:\\.[0-9]+)?)\\s*,\\s*\"lng\"\\s*:\\s*(-?[0-9]+(?:\\.[0-9]+)?)");
+            int found = 0;
+            foreach (Match match in locations)
+            {
+                double lat, lng;
+                if (!double.TryParse(match.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out lat) ||
+                    !double.TryParse(match.Groups[3].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out lng) ||
+                    double.IsNaN(lat) || double.IsInfinity(lat) || lat < -90 || lat > 90 ||
+                    double.IsNaN(lng) || double.IsInfinity(lng) || lng < -180 || lng > 180)
+                    continue;
+
+                TextBlock coordinates = new TextBlock
+                {
+                    Text = "Paired device " + match.Groups[1].Value + " - last reported location: " +
+                           lat.ToString("F6", CultureInfo.InvariantCulture) +
+                           ", " + lng.ToString("F6", CultureInfo.InvariantCulture),
+                    Foreground = BrushGray,
+                    Margin = new Thickness(2, 6, 2, 2)
+                };
+                _trackerMapLinks.Children.Add(coordinates);
+                Button openMap = MakeButton("Open last reported location in Maps");
+                openMap.Margin = new Thickness(2, 2, 2, 6);
+                string query = lat.ToString(CultureInfo.InvariantCulture) + "," +
+                               lng.ToString(CultureInfo.InvariantCulture);
+                openMap.Click += delegate
+                {
+                    try { System.Diagnostics.Process.Start("https://www.google.com/maps/search/?api=1&query=" + query); }
+                    catch (Exception ex) { SetTrackerResult("Could not open a map: " + ex.Message, ""); }
+                };
+                _trackerMapLinks.Children.Add(openMap);
+                found++;
+            }
+            if (found == 0)
+                _trackerMapLinks.Children.Add(new TextBlock
+                {
+                    Text = "No paired-device location has been reported. The device must share a location while available; offline devices cannot report live updates.",
+                    TextWrapping = TextWrapping.Wrap,
+                    Foreground = BrushGray,
+                    Margin = new Thickness(2, 6, 2, 2)
+                });
         }
 
         private void SetTrackerButtonsEnabled(bool enabled)

@@ -112,12 +112,16 @@ if ($androidActivity -notmatch "Device tracking session" -or
     $androidActivity -notmatch "Share current location once" -or
     $androidActivity -notmatch "TrackerCredentialStore" -or
     $androidActivity -notmatch "requestSingleUpdate" -or
+
+    $androidActivity -notmatch "Open last reported location in Maps" -or
     $androidActivity -notmatch "TrackerClient" -or
     $androidActivity -notmatch 'uri\.scheme != "https"' -or
     $iosApp -notmatch "DeviceTrackingView" -or
     $iosApp -notmatch "Send status-only check-in" -or
     $iosApp -notmatch "Share current location once" -or
     $iosApp -notmatch "TrackerCredentialStore" -or
+    $iosApp -notmatch "Last reported locations" -or
+    $iosApp -notmatch "maps\.apple\.com" -or
     $iosApp -notmatch "requestWhenInUseAuthorization" -or
     $iosApp -notmatch 'components\.scheme == "https"' -or
     $manifest -notmatch "ACCESS_FINE_LOCATION" -or
