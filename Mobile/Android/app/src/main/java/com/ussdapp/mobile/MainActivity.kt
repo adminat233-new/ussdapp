@@ -84,7 +84,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setPadding(32, 36, 32, 24)
         }
         content.addView(TextView(this).apply {
-            text = "USSD Manager\nLocal voice assistant"
+            text = "USSD Manager\nAgent panel"
             textSize = 22f
         })
         content.addView(TextView(this).apply {
@@ -260,7 +260,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         content.addView(relayEventsView)
 
         content.addView(TextView(this).apply {
-            text = "Device tracking session"
+            text = "Device tracking panel"
             textSize = 18f
             setPadding(0, 24, 0, 8)
         })

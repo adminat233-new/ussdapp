@@ -1,130 +1,648 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101827">
-  <meta name="description" content="Official USSD Manager Pro downloads for Windows, Android, and iOS.">
-  <title>USSD Manager Pro — Downloads</title>
+  <meta name="theme-color" content="#090d18">
+  <meta name="description" content="Explore USSD Manager Pro and download published builds for Windows, Android, and iOS.">
+  <title>USSD Manager Pro | Downloads</title>
   <style>
     :root {
       color-scheme: dark;
       font-family: "Segoe UI", system-ui, sans-serif;
-      background: #101827;
-      color: #eef4ff;
+      background: #090d18;
+      color: #eef2ff;
+      --surface: #111827;
+      --line: #2a3550;
+      --muted: #9daac2;
+      --blue: #79a8ff;
+      --mint: #72e0c3;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; }
-    main { width: min(940px, calc(100% - 32px)); margin: 0 auto; padding: 64px 0; }
-    header { margin-bottom: 32px; }
-    h1 { margin: 0 0 10px; font-size: clamp(2rem, 6vw, 3.4rem); }
-    .lead { max-width: 680px; color: #b7c5d9; line-height: 1.65; }
-    .notice {
-      margin: 24px 0;
-      padding: 16px 18px;
-      border: 1px solid #53627a;
-      border-radius: 12px;
-      background: #182438;
-      color: #d7e5fa;
-      line-height: 1.55;
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(ellipse at 12% -10%, rgba(80, 119, 205, .18), transparent 44rem),
+        radial-gradient(ellipse at 96% 28%, rgba(62, 192, 163, .08), transparent 35rem),
+        #090d18;
     }
-    .notice strong { color: #fff; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
-    .card { padding: 22px; border: 1px solid #34445d; border-radius: 16px; background: #172235; }
-    .card h2 { margin: 0 0 8px; font-size: 1.2rem; }
-    .card p { min-height: 52px; color: #b7c5d9; line-height: 1.5; }
-    .download {
-      display: inline-block;
-      padding: 10px 15px;
-      border-radius: 9px;
-      background: #4c8dff;
-      color: #071426;
+    a { color: inherit; }
+    button, input, select { font: inherit; }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 3px solid var(--mint);
+      outline-offset: 3px;
+    }
+    .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 76px;
+      border-bottom: 1px solid rgba(157, 170, 194, .13);
+    }
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 750; letter-spacing: -.03em; text-decoration: none; }
+    .brand-mark {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid rgba(121, 168, 255, .5);
+      border-radius: 11px;
+      background: linear-gradient(145deg, #253d6c, #15233f);
+      color: #a9c5ff;
+      font-size: 15px;
+    }
+    nav { display: flex; gap: 24px; }
+    nav a { color: var(--muted); font-size: 13px; text-decoration: none; }
+    nav a:hover { color: #fff; }
+    .hero { display: grid; grid-template-columns: 1fr .9fr; gap: 56px; align-items: center; padding: 72px 0 76px; }
+    .eyebrow { color: var(--mint); font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { max-width: 650px; margin: 15px 0 18px; font-size: clamp(42px, 6.4vw, 72px); line-height: .99; letter-spacing: -.065em; }
+    .hero-copy { max-width: 560px; color: #abb7ce; font-size: 16px; line-height: 1.75; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+    .button {
+      display: inline-flex;
+      min-height: 44px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 17px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #151d2e;
+      color: #eaf0ff;
+      font-size: 13px;
       font-weight: 700;
       text-decoration: none;
+      transition: border-color .2s, transform .2s, background .2s;
     }
-    .download[aria-disabled="true"] { background: #46566e; color: #d1d9e5; cursor: not-allowed; }
-    .meta, footer { color: #9eacc1; font-size: .9rem; }
-    #release-state { margin: 18px 0 0; color: #b7c5d9; }
-    footer { margin-top: 40px; line-height: 1.6; }
-    a { color: #8db9ff; }
+    .button:hover { transform: translateY(-2px); border-color: #6077a2; }
+    .button.primary { border-color: #9bbaff; background: #9bbaff; color: #10182a; }
+    .hero-art {
+      position: relative;
+      min-height: 315px;
+      overflow: hidden;
+      border: 1px solid rgba(121, 168, 255, .22);
+      border-radius: 24px;
+      background:
+        linear-gradient(rgba(121, 168, 255, .045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(121, 168, 255, .045) 1px, transparent 1px),
+        linear-gradient(145deg, #111b30, #0d1321 66%);
+      background-size: 28px 28px, 28px 28px, auto;
+      box-shadow: 0 35px 100px rgba(0, 0, 0, .35);
+    }
+    .hero-art::after {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 54% 60%, rgba(94, 139, 232, .18), transparent 56%);
+      content: "";
+      pointer-events: none;
+    }
+    .signal { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 20px rgba(114, 224, 195, .7); }
+    .signal.one { top: 16%; left: 18%; }
+    .signal.two { right: 15%; top: 34%; background: var(--blue); box-shadow: 0 0 20px rgba(121, 168, 255, .75); }
+    .signal.three { bottom: 17%; left: 39%; }
+    .hero-art-label { position: absolute; z-index: 1; right: 18px; bottom: 17px; color: #aab8d2; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+    .mini-stack { position: absolute; z-index: 1; inset: 0; display: grid; place-items: center; }
+    .mini-card {
+      position: absolute;
+      display: flex;
+      width: 220px;
+      height: 66px;
+      align-items: center;
+      gap: 13px;
+      padding: 13px;
+      border: 1px solid rgba(139, 166, 220, .45);
+      border-radius: 14px;
+      background: rgba(23, 34, 55, .94);
+      box-shadow: 0 18px 35px rgba(0, 0, 0, .32);
+    }
+    .mini-card:nth-child(1) { transform: translate(-18px, -84px); }
+    .mini-card:nth-child(2) { transform: translate(22px, -8px); }
+    .mini-card:nth-child(3) { transform: translate(-28px, 70px); }
+    .mini-icon { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #24395e; color: #aec8ff; font-weight: 800; }
+    .mini-title { font-size: 12px; font-weight: 750; }
+    .mini-sub { margin-top: 3px; color: var(--muted); font-size: 10px; }
+    section { scroll-margin-top: 24px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+    h2 { margin: 0; font-size: clamp(26px, 4vw, 38px); letter-spacing: -.045em; }
+    .section-intro { max-width: 540px; margin: 10px 0 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+    .explorer { padding: 34px; border: 1px solid var(--line); border-radius: 24px; background: linear-gradient(145deg, rgba(20, 29, 47, .98), rgba(13, 19, 32, .98)); }
+    .explorer-head { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+    .explorer-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .mode-pill { padding: 7px 10px; border: 1px solid #33425f; border-radius: 999px; color: #b7c8e8; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+    .exploded-layout { display: grid; grid-template-columns: 1.15fr .85fr; gap: 28px; align-items: center; }
+    .exploded-stage {
+      position: relative;
+      min-height: 372px;
+      overflow: hidden;
+      border: 1px solid rgba(121, 168, 255, .16);
+      border-radius: 18px;
+      background:
+        radial-gradient(ellipse at 50% 80%, rgba(92, 130, 201, .16), transparent 55%),
+        linear-gradient(145deg, #0d1422, #0c111d);
+      perspective: 900px;
+    }
+    .stage-grid {
+      position: absolute;
+      right: -12%;
+      bottom: -96px;
+      left: -12%;
+      height: 235px;
+      transform: rotateX(62deg);
+      background-image: linear-gradient(rgba(121, 168, 255, .12) 1px, transparent 1px), linear-gradient(90deg, rgba(121, 168, 255, .12) 1px, transparent 1px);
+      background-size: 30px 30px;
+      mask-image: linear-gradient(transparent, black 35%);
+    }
+    .layer {
+      position: absolute;
+      left: 50%;
+      display: flex;
+      width: min(74%, 410px);
+      min-height: 55px;
+      align-items: center;
+      gap: 13px;
+      padding: 10px 14px;
+      border: 1px solid rgba(146, 174, 231, .48);
+      border-radius: 13px;
+      background: linear-gradient(135deg, rgba(30, 45, 70, .98), rgba(18, 27, 44, .98));
+      box-shadow: 0 15px 24px rgba(0, 0, 0, .3);
+      color: #edf3ff;
+      cursor: pointer;
+      text-align: left;
+      transform: translate3d(-50%, 0, 0);
+      transition: border-color .2s, box-shadow .2s, background .2s, transform .18s;
+    }
+    .layer:hover, .layer[aria-pressed="true"] { border-color: var(--mint); background: linear-gradient(135deg, #243e56, #172b3b); box-shadow: 0 0 24px rgba(114, 224, 195, .16), 0 15px 24px rgba(0, 0, 0, .3); }
+    .layer[data-layer="app"] { top: 27px; z-index: 5; }
+    .layer[data-layer="communications"] { top: 99px; z-index: 4; }
+    .layer[data-layer="tracking"] { top: 171px; z-index: 3; }
+    .layer[data-layer="agent"] { top: 243px; z-index: 2; }
+    .layer[data-layer="relay"] { top: 315px; z-index: 1; }
+    .layer-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(166, 192, 245, .22); border-radius: 10px; background: #263d63; color: #c1d4ff; font-size: 12px; font-weight: 800; }
+    .layer-copy { min-width: 0; }
+    .layer-title { display: block; font-size: 12px; font-weight: 750; }
+    .layer-note { display: block; margin-top: 3px; color: #a9b8d2; font-size: 10px; }
+    .layer-number { margin-left: auto; color: #8293b0; font-size: 10px; font-variant-numeric: tabular-nums; }
+    .explorer-details { padding: 5px 6px; }
+    .detail-kicker { color: var(--mint); font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    .explorer-details h3 { margin: 11px 0 9px; font-size: 24px; letter-spacing: -.04em; }
+    .explorer-details p { min-height: 72px; margin: 0; color: #abb8cf; font-size: 13px; line-height: 1.7; }
+    .platform-switch { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 19px; }
+    .platform-switch button {
+      padding: 8px 11px;
+      border: 1px solid #35415a;
+      border-radius: 9px;
+      background: #101827;
+      color: #aebbd2;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .platform-switch button[aria-pressed="true"] { border-color: #82a9ef; color: #edf3ff; }
+    .explode-control { display: grid; grid-template-columns: auto 1fr auto; gap: 11px; align-items: center; margin-top: 19px; color: var(--muted); font-size: 10px; }
+    .explode-control input { width: 100%; accent-color: var(--mint); }
+    .release-section { padding: 88px 0; }
+    .release-banner { display: flex; align-items: start; gap: 13px; margin: 24px 0; padding: 16px 18px; border: 1px solid #51472e; border-radius: 14px; background: rgba(59, 47, 21, .3); color: #e8ddb9; font-size: 12px; line-height: 1.65; }
+    .release-banner[data-state="ready"] { border-color: #285d50; background: rgba(25, 67, 57, .3); color: #c6f4e7; }
+    .status-dot { width: 8px; height: 8px; flex: 0 0 auto; margin-top: 4px; border-radius: 50%; background: #e6ba58; }
+    [data-state="ready"] .status-dot { background: var(--mint); box-shadow: 0 0 12px rgba(114, 224, 195, .4); }
+    .release-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 14px; }
+    .release-controls label { color: var(--muted); font-size: 11px; }
+    .release-controls select { min-width: min(100%, 300px); padding: 10px 34px 10px 12px; border: 1px solid #35415a; border-radius: 9px; background: #111827; color: #eef2ff; }
+    .release-controls select:disabled { color: #73819a; }
+    .downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .download-card { display: flex; min-height: 220px; flex-direction: column; padding: 21px; border: 1px solid var(--line); border-radius: 17px; background: linear-gradient(150deg, #151e30, #101725); }
+    .download-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .download-card h3 { margin: 17px 0 5px; font-size: 17px; }
+    .download-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .platform-icon { display: grid; width: 37px; height: 37px; place-items: center; border: 1px solid #354766; border-radius: 11px; background: #1d2b45; color: #b8cdff; font-size: 11px; font-weight: 800; }
+    .availability { color: #93a2bb; font-size: 10px; }
+    .availability.ready { color: var(--mint); }
+    .asset-link { display: inline-flex; min-height: 39px; align-items: center; justify-content: center; margin-top: auto; padding: 0 12px; border: 1px solid #35415a; border-radius: 9px; background: #182238; color: #d7e3ff; font-size: 11px; font-weight: 750; text-decoration: none; }
+    .asset-link:hover { border-color: #7596d5; }
+    .asset-link[aria-disabled="true"] { background: #131a28; color: #71809a; cursor: not-allowed; }
+    .asset-meta { min-height: 14px; margin: 9px 0 0 !important; color: #8090a9 !important; font-size: 10px !important; overflow-wrap: anywhere; }
+    .site-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; margin-top: 28px; padding: 20px 0 35px; border-top: 1px solid rgba(157, 170, 194, .13); color: #8390a7; font-size: 10px; line-height: 1.7; }
+    .site-foot a { color: #a9c0ef; }
+    @media (max-width: 820px) {
+      .hero { grid-template-columns: 1fr; gap: 34px; padding: 55px 0; }
+      .hero-art { min-height: 285px; }
+      .exploded-layout { grid-template-columns: 1fr; }
+      .downloads { grid-template-columns: 1fr; }
+      .download-card { min-height: 190px; }
+    }
+    @media (max-width: 560px) {
+      .wrap { width: min(100% - 28px, 1120px); }
+      .topbar { min-height: 64px; }
+      nav { gap: 14px; }
+      nav a { font-size: 11px; }
+      .hero { padding: 45px 0; }
+      .hero-copy { font-size: 14px; }
+      .hero-art { min-height: 255px; }
+      .explorer { padding: 17px; }
+      .explorer-head { align-items: start; }
+      .exploded-stage { min-height: 340px; }
+      .layer { width: 88%; }
+      .layer[data-layer="app"] { top: 21px; }
+      .layer[data-layer="communications"] { top: 85px; }
+      .layer[data-layer="tracking"] { top: 149px; }
+      .layer[data-layer="agent"] { top: 213px; }
+      .layer[data-layer="relay"] { top: 277px; }
+      .layer-note { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .section-head { display: block; }
+      .release-section { padding: 64px 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
   </style>
 </head>
 <body>
-  <main>
-    <header>
-      <h1>USSD Manager Pro</h1>
-      <p class="lead">Downloads for Windows, Android, and iOS. Install only builds published in the official GitHub releases for this project.</p>
-    </header>
+  <div class="wrap">
+    <nav class="topbar" aria-label="Main navigation">
+      <a class="brand" href="#top" aria-label="USSD Manager Pro home">
+        <span class="brand-mark" aria-hidden="true">U</span>
+        <span>USSD Manager Pro</span>
+      </a>
+      <div>
+        <a href="#explorer">Explore</a>
+        <a href="#downloads" style="margin-left:20px">Downloads</a>
+      </div>
+    </nav>
 
-    <div class="notice" role="status">
-      <strong>Release status:</strong> no verified app builds have been published yet.
-      Cross-platform native calling is still under development, and the calling VPS has not
-      been provisioned. Do not treat this page as evidence that friend-to-friend calls are
-      ready.
-    </div>
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div>
+          <div class="eyebrow">One app, three platforms</div>
+          <h1 id="hero-title">Your devices.<br>One secure workspace.</h1>
+          <p class="hero-copy">Manage modem sessions, communicate across connected devices, and use the tracking and assistant tools when you choose. Explore how the parts fit together, then download a platform build when a release is available.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="#downloads">Check available builds</a>
+            <a class="button" href="#explorer">Explore the app</a>
+          </div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <span class="signal one"></span><span class="signal two"></span><span class="signal three"></span>
+          <div class="mini-stack">
+            <div class="mini-card"><span class="mini-icon">01</span><span><span class="mini-title">Communication</span><span class="mini-sub">Relay chat, calls and file transfer</span></span></div>
+            <div class="mini-card"><span class="mini-icon">02</span><span><span class="mini-title">Device tracking</span><span class="mini-sub">Pairing and one-time location sharing</span></span></div>
+            <div class="mini-card"><span class="mini-icon">03</span><span><span class="mini-title">Assistant panel</span><span class="mini-sub">User-started actions, no background control</span></span></div>
+          </div>
+          <span class="hero-art-label">An interactive system view</span>
+        </div>
+      </section>
 
-    <section class="grid" aria-label="Platform downloads">
-      <article class="card">
-        <h2>Windows</h2>
-        <p>Single-file desktop app. The download will appear here after a verified release is published.</p>
-        <a class="download" data-kind="windows" aria-disabled="true">Not released</a>
-        <p class="meta" data-meta="windows"></p>
-      </article>
-      <article class="card">
-        <h2>Android</h2>
-        <p>Android install package. Only install APKs published from this official release page.</p>
-        <a class="download" data-kind="android" aria-disabled="true">Not released</a>
-        <p class="meta" data-meta="android"></p>
-      </article>
-      <article class="card">
-        <h2>iOS</h2>
-        <p>An installable iOS build requires an Apple-signed package. This project has not yet been built and signed on macOS.</p>
-        <a class="download" data-kind="ios" aria-disabled="true">Not available</a>
-        <p class="meta" data-meta="ios">A source project is not an installable iPhone app.</p>
-      </article>
-    </section>
+      <section id="explorer" aria-labelledby="explorer-title">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Explore the stack</div>
+            <h2 id="explorer-title">An exploded view of the app</h2>
+            <p class="section-intro">Pull the layers apart and select one to see what it does on each device. The view describes app components; it does not represent a live connection or tracking session.</p>
+          </div>
+        </div>
+        <div class="explorer">
+          <div class="explorer-head">
+            <div><strong>USSD Manager system</strong><p>Choose a layer or move the control to assemble it again.</p></div>
+            <span class="mode-pill">Interactive diagram</span>
+          </div>
+          <div class="exploded-layout">
+            <div class="exploded-stage" id="exploded-stage" aria-label="Interactive exploded view of USSD Manager">
+              <div class="stage-grid" aria-hidden="true"></div>
+              <button class="layer" type="button" data-layer="app" data-rise="0" aria-pressed="false">
+                <span class="layer-icon">UI</span><span class="layer-copy"><span class="layer-title">Platform app</span><span class="layer-note">Windows desktop Â· Android Â· iOS</span></span><span class="layer-number">01</span>
+              </button>
+              <button class="layer" type="button" data-layer="communications" data-rise="12" aria-pressed="true">
+                <span class="layer-icon">&lt;&gt;</span><span class="layer-copy"><span class="layer-title">Communication</span><span class="layer-note">Secure relay chat Â· voice/video Â· files</span></span><span class="layer-number">02</span>
+              </button>
+              <button class="layer" type="button" data-layer="tracking" data-rise="24" aria-pressed="false">
+                <span class="layer-icon">GPS</span><span class="layer-copy"><span class="layer-title">Device tracking</span><span class="layer-note">Authenticated pairing Â· location on request</span></span><span class="layer-number">03</span>
+              </button>
+              <button class="layer" type="button" data-layer="agent" data-rise="36" aria-pressed="false">
+                <span class="layer-icon">AI</span><span class="layer-copy"><span class="layer-title">Assistant panel</span><span class="layer-note">User-started tools Â· no shell access</span></span><span class="layer-number">04</span>
+              </button>
+              <button class="layer" type="button" data-layer="relay" data-rise="48" aria-pressed="false">
+                <span class="layer-icon">NET</span><span class="layer-copy"><span class="layer-title">Relay and services</span><span class="layer-note">Configured endpoints Â· no server bundled</span></span><span class="layer-number">05</span>
+              </button>
+            </div>
+            <div class="explorer-details" aria-live="polite">
+              <div class="detail-kicker" id="detail-platform">All platforms Â· Layer 02</div>
+              <h3 id="detail-title">Communication</h3>
+              <p id="detail-copy">Use the configured relay for sealed text messaging, calls, and file transfer. Calls need a reachable calling service; installing the app alone does not provide relay infrastructure.</p>
+              <div class="platform-switch" aria-label="Choose platform">
+                <button type="button" data-platform="all" aria-pressed="true">All platforms</button>
+                <button type="button" data-platform="windows" aria-pressed="false">Windows</button>
+                <button type="button" data-platform="android" aria-pressed="false">Android</button>
+                <button type="button" data-platform="ios" aria-pressed="false">iOS</button>
+              </div>
+              <label class="explode-control" for="explode-range">
+                <span>Assembled</span>
+                <input id="explode-range" type="range" min="0" max="100" value="65" aria-label="Explode or assemble app layers">
+                <span>Exploded</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
 
-    <p id="release-state" aria-live="polite">Checking official releases…</p>
-    <footer>
-      <p>Downloads are provided through <a href="https://github.com/adminat233-new/ussdapp-downloads/releases">GitHub Releases</a>. Never enter your relay token or private keys on a download page.</p>
-      <p>Calls and file transfer are not advertised as available until the native clients, relay service, and cross-platform tests are complete.</p>
-    </footer>
-  </main>
+      <section class="release-section" id="downloads" aria-labelledby="downloads-title">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Builds, not promises</div>
+            <h2 id="downloads-title">Downloads</h2>
+            <p class="section-intro">Choose a published release. A platform button appears only when that release includes its installable build.</p>
+          </div>
+        </div>
+        <div class="release-banner" id="release-banner" data-state="checking" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="release-message">Checking published release assetsâ€¦</span>
+        </div>
+        <div class="release-controls">
+          <label for="release-select">Release version</label>
+          <select id="release-select" disabled aria-describedby="release-message">
+            <option>Checking releasesâ€¦</option>
+          </select>
+        </div>
+        <div class="downloads" aria-label="Platform build downloads">
+          <article class="download-card">
+            <div class="download-top"><span class="platform-icon" aria-hidden="true">WIN</span><span class="availability" data-availability="windows">Not published</span></div>
+            <h3>Windows</h3>
+            <p>Desktop application executable. Only a published .exe is linked.</p>
+            <a class="asset-link" data-download="windows" aria-disabled="true">No build in this release</a>
+            <p class="asset-meta" data-meta="windows"></p>
+          </article>
+          <article class="download-card">
+            <div class="download-top"><span class="platform-icon" aria-hidden="true">AND</span><span class="availability" data-availability="android">Not published</span></div>
+            <h3>Android</h3>
+            <p>Installable package. A debug APK is identified as a preview, not a production release.</p>
+            <a class="asset-link" data-download="android" aria-disabled="true">No APK in this release</a>
+            <p class="asset-meta" data-meta="android"></p>
+          </article>
+          <article class="download-card">
+            <div class="download-top"><span class="platform-icon" aria-hidden="true">iOS</span><span class="availability" data-availability="ios">Apple distribution</span></div>
+            <h3>iPhone and iPad</h3>
+            <p>Use an official App Store or TestFlight link. Ad Hoc builds stay private and are never published here as IPAs.</p>
+            <a class="asset-link" data-download="ios" aria-disabled="true">No Apple link in this release</a>
+            <p class="asset-meta" data-meta="ios"></p>
+          </article>
+        </div>
+      </section>
+
+      <footer class="site-foot">
+        <span>Downloads are supplied by the official <a href="https://github.com/adminat233-new/ussdapp/releases">GitHub releases</a>. Never enter a relay token or private key on this site.</span>
+        <span>Lost mode changes tracker status only. Location sharing is a one-time, user-started action.</span>
+      </footer>
+    </main>
+  </div>
   <script>
     (function () {
-      var api = "https://api.github.com/repos/adminat233-new/ussdapp-downloads/releases/latest";
-      var state = document.getElementById("release-state");
-      function setDownload(kind, asset, release) {
-        var link = document.querySelector('[data-kind="' + kind + '"]');
-        var meta = document.querySelector('[data-meta="' + kind + '"]');
-        if (!link || !asset) return;
-        link.href = asset.browser_download_url;
-        link.textContent = "Download " + asset.name;
-        link.removeAttribute("aria-disabled");
-        link.setAttribute("download", asset.name);
-        if (meta) meta.textContent = release.tag_name + " · " + asset.size + " bytes";
+      "use strict";
+
+      var descriptions = {
+        app: {
+          title: "Platform app",
+          copy: {
+            all: "The Windows desktop app and native Android and iOS clients provide platform-specific interfaces. A build for one platform cannot be installed on another.",
+            windows: "The Windows client is a standalone .NET Framework desktop application. It needs a compatible modem for USSD features and user-configured endpoints for network features.",
+            android: "The Android client is a native app. Android permissions are requested when a feature needs them; tracking location is only read after the user starts a one-time share.",
+            ios: "The iOS client is a native SwiftUI app. Installable builds must be signed with a matching Apple distribution profile."
+          }
+        },
+        communications: {
+          title: "Communication",
+          copy: {
+            all: "Use the configured relay for sealed text messaging, calls, and file transfer. Calls need a reachable calling service; installing the app alone does not provide relay infrastructure.",
+            windows: "The Windows client supports relay messaging and calls. Its call route depends on the configured relay and calling service being reachable.",
+            android: "The Android client includes relay messaging and a native calls screen. Voice, video, and file transfer require the corresponding service configuration.",
+            ios: "The iOS client includes relay messaging and a native calls screen. Voice and video are encrypted in transit; they are not app-level end-to-end encrypted."
+          }
+        },
+        tracking: {
+          title: "Device tracking",
+          copy: {
+            all: "Pair devices with authenticated credentials. A location is read and shared only after a user starts a one-time request; lost mode is a status flag, not a remote lock.",
+            windows: "The Windows panel supports authenticated pairing, status, lost-mode state, and a one-time location share started by the user.",
+            android: "The Android panel stores its tracker token using Android Keystore-backed encryption and requests foreground location permission only for a user-started share.",
+            ios: "The iOS panel stores credentials in Keychain and asks for When In Use location access only when a one-time share is started."
+          }
+        },
+        agent: {
+          title: "Assistant panel",
+          copy: {
+            all: "The assistant is user-started. Remote shell and unrestricted command execution are disabled; the app does not silently take control of a phone, laptop, or server.",
+            windows: "The Windows client includes a tray wake agent and an AI assistant in the chat hub. The wake agent stores messages while the window is closed; it cannot answer calls or run arbitrary commands.",
+            android: "The Android client includes a local, user-triggered assistant. It does not listen in the background or run arbitrary remote shell commands.",
+            ios: "The iOS client includes a user-triggered assistant. Voice recognition starts only after the user taps Listen."
+          }
+        },
+        relay: {
+          title: "Relay and services",
+          copy: {
+            all: "Relays and calling servers are separate infrastructure. Configure trusted HTTPS/WSS endpoints and credentials; the app installer does not provision a server.",
+            windows: "Connect only to a relay whose identity you trust. Server identity and reachability are separate from an open network socket.",
+            android: "Use an HTTPS tracker endpoint and a trusted relay. Tracker credentials are encrypted locally on the device.",
+            ios: "Use an HTTPS tracker endpoint and a trusted relay. App Store Connect and Apple signing secrets belong in protected CI settings."
+          }
+        }
+      };
+
+      var layers = Array.prototype.slice.call(document.querySelectorAll(".layer"));
+      var platformButtons = Array.prototype.slice.call(document.querySelectorAll("[data-platform]"));
+      var range = document.getElementById("explode-range");
+      var activeLayer = "communications";
+      var activePlatform = "all";
+
+      function labelForPlatform(value) {
+        return value === "all" ? "All platforms" : value.charAt(0).toUpperCase() + value.slice(1);
       }
-      fetch(api, { headers: { "Accept": "application/vnd.github+json" } })
-        .then(function (response) {
-          if (!response.ok) throw new Error("No published release is available.");
-          return response.json();
-        })
-        .then(function (release) {
-          var assets = release.assets || [];
-          var windows = assets.find(function (asset) { return /\.exe$/i.test(asset.name); });
-          var android = assets.find(function (asset) { return /\.apk$/i.test(asset.name); });
-          setDownload("windows", windows, release);
-          setDownload("android", android, release);
-          var available = [];
-          if (windows) available.push("Windows");
-          if (android) available.push("Android");
-          state.textContent = available.length
-            ? "Latest release: " + release.tag_name + ". Available downloads: " + available.join(", ") + ". iOS is not available until an Apple-signed release is published."
-            : "A release exists, but no verified Windows or Android assets are attached yet. iOS is not available until an Apple-signed release is published.";
-        })
-        .catch(function () {
-          state.textContent = "No app release is published yet. Downloads will appear here when release assets are available.";
+
+      function updateDetails() {
+        var item = descriptions[activeLayer];
+        var layerButton = document.querySelector('.layer[data-layer="' + activeLayer + '"]');
+        var layerNumber = layerButton ? layerButton.querySelector(".layer-number").textContent : "";
+        document.getElementById("detail-platform").textContent = labelForPlatform(activePlatform) + (layerNumber ? " Â· Layer " + layerNumber : "");
+        document.getElementById("detail-title").textContent = item.title;
+        document.getElementById("detail-copy").textContent = item.copy[activePlatform];
+      }
+
+      function selectLayer(button) {
+        activeLayer = button.getAttribute("data-layer");
+        layers.forEach(function (layer) {
+          layer.setAttribute("aria-pressed", layer === button ? "true" : "false");
         });
+        updateDetails();
+      }
+
+      layers.forEach(function (button, index) {
+        button.addEventListener("click", function () { selectLayer(button); });
+        button.addEventListener("keydown", function (event) {
+          var nextIndex = index;
+          if (event.key === "ArrowDown" || event.key === "ArrowRight") nextIndex = (index + 1) % layers.length;
+          else if (event.key === "ArrowUp" || event.key === "ArrowLeft") nextIndex = (index + layers.length - 1) % layers.length;
+          else return;
+          event.preventDefault();
+          layers[nextIndex].focus();
+          selectLayer(layers[nextIndex]);
+        });
+      });
+
+      platformButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          activePlatform = button.getAttribute("data-platform");
+          platformButtons.forEach(function (item) {
+            item.setAttribute("aria-pressed", item === button ? "true" : "false");
+          });
+          updateDetails();
+        });
+      });
+
+      function setExplode(value) {
+        var amount = Number(value) / 100;
+        layers.forEach(function (layer) {
+          var rise = Number(layer.getAttribute("data-rise")) * amount;
+          layer.style.transform = "translate3d(-50%, -" + rise + "px, 0)";
+        });
+      }
+      range.addEventListener("input", function () { setExplode(range.value); });
+      setExplode(range.value);
+      updateDetails();
+
+      var releaseMessage = document.getElementById("release-message");
+      var releaseBanner = document.getElementById("release-banner");
+      var releaseSelect = document.getElementById("release-select");
+      var platformNames = { windows: "Windows", android: "Android", ios: "iOS" };
+      var extensions = { windows: ".exe", android: ".apk" };
+
+      function formatSize(bytes) {
+        if (!Number.isFinite(bytes) || bytes <= 0) return "";
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      }
+
+      function findAsset(assets, extension) {
+        return assets.find(function (asset) {
+          return typeof asset.name === "string" && asset.name.toLowerCase().endsWith(extension) &&
+            typeof asset.browser_download_url === "string" &&
+            /^https:\/\/github\.com\/adminat233-new\/ussdapp\/releases\/download\//.test(asset.browser_download_url) &&
+            Number(asset.size) > 0;
+        });
+      }
+
+      function disableDownload(platform, message) {
+        var link = document.querySelector('[data-download="' + platform + '"]');
+        var meta = document.querySelector('[data-meta="' + platform + '"]');
+        var availability = document.querySelector('[data-availability="' + platform + '"]');
+        if (!link || !meta || !availability) return;
+        link.removeAttribute("href");
+        link.setAttribute("aria-disabled", "true");
+        link.removeAttribute("download");
+        link.textContent = message;
+        meta.textContent = "";
+        availability.textContent = platform === "ios" ? "Apple distribution" : "Not in this release";
+        availability.classList.remove("ready");
+      }
+
+      function enableDownload(platform, asset, release) {
+        var link = document.querySelector('[data-download="' + platform + '"]');
+        var meta = document.querySelector('[data-meta="' + platform + '"]');
+        var availability = document.querySelector('[data-availability="' + platform + '"]');
+        if (!link || !meta || !availability || !asset) return false;
+        link.href = asset.browser_download_url;
+        link.textContent = "Download " + platformNames[platform];
+        link.removeAttribute("aria-disabled");
+        link.setAttribute("rel", "noopener");
+        link.setAttribute("download", asset.name);
+        availability.textContent = (release.prerelease ? "Preview Â· " : "Available Â· ") + release.tag_name;
+        availability.classList.add("ready");
+        var size = formatSize(Number(asset.size));
+        var digest = typeof asset.digest === "string" && /^sha256:[a-f0-9]{64}$/i.test(asset.digest)
+          ? " Â· SHA-256 " + asset.digest.slice(7, 19) + "â€¦"
+          : "";
+        meta.textContent = asset.name + (size ? " Â· " + size : "") + digest;
+        return true;
+      }
+
+      function findAppleLink(release) {
+        var text = typeof release.body === "string" ? release.body : "";
+        var testFlight = text.match(/https:\/\/testflight\.apple\.com\/join\/[A-Za-z0-9]+/);
+        if (testFlight) return testFlight[0];
+        var appStore = text.match(/https:\/\/apps\.apple\.com\/[a-z]{2}\/app\/[A-Za-z0-9%._-]+(?:\/id[0-9]+)?/i);
+        return appStore ? appStore[0] : "";
+      }
+
+      function renderRelease(release) {
+        Object.keys(extensions).forEach(function (platform) {
+          disableDownload(platform, platform === "windows" ? "No EXE in this release" : "No APK in this release");
+        });
+        disableDownload("ios", "No Apple link in this release");
+
+        var assets = Array.isArray(release.assets) ? release.assets : [];
+        var available = [];
+        Object.keys(extensions).forEach(function (platform) {
+          if (enableDownload(platform, findAsset(assets, extensions[platform]), release)) {
+            available.push(platformNames[platform]);
+          }
+        });
+
+        var appleLink = findAppleLink(release);
+        if (appleLink) {
+          var iosLink = document.querySelector('[data-download="ios"]');
+          var iosMeta = document.querySelector('[data-meta="ios"]');
+          var iosAvailability = document.querySelector('[data-availability="ios"]');
+          iosLink.href = appleLink;
+          iosLink.textContent = appleLink.indexOf("testflight") !== -1 ? "Open TestFlight" : "Open App Store";
+          iosLink.removeAttribute("aria-disabled");
+          iosLink.setAttribute("rel", "noopener noreferrer");
+          iosAvailability.textContent = "Apple hosted";
+          iosAvailability.classList.add("ready");
+          iosMeta.textContent = "Distribution stays with Apple.";
+          available.push("iOS");
+        }
+
+        releaseBanner.dataset.state = available.length ? "ready" : "unavailable";
+        var channel = release.prerelease ? "Preview release " : "Release ";
+        releaseMessage.textContent = available.length
+          ? channel + release.tag_name + " Â· available: " + available.join(", ") + "."
+          : "Release " + release.tag_name + " has no installable Windows or Android build or public Apple distribution link.";
+      }
+
+      function loadReleases() {
+        fetch("https://api.github.com/repos/adminat233-new/ussdapp/releases?per_page=20", {
+          headers: { "Accept": "application/vnd.github+json" }
+        }).then(function (response) {
+          if (!response.ok) throw new Error("Release status could not be checked (HTTP " + response.status + ").");
+          return response.json();
+        }).then(function (releases) {
+          if (!Array.isArray(releases) || !releases.length) {
+            releaseSelect.innerHTML = "";
+            releaseSelect.add(new Option("No published builds yet", ""));
+            releaseSelect.disabled = true;
+            releaseBanner.dataset.state = "unavailable";
+            releaseMessage.textContent = "No app release is published yet. Windows, Android, and Apple download buttons stay disabled until builds are released.";
+            return;
+          }
+
+          releaseSelect.innerHTML = "";
+          releases.forEach(function (release, index) {
+            var label = release.name || release.tag_name;
+            if (release.prerelease) label += " (preview)";
+            releaseSelect.add(new Option(label, String(index)));
+          });
+          releaseSelect.disabled = false;
+          releaseSelect.addEventListener("change", function () {
+            var selected = releases[Number(releaseSelect.value)];
+            if (selected) renderRelease(selected);
+          });
+          renderRelease(releases[0]);
+        }).catch(function (error) {
+          releaseSelect.innerHTML = "";
+          releaseSelect.add(new Option("Release status unavailable", ""));
+          releaseSelect.disabled = true;
+          releaseBanner.dataset.state = "unavailable";
+          releaseMessage.textContent = error.message || "Release status could not be checked. Downloads remain disabled.";
+        });
+      }
+
+      loadReleases();
     }());
   </script>
 </body>

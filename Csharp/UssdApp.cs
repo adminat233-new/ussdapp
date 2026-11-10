@@ -3619,6 +3619,9 @@ namespace UssdApp
         // transport mode for the dialer: "cellular" | "voip"
         private string _dialerTransport = "cellular";
         private Button _btnTransportCellular, _btnTransportVoip;
+        private TextBox _agentPrompt, _agentResponse;
+        private TextBlock _agentStatus;
+        private Button _agentAskButton;
         private TextBox _trackerServerBox, _trackerPairBox, _trackerDeviceBox, _trackerOutput;
         private TextBlock _trackerStatus;
         private readonly List<Button> _trackerActionButtons = new List<Button>();
@@ -6668,11 +6671,12 @@ namespace UssdApp
                 "\uD83D\uDCAC  SMS",           // speech balloon
                 "\uD83D\uDCF1  SIM Manager",   // mobile phone (was ⚙, now distinct from Settings gear)
                 "\u2708  USSD",                // airplane / send
-                "\uD83D\uDCCD  Device Tracking" // location pin
+                "\uD83D\uDCCD  Device Tracking", // location pin
+                "\uD83E\uDD16  Agent"          // assistant panel
             };
             Grid[] pageGrids = new Grid[]
             {
-                BuildDialerTab(), BuildContactsTab(), BuildVideoTab(), BuildSmsTab(), BuildSimTab(), BuildUssdTab(), BuildTrackerTab()
+                BuildDialerTab(), BuildContactsTab(), BuildVideoTab(), BuildSmsTab(), BuildSimTab(), BuildUssdTab(), BuildTrackerTab(), BuildAgentTab()
             };
             for (int i = 0; i < pageGrids.Length; i++)
             {
@@ -6843,6 +6847,94 @@ namespace UssdApp
             else _pillCom.Text = port + " | " + baud;
         }
 
+        private Grid BuildAgentTab()
+        {
+            Grid g = new Grid { Margin = new Thickness(12) };
+            StackPanel content = new StackPanel { MaxWidth = 720, HorizontalAlignment = HorizontalAlignment.Left };
+            g.Children.Add(content);
+
+            content.Children.Add(new TextBlock
+            {
+                Text = "Agent panel",
+                FontSize = 22,
+                FontWeight = FontWeights.Bold,
+                Foreground = BrushFg,
+                Margin = new Thickness(4, 4, 4, 8)
+            });
+            content.Children.Add(new TextBlock
+            {
+                Text = "Ask the configured AI assistant for help with USSD Manager. A prompt is sent only when you click Ask. The assistant provides text; it cannot run shell commands or control this PC, a phone, or a server.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                Margin = new Thickness(4, 0, 4, 12)
+            });
+
+            _agentPrompt = MakeMultiBox();
+            _agentPrompt.Height = 110;
+            _agentPrompt.MaxLength = 4000;
+            _agentPrompt.AcceptsReturn = true;
+            _agentPrompt.HorizontalAlignment = HorizontalAlignment.Stretch;
+            _agentPrompt.Margin = new Thickness(4, 4, 4, 8);
+            content.Children.Add(_agentPrompt);
+
+            _agentAskButton = MakeButton("Ask assistant");
+            _agentAskButton.Margin = new Thickness(4, 4, 4, 8);
+            _agentAskButton.Click += async delegate { await RunAgentPromptAsync(); };
+            content.Children.Add(_agentAskButton);
+
+            _agentStatus = new TextBlock
+            {
+                Text = "Ready. Configure the assistant in Settings > AI.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                Margin = new Thickness(4, 4, 4, 8)
+            };
+            content.Children.Add(_agentStatus);
+
+            _agentResponse = MakeMultiBox();
+            _agentResponse.IsReadOnly = true;
+            _agentResponse.MinHeight = 150;
+            _agentResponse.HorizontalAlignment = HorizontalAlignment.Stretch;
+            _agentResponse.Margin = new Thickness(4, 4, 4, 4);
+            content.Children.Add(_agentResponse);
+            return g;
+        }
+
+        private async Task RunAgentPromptAsync()
+        {
+            if (_agentPrompt == null || _agentAskButton == null) return;
+            string prompt = (_agentPrompt.Text ?? "").Trim();
+            if (prompt.Length == 0)
+            {
+                _agentStatus.Text = "Enter a question first.";
+                return;
+            }
+            if (!_aiEnabled || string.IsNullOrEmpty(_aiApiKey))
+            {
+                _agentStatus.Text = "Configure and enable the AI assistant in Settings > AI first.";
+                ShowSettingsDialog();
+                return;
+            }
+
+            _agentAskButton.IsEnabled = false;
+            _agentStatus.Text = "Sending your prompt to the configured AI provider...";
+            try
+            {
+                string response = await Task.Run(delegate { return CallAiApi(prompt); });
+                _agentResponse.Text = response;
+                _agentStatus.Text = "Response received. No device action was executed.";
+            }
+            catch (Exception ex)
+            {
+                _agentStatus.Text = "Assistant request failed: " + ex.Message;
+                Log("Agent: " + ex.Message, BrushError);
+            }
+            finally
+            {
+                _agentAskButton.IsEnabled = true;
+            }
+        }
+
         private Grid BuildTrackerTab()
         {
             Grid g = new Grid { Margin = new Thickness(12) };
@@ -6859,7 +6951,7 @@ namespace UssdApp
             });
             content.Children.Add(new TextBlock
             {
-                Text = "Connect to your configured tracker service for pairing, status, and lost-mode controls. This app does not read your location or start tracking in the background. Check-in sends status only; location sharing is not available here.",
+                Text = "Connect to your configured tracker service for authenticated pairing, status, and lost-mode controls. This app never tracks in the background. Location is read and shared once only after you click Share current location once.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
                 Margin = new Thickness(4, 0, 4, 12)
@@ -6886,6 +6978,12 @@ namespace UssdApp
                 delegate(TrackerBridge bridge, string pair, string device) { return bridge.PairInfo(device); });
             AddTrackerAction(actions, "Send status check-in", "Send status check-in", false, true,
                 delegate(TrackerBridge bridge, string pair, string device) { return bridge.Heartbeat(device, null, null, "ussd-app-status"); });
+            AddTrackerAction(actions, "Share current location once", "Share current location once", false, true,
+                delegate(TrackerBridge bridge, string pair, string device)
+                {
+                    System.Device.Location.GeoCoordinate location = ReadCurrentLocationOnce();
+                    return bridge.Heartbeat(device, location.Latitude, location.Longitude, "ussd-app-location");
+                });
             AddTrackerAction(actions, "Enable lost mode", "Enable lost mode", false, true,
                 delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, true); });
             AddTrackerAction(actions, "Disable lost mode", "Disable lost mode", false, true,
@@ -6916,6 +7014,38 @@ namespace UssdApp
             _trackerOutput.Margin = new Thickness(4, 4, 4, 4);
             content.Children.Add(_trackerOutput);
             return g;
+        }
+
+        private static System.Device.Location.GeoCoordinate ReadCurrentLocationOnce()
+        {
+            System.Device.Location.GeoCoordinateWatcher watcher =
+                new System.Device.Location.GeoCoordinateWatcher(System.Device.Location.GeoPositionAccuracy.Default);
+            using (AutoResetEvent received = new AutoResetEvent(false))
+            {
+                System.Device.Location.GeoCoordinate location = null;
+                EventHandler<System.Device.Location.GeoPositionChangedEventArgs<System.Device.Location.GeoCoordinate>> handler =
+                    delegate(object sender, System.Device.Location.GeoPositionChangedEventArgs<System.Device.Location.GeoCoordinate> e)
+                    {
+                        if (e.Position.Location == null || e.Position.Location.IsUnknown) return;
+                        location = e.Position.Location;
+                        received.Set();
+                    };
+                watcher.PositionChanged += handler;
+                try
+                {
+                    watcher.Start(false);
+                    if (!received.WaitOne(TimeSpan.FromSeconds(30)))
+                        throw new TimeoutException("No Windows location fix arrived within 30 seconds. Check that Location services are enabled; nothing was shared.");
+                    if (location == null || location.IsUnknown)
+                        throw new InvalidOperationException("Windows did not provide a usable location fix. Nothing was shared.");
+                    return location;
+                }
+                finally
+                {
+                    watcher.PositionChanged -= handler;
+                    watcher.Stop();
+                }
+            }
         }
 
         private static void AddTrackerInput(StackPanel parent, string label, TextBox input)

@@ -20,81 +20,83 @@ struct ContentView: View {
 
     var body: some View {
         NavigationView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("USSD Manager").font(.title)
-                NavigationLink("Open secure relay chat") {
-                    MobileMessagingView()
-                }
-                NavigationLink("Start voice/video calls") {
-                    NativeCallView()
-                }
-                NavigationLink("Open Device Tracking session") {
-                    DeviceTrackingView()
-                }
-                Text("Local voice assistant")
-                    .font(.headline)
-                Text("Voice starts only when you tap Listen. Speech recognition is limited to " +
-                     "on-device processing when the current language supports it.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("USSD Manager").font(.title)
+                    NavigationLink("Open secure relay chat") {
+                        MobileMessagingView()
+                    }
+                    NavigationLink("Start voice/video calls") {
+                        NativeCallView()
+                    }
+                    NavigationLink("Open Device Tracking panel") {
+                        DeviceTrackingView()
+                    }
+                    Text("Agent panel")
+                        .font(.headline)
+                    Text("Voice starts only when you tap Listen. Speech recognition is limited to " +
+                         "on-device processing when the current language supports it. The assistant does not execute remote shell commands.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
 
-                TextField("Voice wake name", text: $assistant.wakeName)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .onChange(of: assistant.wakeName) { value in
-                        UserDefaults.standard.set(value, forKey: "assistant.wakeName")
+                    TextField("Voice wake name", text: $assistant.wakeName)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .onChange(of: assistant.wakeName) { value in
+                            UserDefaults.standard.set(value, forKey: "assistant.wakeName")
+                        }
+
+                    TextField("Type /agent help", text: $command)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .onSubmit { runTypedCommand() }
+                    Button("Run /agent command", action: runTypedCommand)
+
+                    Text("AI model: \(GeminiAssistant.defaultModel)")
+                        .font(.subheadline)
+                    Text("Prompts are sent to Google only when you ask. An API key is required; any free quota is controlled by the provider.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                    SecureField("Gemini API key", text: $apiKey)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    HStack {
+                        Button("Save API key securely") {
+                            assistant.saveAPIKey(apiKey)
+                            apiKey = ""
+                        }
+                        Button("Remove API key") {
+                            assistant.removeAPIKey()
+                            apiKey = ""
+                        }
                     }
 
-                TextField("Type /agent help", text: $command)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .onSubmit { runTypedCommand() }
-                Button("Run /agent command", action: runTypedCommand)
-
-                Text("AI model: \(GeminiAssistant.defaultModel)")
-                    .font(.subheadline)
-                Text("Prompts are sent to Google only when you ask. An API key is required; any free quota is controlled by the provider.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                SecureField("Gemini API key", text: $apiKey)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                HStack {
-                    Button("Save API key securely") {
-                        assistant.saveAPIKey(apiKey)
-                        apiKey = ""
+                    TextField("Ask the AI a question", text: $prompt, axis: .vertical)
+                        .lineLimit(2...5)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    Button("Ask AI") {
+                        assistant.askAI(prompt)
+                        prompt = ""
                     }
-                    Button("Remove API key") {
-                        assistant.removeAPIKey()
-                        apiKey = ""
-                    }
-                }
 
-                TextField("Ask the AI a question", text: $prompt, axis: .vertical)
-                    .lineLimit(2...5)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                Button("Ask AI") {
-                    assistant.askAI(prompt)
-                    prompt = ""
-                }
-
-                HStack {
-                    Button(assistant.isListening ? "Stop listening" : "Listen") {
-                        assistant.isListening ? assistant.stopListening() : assistant.startListening()
+                    HStack {
+                        Button(assistant.isListening ? "Stop listening" : "Listen") {
+                            assistant.isListening ? assistant.stopListening() : assistant.startListening()
+                        }
+                        Button("Speak response") {
+                            assistant.speak(assistant.response)
+                        }
                     }
-                    Button("Speak response") {
-                        assistant.speak(assistant.response)
-                    }
-                }
-                Text(assistant.response)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(assistant.response)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer()
-                Text("No background listening, relay control, or arbitrary device commands.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
+                    Spacer(minLength: 12)
+                    Text("No background listening, relay control, or arbitrary device commands.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                    }
+                .padding()
             }
-            .padding()
             .navigationTitle("Home")
         }
     }

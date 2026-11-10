@@ -23,6 +23,7 @@ echo Compiling C# wake agent with %CSC% ...
   /r:"%PF%" /r:"%PC%" /r:"%WB%" /r:"%SX%" ^
   /r:System.Numerics.dll /r:System.Drawing.dll ^
   /r:System.Security.dll ^
+  /r:System.Device.dll ^
   /r:System.Windows.Forms.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ^
   /resource:"%~dp0Themes\Light.xaml",ussd.Themes.Light.xaml ^
   /resource:"%~dp0Themes\Dark.xaml",ussd.Themes.Dark.xaml ^
