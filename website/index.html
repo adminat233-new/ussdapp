@@ -310,23 +310,23 @@
             <div class="exploded-stage" id="exploded-stage" aria-label="Interactive exploded view of USSD Manager">
               <div class="stage-grid" aria-hidden="true"></div>
               <button class="layer" type="button" data-layer="app" data-rise="0" aria-pressed="false">
-                <span class="layer-icon">UI</span><span class="layer-copy"><span class="layer-title">Platform app</span><span class="layer-note">Windows desktop Â· Android Â· iOS</span></span><span class="layer-number">01</span>
+                <span class="layer-icon">UI</span><span class="layer-copy"><span class="layer-title">Platform app</span><span class="layer-note">Windows desktop · Android · iOS</span></span><span class="layer-number">01</span>
               </button>
               <button class="layer" type="button" data-layer="communications" data-rise="12" aria-pressed="true">
-                <span class="layer-icon">&lt;&gt;</span><span class="layer-copy"><span class="layer-title">Communication</span><span class="layer-note">Secure relay chat Â· voice/video Â· files</span></span><span class="layer-number">02</span>
+                <span class="layer-icon">&lt;&gt;</span><span class="layer-copy"><span class="layer-title">Communication</span><span class="layer-note">Secure relay chat · voice/video · files</span></span><span class="layer-number">02</span>
               </button>
               <button class="layer" type="button" data-layer="tracking" data-rise="24" aria-pressed="false">
-                <span class="layer-icon">GPS</span><span class="layer-copy"><span class="layer-title">Device tracking</span><span class="layer-note">Authenticated pairing Â· location on request</span></span><span class="layer-number">03</span>
+                <span class="layer-icon">GPS</span><span class="layer-copy"><span class="layer-title">Device tracking</span><span class="layer-note">Authenticated pairing · location on request</span></span><span class="layer-number">03</span>
               </button>
               <button class="layer" type="button" data-layer="agent" data-rise="36" aria-pressed="false">
-                <span class="layer-icon">AI</span><span class="layer-copy"><span class="layer-title">Assistant panel</span><span class="layer-note">User-started tools Â· no shell access</span></span><span class="layer-number">04</span>
+                <span class="layer-icon">AI</span><span class="layer-copy"><span class="layer-title">Assistant panel</span><span class="layer-note">User-started tools · no shell access</span></span><span class="layer-number">04</span>
               </button>
               <button class="layer" type="button" data-layer="relay" data-rise="48" aria-pressed="false">
-                <span class="layer-icon">NET</span><span class="layer-copy"><span class="layer-title">Relay and services</span><span class="layer-note">Configured endpoints Â· no server bundled</span></span><span class="layer-number">05</span>
+                <span class="layer-icon">NET</span><span class="layer-copy"><span class="layer-title">Relay and services</span><span class="layer-note">Configured endpoints · no server bundled</span></span><span class="layer-number">05</span>
               </button>
             </div>
             <div class="explorer-details" aria-live="polite">
-              <div class="detail-kicker" id="detail-platform">All platforms Â· Layer 02</div>
+              <div class="detail-kicker" id="detail-platform">All platforms · Layer 02</div>
               <h3 id="detail-title">Communication</h3>
               <p id="detail-copy">Use the configured relay for sealed text messaging, calls, and file transfer. Calls need a reachable calling service; installing the app alone does not provide relay infrastructure.</p>
               <div class="platform-switch" aria-label="Choose platform">
@@ -355,12 +355,12 @@
         </div>
         <div class="release-banner" id="release-banner" data-state="checking" role="status" aria-live="polite">
           <span class="status-dot" aria-hidden="true"></span>
-          <span id="release-message">Checking published release assetsâ€¦</span>
+          <span id="release-message">Checking published release assets…</span>
         </div>
         <div class="release-controls">
           <label for="release-select">Release version</label>
           <select id="release-select" disabled aria-describedby="release-message">
-            <option>Checking releasesâ€¦</option>
+            <option>Checking releases…</option>
           </select>
         </div>
         <div class="downloads" aria-label="Platform build downloads">
@@ -460,7 +460,7 @@
         var item = descriptions[activeLayer];
         var layerButton = document.querySelector('.layer[data-layer="' + activeLayer + '"]');
         var layerNumber = layerButton ? layerButton.querySelector(".layer-number").textContent : "";
-        document.getElementById("detail-platform").textContent = labelForPlatform(activePlatform) + (layerNumber ? " Â· Layer " + layerNumber : "");
+        document.getElementById("detail-platform").textContent = labelForPlatform(activePlatform) + (layerNumber ? " · Layer " + layerNumber : "");
         document.getElementById("detail-title").textContent = item.title;
         document.getElementById("detail-copy").textContent = item.copy[activePlatform];
       }
@@ -546,18 +546,19 @@
         var meta = document.querySelector('[data-meta="' + platform + '"]');
         var availability = document.querySelector('[data-availability="' + platform + '"]');
         if (!link || !meta || !availability || !asset) return false;
+        var debugPreview = platform === "android" && /debug/i.test(asset.name);
         link.href = asset.browser_download_url;
-        link.textContent = "Download " + platformNames[platform];
+        link.textContent = debugPreview ? "Download Android preview" : "Download " + platformNames[platform];
         link.removeAttribute("aria-disabled");
         link.setAttribute("rel", "noopener");
         link.setAttribute("download", asset.name);
-        availability.textContent = (release.prerelease ? "Preview Â· " : "Available Â· ") + release.tag_name;
+        availability.textContent = (debugPreview ? "Debug preview · " : release.prerelease ? "Preview · " : "Available · ") + release.tag_name;
         availability.classList.add("ready");
         var size = formatSize(Number(asset.size));
         var digest = typeof asset.digest === "string" && /^sha256:[a-f0-9]{64}$/i.test(asset.digest)
-          ? " Â· SHA-256 " + asset.digest.slice(7, 19) + "â€¦"
+          ? " · SHA-256 " + asset.digest.slice(7, 19) + "…"
           : "";
-        meta.textContent = asset.name + (size ? " Â· " + size : "") + digest;
+        meta.textContent = asset.name + (debugPreview ? " · Debug build; not for production" : "") + (size ? " · " + size : "") + digest;
         return true;
       }
 
@@ -578,8 +579,11 @@
         var assets = Array.isArray(release.assets) ? release.assets : [];
         var available = [];
         Object.keys(extensions).forEach(function (platform) {
-          if (enableDownload(platform, findAsset(assets, extensions[platform]), release)) {
-            available.push(platformNames[platform]);
+          var asset = findAsset(assets, extensions[platform]);
+          if (enableDownload(platform, asset, release)) {
+            available.push(platform === "android" && /debug/i.test(asset.name)
+              ? "Android debug preview"
+              : platformNames[platform]);
           }
         });
 
@@ -601,7 +605,7 @@
         releaseBanner.dataset.state = available.length ? "ready" : "unavailable";
         var channel = release.prerelease ? "Preview release " : "Release ";
         releaseMessage.textContent = available.length
-          ? channel + release.tag_name + " Â· available: " + available.join(", ") + "."
+          ? channel + release.tag_name + " · available: " + available.join(", ") + "."
           : "Release " + release.tag_name + " has no installable Windows or Android build or public Apple distribution link.";
       }
 
