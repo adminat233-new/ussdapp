@@ -3,9 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#090d18">
-  <meta name="description" content="Explore USSD Manager Pro and download published builds for Windows, Android, and iOS.">
-  <title>USSD Manager Pro | Downloads</title>
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="Explore USSD Manager Pro: modem and USSD tools, encrypted relay messaging, calls, opt-in device tracking, and a user-directed AI assistant.">
+  <link rel="icon" href="ussd.ico" sizes="any">
+  <link rel="shortcut icon" href="ussd.ico">
+  <title>USSD Manager Pro — Communication, tracking and modem tools</title>
   <style>
     :root {
       color-scheme: dark;
@@ -256,30 +258,138 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
     }
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #fff;
+      color: #161b22;
+      --surface: #f6f8fa;
+      --line: #d0d7de;
+      --muted: #59636e;
+      --blue: #0969da;
+      --mint: #1a7f37;
+    }
+    body { background: #fff; }
+    .wrap { width: min(1120px, calc(100% - 48px)); }
+    .topbar { min-height: 72px; border-bottom-color: #d8dee4; }
+    .brand { gap: 12px; color: #161b22; font-size: 15px; letter-spacing: -.02em; }
+    .brand-mark { width: 36px; height: 36px; border: 0; border-radius: 9px; background: transparent; }
+    .brand-mark img { display: block; width: 36px; height: 36px; object-fit: contain; }
+    nav { align-items: center; gap: 24px; }
+    nav a { color: #424a53; font-size: 13px; font-weight: 550; }
+    nav a:hover { color: #0969da; }
+    .hero { grid-template-columns: 1.05fr .95fr; gap: 60px; padding: 82px 0 74px; }
+    .eyebrow { color: #0969da; letter-spacing: .12em; }
+    h1 { max-width: 680px; color: #161b22; font-size: clamp(44px, 6.3vw, 70px); letter-spacing: -.06em; line-height: 1.02; }
+    .hero-copy { color: #424a53; font-size: 17px; line-height: 1.65; }
+    .button { border-color: #d0d7de; border-radius: 7px; background: #fff; color: #24292f; }
+    .button:hover { border-color: #0969da; background: #f6f8fa; }
+    .button.primary { border-color: #0969da; background: #0969da; color: #fff; }
+    .hero-art {
+      min-height: 340px;
+      border-color: #d0d7de;
+      border-radius: 18px;
+      background:
+        linear-gradient(rgba(9, 105, 218, .045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(9, 105, 218, .045) 1px, transparent 1px),
+        linear-gradient(145deg, #f6f8fa, #eef5ff);
+      box-shadow: 0 18px 48px rgba(31, 35, 40, .09);
+    }
+    .hero-art::after { background: radial-gradient(ellipse at 54% 60%, rgba(9, 105, 218, .09), transparent 56%); }
+    .signal { background: #1a7f37; box-shadow: 0 0 16px rgba(26, 127, 55, .28); }
+    .signal.two { background: #0969da; box-shadow: 0 0 16px rgba(9, 105, 218, .25); }
+    .mini-card { border-color: #d0d7de; border-radius: 10px; background: rgba(255, 255, 255, .97); box-shadow: 0 12px 25px rgba(31, 35, 40, .1); color: #161b22; }
+    .mini-icon { border-radius: 8px; background: #ddf4ff; color: #0969da; }
+    .mini-sub { color: #59636e; }
+    .hero-art-label { color: #59636e; }
+    section { scroll-margin-top: 30px; }
+    h2 { color: #161b22; letter-spacing: -.04em; }
+    .section-intro { color: #59636e; }
+    .explorer { padding: 30px; border-color: #d0d7de; border-radius: 16px; background: #f6f8fa; }
+    .explorer-head p, .explorer-details p { color: #59636e; }
+    .mode-pill { border-color: #d0d7de; color: #59636e; }
+    .exploded-stage { border-color: #d0d7de; background: radial-gradient(ellipse at 50% 80%, rgba(9, 105, 218, .08), transparent 55%), linear-gradient(145deg, #f6f8fa, #eef5ff); }
+    .stage-grid { background-image: linear-gradient(rgba(9, 105, 218, .1) 1px, transparent 1px), linear-gradient(90deg, rgba(9, 105, 218, .1) 1px, transparent 1px); }
+    .layer { border-color: #c6d4e1; border-radius: 10px; background: linear-gradient(135deg, #fff, #f6f8fa); box-shadow: 0 10px 20px rgba(31, 35, 40, .1); color: #161b22; }
+    .layer:hover, .layer[aria-pressed="true"] { border-color: #0969da; background: linear-gradient(135deg, #fff, #ddf4ff); box-shadow: 0 0 18px rgba(9, 105, 218, .12), 0 10px 20px rgba(31, 35, 40, .1); }
+    .layer-icon { background: #ddf4ff; color: #0969da; }
+    .layer-note { color: #59636e; }
+    .layer-number, .detail-kicker { color: #59636e; }
+    .platform-switch button { border-color: #d0d7de; border-radius: 7px; background: #fff; color: #424a53; }
+    .platform-switch button[aria-pressed="true"] { border-color: #0969da; color: #0969da; }
+    .explode-control { color: #59636e; }
+    .explode-control input { accent-color: #0969da; }
+    .release-section { padding: 82px 0 54px; }
+    .release-banner { border-color: #d0d7de; border-radius: 9px; background: #fff8c5; color: #3d2e00; }
+    .release-banner[data-state="ready"] { border-color: #a7d8b5; background: #dafbe1; color: #116329; }
+    .status-dot { background: #bf8700; }
+    .release-controls label { color: #424a53; }
+    .release-controls select { border-color: #d0d7de; border-radius: 7px; background: #fff; color: #24292f; }
+    .download-card { min-height: 225px; border-color: #d0d7de; border-radius: 12px; background: #fff; }
+    .download-card h3 { color: #161b22; }
+    .download-card p { color: #59636e; }
+    .platform-icon { border-color: #d0d7de; border-radius: 9px; background: #f6f8fa; color: #0969da; }
+    .availability { color: #59636e; }
+    .availability.ready { color: #1a7f37; }
+    .asset-link { border-color: #d0d7de; border-radius: 7px; background: #f6f8fa; color: #0969da; }
+    .asset-link:hover { border-color: #0969da; background: #ddf4ff; }
+    .asset-link[aria-disabled="true"] { background: #f6f8fa; color: #6e7781; }
+    .asset-meta { color: #59636e !important; }
+    .site-foot { border-top-color: #d8dee4; color: #59636e; }
+    .site-foot a { color: #0969da; }
+    .feature-section, .architecture-section { padding: 62px 0; border-top: 1px solid #d8dee4; }
+    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 25px; }
+    .feature-card { min-height: 185px; padding: 22px; border: 1px solid #d0d7de; border-radius: 12px; background: #fff; }
+    .feature-card h3 { margin: 0 0 10px; font-size: 16px; letter-spacing: -.02em; }
+    .feature-card p { margin: 0; color: #59636e; font-size: 13px; line-height: 1.65; }
+    .feature-tag { display: inline-flex; margin-bottom: 16px; padding: 4px 8px; border-radius: 999px; background: #ddf4ff; color: #0969da; font-size: 10px; font-weight: 700; }
+    .architecture-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 26px; }
+    .architecture-step { padding: 20px 0; border-top: 2px solid #0969da; }
+    .architecture-step strong { display: block; margin-bottom: 8px; font-size: 14px; }
+    .architecture-step p { margin: 0; color: #59636e; font-size: 13px; line-height: 1.65; }
+    .release-note { margin-top: 18px; color: #59636e; font-size: 12px; line-height: 1.65; }
+    @media (max-width: 820px) {
+      .hero { grid-template-columns: 1fr; gap: 34px; padding: 58px 0; }
+      .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 560px) {
+      .wrap { width: min(100% - 28px, 1120px); }
+      .topbar { min-height: 64px; }
+      nav { gap: 12px; }
+      nav a { font-size: 11px; }
+      .hero { padding: 44px 0; }
+      .hero-copy { font-size: 15px; }
+      .hero-art { min-height: 255px; }
+      .explorer { padding: 17px; }
+      .feature-grid, .architecture-grid { grid-template-columns: 1fr; }
+      .feature-section, .architecture-section { padding: 48px 0; }
+      .release-section { padding: 55px 0 40px; }
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <nav class="topbar" aria-label="Main navigation">
       <a class="brand" href="#top" aria-label="USSD Manager Pro home">
-        <span class="brand-mark" aria-hidden="true">U</span>
+        <span class="brand-mark" aria-hidden="true"><img src="ussd.ico" alt=""></span>
         <span>USSD Manager Pro</span>
       </a>
       <div>
+        <a href="#capabilities">Capabilities</a>
         <a href="#explorer">Explore</a>
-        <a href="#downloads" style="margin-left:20px">Downloads</a>
+        <a href="#downloads">Downloads</a>
       </div>
     </nav>
 
     <main id="top">
       <section class="hero" aria-labelledby="hero-title">
         <div>
-          <div class="eyebrow">One app, three platforms</div>
-          <h1 id="hero-title">Your devices.<br>One secure workspace.</h1>
-          <p class="hero-copy">Manage modem sessions, communicate across connected devices, and use the tracking and assistant tools when you choose. Explore how the parts fit together, then download a platform build when a release is available.</p>
+          <div class="eyebrow">Modem tools · communication · device care</div>
+          <h1 id="hero-title">Stay connected.<br>Stay in control.</h1>
+          <p class="hero-copy">USSD Manager brings GSM modem tools, encrypted relay messaging, voice and video calls, opt-in device tracking, and an AI assistant into one cross-platform project. Choose what to use; services and permissions remain explicit.</p>
           <div class="hero-actions">
-            <a class="button primary" href="#downloads">Check available builds</a>
-            <a class="button" href="#explorer">Explore the app</a>
+            <a class="button primary" href="#downloads">Get a test build</a>
+            <a class="button" href="#capabilities">Explore capabilities</a>
           </div>
         </div>
         <div class="hero-art" aria-hidden="true">
@@ -289,7 +399,25 @@
             <div class="mini-card"><span class="mini-icon">02</span><span><span class="mini-title">Device tracking</span><span class="mini-sub">Pairing and one-time location sharing</span></span></div>
             <div class="mini-card"><span class="mini-icon">03</span><span><span class="mini-title">Assistant panel</span><span class="mini-sub">User-started actions, no background control</span></span></div>
           </div>
-          <span class="hero-art-label">An interactive system view</span>
+          <span class="hero-art-label">One project · native clients</span>
+        </div>
+      </section>
+
+      <section class="feature-section" id="capabilities" aria-labelledby="capabilities-title">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">What the app is for</div>
+            <h2 id="capabilities-title">Practical tools, with clear boundaries</h2>
+            <p class="section-intro">The desktop and mobile clients share a project, not every platform capability. Each feature below identifies its service requirements and what it does not do.</p>
+          </div>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card"><span class="feature-tag">Windows · modem</span><h3>USSD and GSM workflows</h3><p>Manage supported USB modem sessions, USSD operations, SMS and network information from Windows. Carrier, modem firmware, SIM, and network availability affect results.</p></article>
+          <article class="feature-card"><span class="feature-tag">Three clients · relay</span><h3>Private messaging</h3><p>Send sealed messages through a configured relay. Recipients need a compatible app identity and reachable relay infrastructure; the apps do not include a public relay service.</p></article>
+          <article class="feature-card"><span class="feature-tag">Three clients · calling service</span><h3>Voice, video and group calls</h3><p>Call other app users through configured signalling and media services. Calls are not available merely by installing the app; relay routing and calling infrastructure must be deployed.</p></article>
+          <article class="feature-card"><span class="feature-tag">Opt in · tracker service</span><h3>Device tracking</h3><p>Pair your own devices, check status, and share a single location only when you request it. Lost mode changes tracker status; it does not lock or remotely control a device.</p></article>
+          <article class="feature-card"><span class="feature-tag">User-started · AI provider</span><h3>Assistant panel</h3><p>Ask questions and use local assistant commands when you choose. AI requests go to the configured provider. The assistant does not get remote shell or unrestricted device-control access.</p></article>
+          <article class="feature-card"><span class="feature-tag">Configured · not bundled</span><h3>Relays and linked devices</h3><p>Relays connect app identities and carry supported traffic. Use trusted endpoints and keep their credentials private. No tracker, relay, media server, or AI quota is supplied by the installer.</p></article>
         </div>
       </section>
 
@@ -345,6 +473,21 @@
         </div>
       </section>
 
+      <section class="architecture-section" id="setup" aria-labelledby="setup-title">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">Start safely</div>
+            <h2 id="setup-title">Three steps to a real test</h2>
+            <p class="section-intro">A download is the client only. These are the minimum pieces to test communication between Windows, Android, and iOS.</p>
+          </div>
+        </div>
+        <div class="architecture-grid">
+          <div class="architecture-step"><strong>1. Install a matching preview</strong><p>Use the Windows executable and Android debug APK from the same preview release. iOS requires a TestFlight invitation or a developer-signed build; simulator output is not installable on an iPhone.</p></div>
+          <div class="architecture-step"><strong>2. Configure trusted services</strong><p>Connect compatible clients to a reachable relay with valid TLS identity. Calls also need the configured calling/media service; tracking and AI each require their own endpoint and credentials.</p></div>
+          <div class="architecture-step"><strong>3. Pair and test deliberately</strong><p>Register each app identity, then test a message and call between devices on different networks. Grant location only for an intentional one-time share. Never publish or reuse pairing secrets.</p></div>
+        </div>
+      </section>
+
       <section class="release-section" id="downloads" aria-labelledby="downloads-title">
         <div class="section-head">
           <div>
@@ -386,11 +529,12 @@
             <p class="asset-meta" data-meta="ios"></p>
           </article>
         </div>
+        <p class="release-note">Preview builds are for testing, may contain unfinished features, and are not app-store releases. Android APKs are debug-signed. iOS device builds require Apple signing and are distributed through Apple. Public download links do not make the required relay, tracker, calling, or AI services public.</p>
       </section>
 
       <footer class="site-foot">
         <span>Downloads are supplied by the official <a href="https://github.com/adminat233-new/ussdapp/releases">GitHub releases</a>. Never enter a relay token or private key on this site.</span>
-        <span>Lost mode changes tracker status only. Location sharing is a one-time, user-started action.</span>
+        <span>Lost mode changes tracker status only. Location sharing is a one-time, user-started action. <a href="https://github.com/adminat233-new/ussdapp">Source and setup guide</a></span>
       </footer>
     </main>
   </div>
@@ -518,9 +662,12 @@
         return (bytes / (1024 * 1024)).toFixed(1) + " MB";
       }
 
-      function findAsset(assets, extension) {
+      function findAsset(assets, platform) {
+        var expectedName = platform === "windows" ? "UssdApp.exe" : "";
+        var extension = extensions[platform];
         return assets.find(function (asset) {
-          return typeof asset.name === "string" && asset.name.toLowerCase().endsWith(extension) &&
+          return typeof asset.name === "string" &&
+            (expectedName ? asset.name.toLowerCase() === expectedName.toLowerCase() : asset.name.toLowerCase().endsWith(extension)) &&
             typeof asset.browser_download_url === "string" &&
             /^https:\/\/github\.com\/adminat233-new\/ussdapp\/releases\/download\//.test(asset.browser_download_url) &&
             Number(asset.size) > 0;
@@ -579,7 +726,7 @@
         var assets = Array.isArray(release.assets) ? release.assets : [];
         var available = [];
         Object.keys(extensions).forEach(function (platform) {
-          var asset = findAsset(assets, extensions[platform]);
+          var asset = findAsset(assets, platform);
           if (enableDownload(platform, asset, release)) {
             available.push(platform === "android" && /debug/i.test(asset.name)
               ? "Android debug preview"

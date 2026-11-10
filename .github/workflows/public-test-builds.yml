@@ -1,0 +1,115 @@
+name: Public test builds
+
+on:
+  push:
+    tags:
+      - "v*-preview"
+  workflow_dispatch:
+    inputs:
+      preview_tag:
+        description: Existing v*-preview tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: public-test-builds-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.preview_tag || github.ref }}
+
+      - name: Build Windows app and wake agent
+        shell: cmd
+        run: |
+          call Csharp\build.bat
+          if errorlevel 1 exit /b 1
+          call Csharp\build_agent.bat
+          if errorlevel 1 exit /b 1
+
+      - name: Package Windows preview
+        shell: pwsh
+        run: |
+          Compress-Archive -Path Csharp\UssdApp.exe,Csharp\UssdAgent.exe,Csharp\UssdApp.ico -DestinationPath USSDManager-Windows-preview.zip -Force
+          New-Item -ItemType Directory -Path preview-assets -Force | Out-Null
+          Copy-Item Csharp\UssdApp.exe,Csharp\UssdAgent.exe,Csharp\UssdApp.ico,USSDManager-Windows-preview.zip -Destination preview-assets
+
+      - name: Upload Windows preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-preview
+          path: preview-assets/
+          if-no-files-found: error
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.preview_tag || github.ref }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x Mobile/Android/gradlew
+
+      - name: Build Android debug preview
+        working-directory: Mobile/Android
+        run: ./gradlew :app:assembleDebug
+
+      - name: Name Android preview
+        run: cp Mobile/Android/app/build/outputs/apk/debug/app-debug.apk USSDManager-Android-debug-preview.apk
+
+      - name: Upload Android preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-preview
+          path: USSDManager-Android-debug-preview.apk
+          if-no-files-found: error
+
+  release:
+    needs:
+      - windows
+      - android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows preview
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-preview
+          path: release-assets
+
+      - name: Download Android preview
+        uses: actions/download-artifact@v4
+        with:
+          name: android-preview
+          path: release-assets
+
+      - name: Publish public preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ inputs.preview_tag || github.ref_name }}
+        run: |
+          gh release create "$TAG_NAME" \
+            release-assets/UssdApp.exe \
+            release-assets/UssdAgent.exe \
+            release-assets/UssdApp.ico \
+            release-assets/USSDManager-Windows-preview.zip \
+            release-assets/USSDManager-Android-debug-preview.apk \
+            --title "USSD Manager $TAG_NAME (preview)" \
+            --notes "Public test previews built by GitHub Actions. Windows is an optimized .NET Framework executable. Android is a debug-signed APK for testing only, not a production Play Store build. iOS requires Apple signing and distribution through TestFlight or the App Store; no IPA is included. Messaging, calls, tracking, and AI need their respective trusted relay, calling, tracker, or AI provider configuration. See the project README for setup and known limitations." \
+            --prerelease \
+            --verify-tag

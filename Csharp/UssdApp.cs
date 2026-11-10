@@ -6849,8 +6849,8 @@ namespace UssdApp
 
         private Grid BuildAgentTab()
         {
-            Grid g = new Grid { Margin = new Thickness(12) };
-            StackPanel content = new StackPanel { MaxWidth = 720, HorizontalAlignment = HorizontalAlignment.Left };
+            Grid g = new Grid { Margin = new Thickness(14) };
+            StackPanel content = new StackPanel { MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left };
             g.Children.Add(content);
 
             content.Children.Add(new TextBlock
@@ -6869,18 +6869,27 @@ namespace UssdApp
                 Margin = new Thickness(4, 0, 4, 12)
             });
 
+            StackPanel request = new StackPanel();
+            request.Children.Add(new TextBlock
+            {
+                Text = "Ask the assistant",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = BrushFg,
+                Margin = new Thickness(2, 0, 2, 8)
+            });
             _agentPrompt = MakeMultiBox();
             _agentPrompt.Height = 110;
             _agentPrompt.MaxLength = 4000;
             _agentPrompt.AcceptsReturn = true;
             _agentPrompt.HorizontalAlignment = HorizontalAlignment.Stretch;
             _agentPrompt.Margin = new Thickness(4, 4, 4, 8);
-            content.Children.Add(_agentPrompt);
+            request.Children.Add(_agentPrompt);
 
             _agentAskButton = MakeButton("Ask assistant");
             _agentAskButton.Margin = new Thickness(4, 4, 4, 8);
             _agentAskButton.Click += async delegate { await RunAgentPromptAsync(); };
-            content.Children.Add(_agentAskButton);
+            request.Children.Add(_agentAskButton);
 
             _agentStatus = new TextBlock
             {
@@ -6889,14 +6898,25 @@ namespace UssdApp
                 Foreground = BrushGray,
                 Margin = new Thickness(4, 4, 4, 8)
             };
-            content.Children.Add(_agentStatus);
+            request.Children.Add(_agentStatus);
+            content.Children.Add(MakeServiceCard(request));
 
+            StackPanel response = new StackPanel();
+            response.Children.Add(new TextBlock
+            {
+                Text = "Assistant response",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = BrushFg,
+                Margin = new Thickness(2, 0, 2, 8)
+            });
             _agentResponse = MakeMultiBox();
             _agentResponse.IsReadOnly = true;
-            _agentResponse.MinHeight = 150;
+            _agentResponse.MinHeight = 180;
             _agentResponse.HorizontalAlignment = HorizontalAlignment.Stretch;
             _agentResponse.Margin = new Thickness(4, 4, 4, 4);
-            content.Children.Add(_agentResponse);
+            response.Children.Add(_agentResponse);
+            content.Children.Add(MakeServiceCard(response));
             return g;
         }
 
@@ -6937,8 +6957,8 @@ namespace UssdApp
 
         private Grid BuildTrackerTab()
         {
-            Grid g = new Grid { Margin = new Thickness(12) };
-            StackPanel content = new StackPanel { MaxWidth = 720, HorizontalAlignment = HorizontalAlignment.Left };
+            Grid g = new Grid { Margin = new Thickness(14) };
+            StackPanel content = new StackPanel { MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left };
             g.Children.Add(content);
 
             content.Children.Add(new TextBlock
@@ -6957,19 +6977,38 @@ namespace UssdApp
                 Margin = new Thickness(4, 0, 4, 12)
             });
 
+            StackPanel connection = new StackPanel();
+            connection.Children.Add(new TextBlock
+            {
+                Text = "Tracker connection",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = BrushFg,
+                Margin = new Thickness(2, 0, 2, 8)
+            });
             _trackerServerBox = MakeTextBox(0);
             _trackerServerBox.HorizontalAlignment = HorizontalAlignment.Stretch;
-            AddTrackerInput(content, "Tracker service URL", _trackerServerBox);
+            AddTrackerInput(connection, "Tracker service URL (HTTPS)", _trackerServerBox);
 
             _trackerPairBox = MakeTextBox(0);
             _trackerPairBox.HorizontalAlignment = HorizontalAlignment.Stretch;
-            AddTrackerInput(content, "Pairing code", _trackerPairBox);
+            AddTrackerInput(connection, "Pairing code", _trackerPairBox);
 
             _trackerDeviceBox = MakeTextBox(0);
             _trackerDeviceBox.HorizontalAlignment = HorizontalAlignment.Stretch;
-            AddTrackerInput(content, "Device ID", _trackerDeviceBox);
+            AddTrackerInput(connection, "Device ID", _trackerDeviceBox);
+            content.Children.Add(MakeServiceCard(connection));
 
-            WrapPanel actions = new WrapPanel { Margin = new Thickness(0, 8, 0, 12) };
+            StackPanel actionCard = new StackPanel();
+            actionCard.Children.Add(new TextBlock
+            {
+                Text = "Device actions",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = BrushFg,
+                Margin = new Thickness(2, 0, 2, 8)
+            });
+            WrapPanel actions = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
             AddTrackerAction(actions, "Generate pairing code", "Generate pairing code", false, false,
                 delegate(TrackerBridge bridge, string pair, string device) { return bridge.GeneratePair(); });
             AddTrackerAction(actions, "Verify pairing", "Verify pairing", true, false,
@@ -6988,7 +7027,7 @@ namespace UssdApp
                 delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, true); });
             AddTrackerAction(actions, "Disable lost mode", "Disable lost mode", false, true,
                 delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, false); });
-            content.Children.Add(actions);
+            actionCard.Children.Add(actions);
 
             content.Children.Add(new TextBlock
             {
@@ -6997,7 +7036,17 @@ namespace UssdApp
                 Foreground = BrushGray,
                 Margin = new Thickness(4, 0, 4, 8)
             });
+            content.Children.Add(MakeServiceCard(actionCard));
 
+            StackPanel results = new StackPanel();
+            results.Children.Add(new TextBlock
+            {
+                Text = "Latest activity",
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = BrushFg,
+                Margin = new Thickness(2, 0, 2, 8)
+            });
             _trackerStatus = new TextBlock
             {
                 Text = "Not connected",
@@ -7005,15 +7054,30 @@ namespace UssdApp
                 Foreground = BrushGray,
                 Margin = new Thickness(4, 4, 4, 4)
             };
-            content.Children.Add(_trackerStatus);
+            results.Children.Add(_trackerStatus);
 
             _trackerOutput = MakeMultiBox();
             _trackerOutput.IsReadOnly = true;
-            _trackerOutput.Height = 170;
+            _trackerOutput.MinHeight = 150;
             _trackerOutput.HorizontalAlignment = HorizontalAlignment.Stretch;
             _trackerOutput.Margin = new Thickness(4, 4, 4, 4);
-            content.Children.Add(_trackerOutput);
+            results.Children.Add(_trackerOutput);
+            content.Children.Add(MakeServiceCard(results));
             return g;
+        }
+
+        private static Border MakeServiceCard(UIElement content)
+        {
+            return new Border
+            {
+                Background = Theme.Panel,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(16),
+                Margin = new Thickness(4, 6, 4, 10),
+                Child = content
+            };
         }
 
         private static System.Device.Location.GeoCoordinate ReadCurrentLocationOnce()

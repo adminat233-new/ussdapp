@@ -6,7 +6,7 @@
 		000000000000000000000001 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				BuildIndependentTargetsIn parallel = 1;
+				BuildIndependentTargetsInParallel = 1;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					000000000000000000000002 = { CreatedOnToolsVersion = 15.0; };

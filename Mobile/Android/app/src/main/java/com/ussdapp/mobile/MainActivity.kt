@@ -5,6 +5,8 @@ import android.app.Activity
 import android.os.Bundle
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -81,32 +83,39 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 36, 32, 24)
+            setPadding(dp(20), dp(28), dp(20), dp(24))
         }
         content.addView(TextView(this).apply {
-            text = "USSD Manager\nAgent panel"
-            textSize = 22f
+            text = "USSD Manager"
+            textSize = 28f
+            setTextColor(Color.rgb(22, 27, 34))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         content.addView(TextView(this).apply {
-            text = "Voice recognition uses your installed Android speech service; offline " +
-                "processing depends on that service. Nothing listens in the background."
-            setPadding(0, 12, 0, 12)
+            text = "Modem tools, private communication and device care."
+            textSize = 14f
+            setTextColor(Color.rgb(89, 99, 110))
+            setPadding(0, dp(4), 0, dp(16))
         })
         content.addView(Button(this).apply {
             text = "Calls, video, chat and file transfer"
+            isAllCaps = false
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, CallActivity::class.java))
             }
         })
 
+        val agentPanel = addSectionCard(content, "Agent panel",
+            "User-started voice and AI tools. The assistant does not run remote shell commands or control devices.")
         wakeNameInput = EditText(this).apply {
             hint = "Voice wake name"
             setText(agent.wakeName)
             isSingleLine = true
         }
-        content.addView(wakeNameInput)
-        content.addView(Button(this).apply {
+        agentPanel.addView(wakeNameInput)
+        agentPanel.addView(Button(this).apply {
             text = "Save wake name"
+            isAllCaps = false
             setOnClickListener {
                 val value = wakeNameInput.text.toString().trim()
                 if (value.isBlank()) {
@@ -123,9 +132,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             hint = "Type /agent help"
             isSingleLine = true
         }
-        content.addView(commandInput)
-        content.addView(Button(this).apply {
+        agentPanel.addView(commandInput)
+        agentPanel.addView(Button(this).apply {
             text = "Run /agent command"
+            isAllCaps = false
             setOnClickListener {
                 val value = commandInput.text.toString()
                 val prompt = agent.aiPromptForText(value)
@@ -137,18 +147,30 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 commandInput.text.clear()
             }
         })
-        content.addView(Button(this).apply {
+        agentPanel.addView(Button(this).apply {
             text = "Speak command"
+            isAllCaps = false
             setOnClickListener { requestVoiceInput() }
         })
-        content.addView(Button(this).apply {
+        responseView = TextView(this).apply {
+            text = "Ready. Try /agent help."
+            textSize = 15f
+            setTextColor(Color.rgb(36, 41, 47))
+            setPadding(0, dp(10), 0, dp(8))
+            setTextIsSelectable(true)
+        }
+        agentPanel.addView(responseView)
+        agentPanel.addView(Button(this).apply {
             text = "Speak response"
+            isAllCaps = false
             setOnClickListener { speak(responseView.text.toString()) }
         })
-        content.addView(TextView(this).apply {
+        agentPanel.addView(TextView(this).apply {
             text = "AI model: ${GeminiAssistant.DEFAULT_MODEL}\nPrompts are sent to Google only when you ask. " +
                 "A provider API key is required; any free quota is controlled by the provider."
-            setPadding(0, 20, 0, 4)
+            textSize = 12f
+            setTextColor(Color.rgb(89, 99, 110))
+            setPadding(0, dp(12), 0, dp(4))
         })
         apiKeyInput = EditText(this).apply {
             hint = "Gemini API key"
@@ -156,9 +178,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             isSingleLine = true
         }
-        content.addView(apiKeyInput)
-        content.addView(Button(this).apply {
+        agentPanel.addView(apiKeyInput)
+        agentPanel.addView(Button(this).apply {
             text = "Save API key securely"
+            isAllCaps = false
             setOnClickListener {
                 try {
                     ai.saveApiKey(apiKeyInput.text.toString())
@@ -169,8 +192,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 }
             }
         })
-        content.addView(Button(this).apply {
+        agentPanel.addView(Button(this).apply {
             text = "Remove saved API key"
+            isAllCaps = false
             setOnClickListener {
                 try {
                     ai.removeApiKey()
@@ -189,51 +213,45 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         }
-        content.addView(aiPromptInput)
-        content.addView(Button(this).apply {
+        agentPanel.addView(aiPromptInput)
+        agentPanel.addView(Button(this).apply {
             text = "Ask AI"
+            isAllCaps = false
             setOnClickListener {
                 askAi(aiPromptInput.text.toString())
                 aiPromptInput.text.clear()
             }
         })
 
-        content.addView(TextView(this).apply {
-            text = "Secure relay chat\nUses the Windows ECHATK format. Enter your relay endpoint and app registration details; the network is contacted only when you tap Connect."
-            textSize = 18f
-            setPadding(0, 24, 0, 8)
-        })
-        content.addView(TextView(this).apply {
-            text = "Relay transport uses TLS with system certificate and hostname validation. Use a DNS name covered by the relay certificate; never bypass certificate warnings."
-            textSize = 13f
-            setPadding(0, 0, 0, 8)
-        })
+        val relayPanel = addSectionCard(content, "Secure relay chat",
+            "Compatible with the Windows ECHATK format. The app contacts your relay only when you tap Connect. TLS certificate and hostname validation stay enabled.")
         relayHostInput = EditText(this).apply {
             hint = "Relay hostname or IP"
             isSingleLine = true
         }
-        content.addView(relayHostInput)
+        relayPanel.addView(relayHostInput)
         relayPortInput = EditText(this).apply {
             hint = "Relay TCP port"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             isSingleLine = true
         }
-        content.addView(relayPortInput)
+        relayPanel.addView(relayPortInput)
         relayNumberInput = EditText(this).apply {
             hint = "Your app number"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             isSingleLine = true
         }
-        content.addView(relayNumberInput)
+        relayPanel.addView(relayNumberInput)
         relayTokenInput = EditText(this).apply {
             hint = "Relay registration token"
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             isSingleLine = true
         }
-        content.addView(relayTokenInput)
-        content.addView(Button(this).apply {
+        relayPanel.addView(relayTokenInput)
+        relayPanel.addView(Button(this).apply {
             text = "Connect to relay (TLS)"
+            isAllCaps = false
             setOnClickListener { connectRelay() }
         })
         recipientInput = EditText(this).apply {
@@ -241,15 +259,16 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
             isSingleLine = true
         }
-        content.addView(recipientInput)
+        relayPanel.addView(recipientInput)
         chatInput = EditText(this).apply {
             hint = "Secure message"
             minLines = 2
             maxLines = 4
         }
-        content.addView(chatInput)
-        content.addView(Button(this).apply {
+        relayPanel.addView(chatInput)
+        relayPanel.addView(Button(this).apply {
             text = "Send encrypted message"
+            isAllCaps = false
             setOnClickListener { sendSecureMessage() }
         })
         relayEventsView = TextView(this).apply {
@@ -257,78 +276,101 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setPadding(0, 8, 0, 12)
             setTextIsSelectable(true)
         }
-        content.addView(relayEventsView)
+        relayPanel.addView(relayEventsView)
 
-        content.addView(TextView(this).apply {
-            text = "Device tracking panel"
-            textSize = 18f
-            setPadding(0, 24, 0, 8)
-        })
-        content.addView(TextView(this).apply {
-            text = "Pair this device with your tracker service using authenticated, one-time credentials. Lost mode is a server-side status only and does not lock or command a device. Location is read only after you tap the one-time location button and grant foreground permission."
-            textSize = 13f
-            setPadding(0, 0, 0, 8)
-        })
+        val trackerPanel = addSectionCard(content, "Device tracking session",
+            "Pair your own devices with your tracker. Lost mode only changes status. Location is shared once, only after you request it and grant foreground permission.")
         trackerUrlInput = EditText(this).apply {
             hint = "Tracker service URL (https://...)"
             isSingleLine = true
             setText(preferences.getString("tracker_url", ""))
         }
-        content.addView(trackerUrlInput)
+        trackerPanel.addView(trackerUrlInput)
         trackerPairInput = EditText(this).apply {
             hint = "Pairing code"
             isSingleLine = true
         }
-        content.addView(trackerPairInput)
+        trackerPanel.addView(trackerPairInput)
         trackerDeviceInput = EditText(this).apply {
             hint = "Device ID"
             isSingleLine = true
             setText(preferences.getString("tracker_device_id", ""))
         }
-        content.addView(trackerDeviceInput)
-        addTrackerButton(content, "Generate pairing code") { client, _, _ ->
+        trackerPanel.addView(trackerDeviceInput)
+        addTrackerButton(trackerPanel, "Generate pairing code") { client, _, _ ->
             client.generatePair("phone")
         }
-        addTrackerButton(content, "Verify pairing") { client, pair, _ ->
+        addTrackerButton(trackerPanel, "Verify pairing") { client, pair, _ ->
             client.verifyPair(pair)
         }
-        addTrackerButton(content, "Refresh status") { client, _, device ->
+        addTrackerButton(trackerPanel, "Refresh status") { client, _, device ->
             client.pairInfo(device)
         }
-        addTrackerButton(content, "Send status-only check-in") { client, _, device ->
+        addTrackerButton(trackerPanel, "Send status-only check-in") { client, _, device ->
             client.heartbeat(device, null, null, "ussd-app-status")
         }
         locationButton = Button(this).apply {
             text = "Share current location once"
             setOnClickListener { requestLocationCheckin() }
         }
-        content.addView(locationButton)
-        addTrackerButton(content, "Enable lost mode") { client, _, device ->
+        trackerPanel.addView(locationButton)
+        addTrackerButton(trackerPanel, "Enable lost mode") { client, _, device ->
             client.lostMode(device, true)
         }
-        addTrackerButton(content, "Disable lost mode") { client, _, device ->
+        addTrackerButton(trackerPanel, "Disable lost mode") { client, _, device ->
             client.lostMode(device, false)
         }
         trackerStatusView = TextView(this).apply {
             text = "Not connected."
             setPadding(0, 8, 0, 4)
         }
-        content.addView(trackerStatusView)
+        trackerPanel.addView(trackerStatusView)
         trackerOutputView = TextView(this).apply {
             text = ""
             setTextIsSelectable(true)
             setPadding(0, 4, 0, 12)
         }
-        content.addView(trackerOutputView)
-
-        responseView = TextView(this).apply {
-            text = "Ready. Try /agent help."
-            textSize = 16f
-            setPadding(0, 20, 0, 12)
-        }
-        content.addView(responseView)
-        setContentView(ScrollView(this).apply { addView(content) })
+        trackerPanel.addView(trackerOutputView)
+        setContentView(ScrollView(this).apply {
+            setBackgroundColor(Color.rgb(246, 248, 250))
+            addView(content)
+        })
     }
+
+    private fun addSectionCard(parent: LinearLayout, title: String, description: String): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(14))
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), Color.rgb(208, 215, 222))
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(14)
+            }
+        }
+        card.addView(TextView(this).apply {
+            text = title
+            textSize = 18f
+            setTextColor(Color.rgb(22, 27, 34))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        card.addView(TextView(this).apply {
+            text = description
+            textSize = 13f
+            setTextColor(Color.rgb(89, 99, 110))
+            setPadding(0, dp(5), 0, dp(8))
+        })
+        parent.addView(card)
+        return card
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private fun addTrackerButton(
         parent: LinearLayout,
@@ -337,6 +379,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     ) {
         val button = Button(this).apply {
             text = label
+            isAllCaps = false
             setOnClickListener { runTrackerAction(label, request) }
         }
         trackerButtons.add(button)
