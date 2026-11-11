@@ -366,6 +366,227 @@
       .feature-section, .architecture-section { padding: 48px 0; }
       .release-section { padding: 55px 0 40px; }
     }
+    :root {
+      --glass-border: rgba(255, 255, 255, .72);
+      --glass-fill: rgba(255, 255, 255, .7);
+      --glass-shadow: 0 24px 70px rgba(27, 55, 102, .12);
+      --blue: #426fe0;
+      --mint: #159b81;
+    }
+    body {
+      background:
+        radial-gradient(ellipse at 12% 2%, rgba(87, 131, 244, .13), transparent 34rem),
+        radial-gradient(ellipse at 92% 38%, rgba(46, 187, 157, .11), transparent 32rem),
+        linear-gradient(180deg, #f8faff 0%, #f3f7ff 46%, #f8fafc 100%);
+    }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      margin: 0 calc((min(1120px, calc(100vw - 48px)) - 100vw) / 2);
+      padding: 0 max(24px, calc((100vw - 1120px) / 2));
+      background: rgba(250, 252, 255, .74);
+      border-bottom-color: rgba(185, 202, 230, .55);
+      backdrop-filter: blur(18px) saturate(150%);
+      -webkit-backdrop-filter: blur(18px) saturate(150%);
+    }
+    .brand-mark {
+      border: 1px solid rgba(81, 123, 207, .18);
+      background: rgba(255, 255, 255, .68);
+      box-shadow: 0 7px 20px rgba(49, 80, 140, .1);
+    }
+    nav a { padding: 9px 11px; border-radius: 999px; transition: background .2s, color .2s; }
+    nav a:hover { background: rgba(75, 116, 205, .09); color: #174ca6; }
+    .button, .button.primary {
+      border-radius: 999px;
+      box-shadow: 0 8px 24px rgba(44, 80, 150, .09);
+    }
+    .button { background: rgba(255, 255, 255, .66); }
+    .button.primary { border-color: #376ad5; background: linear-gradient(135deg, #4f7fe8, #3565ce); color: #fff; }
+    .hero-art, .explorer, .feature-card, .architecture-step, .download-card,
+    .story-player, .story-controls {
+      border: 1px solid var(--glass-border);
+      background: var(--glass-fill);
+      box-shadow: var(--glass-shadow);
+      backdrop-filter: blur(20px) saturate(155%);
+      -webkit-backdrop-filter: blur(20px) saturate(155%);
+    }
+    .hero-art {
+      min-height: 345px;
+      border-color: rgba(255, 255, 255, .78);
+      background:
+        radial-gradient(ellipse at 25% 15%, rgba(103, 148, 255, .2), transparent 45%),
+        radial-gradient(ellipse at 80% 78%, rgba(81, 205, 176, .18), transparent 44%),
+        rgba(255, 255, 255, .42);
+    }
+    .mini-card {
+      border-color: rgba(255, 255, 255, .82);
+      background: rgba(255, 255, 255, .74);
+      box-shadow: 0 18px 38px rgba(39, 67, 117, .16);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: #17243b;
+    }
+    .mini-sub { color: #64748b; }
+    .hero-art-label { color: #53647d; }
+    .explorer { padding: clamp(18px, 3.2vw, 34px); }
+    .exploded-stage {
+      border-color: rgba(255, 255, 255, .75);
+      background:
+        radial-gradient(ellipse at 50% 20%, rgba(95, 137, 232, .2), transparent 55%),
+        linear-gradient(145deg, rgba(225, 235, 252, .75), rgba(235, 246, 245, .8));
+      box-shadow: inset 0 1px rgba(255,255,255,.85), 0 20px 46px rgba(55, 86, 145, .1);
+    }
+    .layer {
+      border-color: rgba(255, 255, 255, .9);
+      background: rgba(255, 255, 255, .7);
+      box-shadow: 0 12px 28px rgba(41, 66, 112, .13);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      color: #17243b;
+    }
+    .layer:hover, .layer[aria-pressed="true"] {
+      border-color: rgba(74, 124, 223, .65);
+      background: rgba(255, 255, 255, .88);
+      box-shadow: 0 0 0 3px rgba(76, 126, 223, .1), 0 16px 32px rgba(41, 66, 112, .15);
+    }
+    .layer-note { color: #61728b; }
+    .story-section { padding: 74px 0 70px; border-top: 1px solid rgba(186, 201, 225, .55); }
+    .story-player {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr);
+      gap: 20px;
+      overflow: hidden;
+      padding: 14px;
+      border-radius: 28px;
+    }
+    .story-screen {
+      position: relative;
+      min-height: 392px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.8);
+      border-radius: 21px;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(102, 144, 239, .2), transparent 48%),
+        radial-gradient(ellipse at 84% 84%, rgba(65, 195, 164, .14), transparent 40%),
+        linear-gradient(145deg, #eaf1ff, #f4fbfa);
+      perspective: 1000px;
+    }
+    .story-orbit { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    .story-orbit::before, .story-orbit::after {
+      position: absolute;
+      width: 360px;
+      height: 360px;
+      border: 1px solid rgba(77, 116, 196, .14);
+      border-radius: 50%;
+      content: "";
+      animation: orbit-drift 18s linear infinite paused;
+    }
+    .story-player[data-playing="true"] .story-orbit::before,
+    .story-player[data-playing="true"] .story-orbit::after { animation-play-state: running; }
+    .story-orbit::before { top: -190px; right: -85px; }
+    .story-orbit::after { bottom: -270px; left: -100px; animation-direction: reverse; }
+    .story-app {
+      position: absolute;
+      inset: 9% 8%;
+      display: grid;
+      grid-template-rows: 40px 1fr;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.9);
+      border-radius: 18px;
+      background: rgba(255,255,255,.67);
+      box-shadow: 0 28px 65px rgba(54, 80, 133, .2);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      transform: rotateY(-5deg) rotateX(2deg);
+      transition: transform .6s cubic-bezier(.2,.8,.2,1);
+    }
+    .story-player[data-playing="true"] .story-app { animation: screen-float 5s ease-in-out infinite; }
+    .story-toolbar { display: flex; align-items: center; gap: 7px; padding: 0 13px; border-bottom: 1px solid rgba(166,184,218,.35); color: #4a5d7c; font-size: 11px; }
+    .story-lights { display: flex; gap: 4px; margin-right: 7px; }
+    .story-lights i { width: 7px; height: 7px; border-radius: 50%; background: #d3dded; }
+    .story-lights i:first-child { background: #74c6a9; }
+    .story-title { font-weight: 750; }
+    .story-online { margin-left: auto; color: #14866d; font-size: 10px; }
+    .story-layout { display: grid; grid-template-columns: 128px 1fr; min-height: 0; }
+    .story-sidebar { padding: 16px 10px; border-right: 1px solid rgba(166,184,218,.32); background: rgba(244,247,252,.55); }
+    .story-brand { margin: 0 0 17px 5px; color: #283a5d; font-size: 11px; font-weight: 800; }
+    .story-nav { margin: 4px 0; padding: 8px 9px; border-radius: 8px; color: #64748b; font-size: 10px; }
+    .story-nav.active { background: rgba(84, 127, 218, .12); color: #2e5eb9; font-weight: 750; }
+    .story-content { position: relative; padding: clamp(14px, 3vw, 28px); }
+    .story-content h3 { margin: 0 0 6px; color: #21314d; font-size: clamp(15px, 2vw, 20px); letter-spacing: -.03em; }
+    .story-content p { margin: 0; color: #687891; font-size: 11px; line-height: 1.6; }
+    .story-chip { display: inline-flex; align-items: center; gap: 6px; margin: 10px 0 16px; padding: 6px 9px; border: 1px solid rgba(60,162,132,.18); border-radius: 999px; background: rgba(226,248,239,.75); color: #16755f; font-size: 9px; font-weight: 750; }
+    .story-chip::before { width: 6px; height: 6px; border-radius: 50%; background: #2eb58c; content: ""; }
+    .story-panel { display: none; animation: scene-enter .45s both; }
+    .story-panel.active { display: block; }
+    .story-card {
+      margin-top: 8px;
+      padding: 13px;
+      border: 1px solid rgba(255,255,255,.9);
+      border-radius: 13px;
+      background: rgba(255,255,255,.72);
+      box-shadow: 0 8px 25px rgba(64,85,128,.08);
+    }
+    .story-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 7px 0; color: #53647d; font-size: 10px; }
+    .story-value { color: #293c5d; font-weight: 750; }
+    .story-progress { height: 5px; overflow: hidden; margin-top: 12px; border-radius: 99px; background: #e4eaf3; }
+    .story-progress span { display: block; width: 74%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5f8ce8, #39bb9b); }
+    .story-bubble { width: fit-content; max-width: 94%; margin: 8px 0; padding: 10px 12px; border-radius: 13px 13px 13px 4px; background: rgba(231,238,250,.9); color: #40516d; font-size: 10px; line-height: 1.5; }
+    .story-bubble.sent { margin-left: auto; border-radius: 13px 13px 4px 13px; background: linear-gradient(135deg, #5b83dc, #4774d2); color: white; }
+    .story-phone { position: absolute; right: 12%; bottom: -22px; width: 120px; height: 220px; padding: 8px; border: 2px solid rgba(255,255,255,.95); border-radius: 24px; background: rgba(35,51,78,.9); box-shadow: 0 22px 40px rgba(36,58,101,.23); transform: rotate(7deg); }
+    .story-phone-screen { height: 100%; padding: 24px 8px 8px; border-radius: 17px; background: linear-gradient(150deg,#f8fbff,#eaf5f3); }
+    .story-map { position: relative; height: 86px; overflow: hidden; border-radius: 10px; background: repeating-linear-gradient(45deg,transparent 0 15px,rgba(90,139,126,.13) 16px 18px),#e3f0e9; }
+    .story-map::before { position: absolute; top: 38px; left: 52px; width: 13px; height: 13px; border: 3px solid white; border-radius: 50% 50% 50% 0; background: #eb6681; box-shadow: 0 3px 10px rgba(35,65,56,.25); content: ""; transform: rotate(-45deg); }
+    .story-cursor { position: absolute; right: 18%; bottom: 17%; z-index: 3; color: #294873; font-size: 25px; filter: drop-shadow(0 2px 3px rgba(255,255,255,.9)); transition: transform .6s; }
+    .story-player[data-scene="1"] .story-cursor { transform: translate(-180px,-90px); }
+    .story-player[data-scene="2"] .story-cursor { transform: translate(-80px,-115px); }
+    .story-player[data-scene="3"] .story-cursor { transform: translate(-195px,-60px); }
+    .story-caption { display: flex; flex-direction: column; justify-content: center; padding: clamp(15px, 3vw, 30px); }
+    .story-step { color: #476fc4; font-size: 10px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+    .story-caption h3 { margin: 11px 0 9px; color: #17243b; font-size: clamp(23px, 3vw, 32px); line-height: 1.08; letter-spacing: -.05em; }
+    .story-caption p { min-height: 88px; margin: 0; color: #5b6b83; font-size: 13px; line-height: 1.75; }
+    .story-note { margin-top: 16px; padding: 11px 13px; border: 1px solid rgba(95,127,185,.14); border-radius: 12px; background: rgba(245,248,253,.7); color: #5d6e87; font-size: 10px; line-height: 1.6; }
+    .story-controls { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 12px 14px; border-radius: 16px; }
+    .story-controls button { min-height: 38px; padding: 0 13px; border: 1px solid rgba(178,194,221,.7); border-radius: 999px; background: rgba(255,255,255,.74); color: #344967; cursor: pointer; font-size: 11px; font-weight: 750; }
+    .story-controls button.primary { border-color: #426fda; background: #426fda; color: white; }
+    .story-controls button:hover { border-color: #648be0; }
+    .story-dots { display: flex; gap: 6px; margin-left: auto; }
+    .story-dot { width: 8px !important; min-height: 8px !important; height: 8px; padding: 0 !important; border: 0 !important; background: #c8d3e4 !important; }
+    .story-dot[aria-current="step"] { width: 24px !important; border-radius: 99px !important; background: #4b78d7 !important; }
+    .feature-card, .architecture-step, .download-card { border-radius: 18px; }
+    .feature-card:hover, .download-card:hover { transform: translateY(-3px); box-shadow: 0 28px 75px rgba(27,55,102,.17); transition: transform .2s, box-shadow .2s; }
+    .download-card { background: rgba(255,255,255,.68); }
+    .release-banner { border-radius: 16px; backdrop-filter: blur(14px); }
+    .story-player[data-playing="true"] .story-phone { animation: phone-float 4s ease-in-out infinite; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    @keyframes screen-float { 0%,100% { transform: rotateY(-5deg) rotateX(2deg) translateY(0); } 50% { transform: rotateY(-3deg) rotateX(1deg) translateY(-5px); } }
+    @keyframes phone-float { 0%,100% { transform: rotate(7deg) translateY(0); } 50% { transform: rotate(4deg) translateY(-7px); } }
+    @keyframes orbit-drift { to { transform: rotate(360deg); } }
+    @keyframes scene-enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
+    @media (max-width: 820px) {
+      .story-player { grid-template-columns: 1fr; }
+      .story-screen { min-height: 350px; }
+      .story-caption { padding: 12px 16px 18px; }
+      .story-caption p { min-height: 0; }
+      .topbar { margin-right: -14px; margin-left: -14px; padding-right: 14px; padding-left: 14px; }
+    }
+    @media (max-width: 560px) {
+      .story-section { padding: 48px 0; }
+      .story-player { padding: 8px; border-radius: 20px; }
+      .story-screen { min-height: 300px; }
+      .story-app { inset: 7% 4%; }
+      .story-layout { grid-template-columns: 92px 1fr; }
+      .story-sidebar { padding: 12px 6px; }
+      .story-nav { padding: 7px 6px; font-size: 9px; }
+      .story-phone { right: 5%; transform: scale(.82) rotate(7deg); transform-origin: bottom right; }
+      .story-controls { flex-wrap: wrap; }
+      .story-dots { margin-left: 0; }
+      .topbar { margin-right: -14px; margin-left: -14px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+    }
   </style>
 </head>
 <body>
@@ -377,6 +598,7 @@
       </a>
       <div>
         <a href="#capabilities">Capabilities</a>
+        <a href="#walkthrough">How it works</a>
         <a href="#explorer">Explore</a>
         <a href="#downloads">Downloads</a>
       </div>
@@ -401,6 +623,75 @@
             <div class="mini-card"><span class="mini-icon">03</span><span><span class="mini-title">Assistant panel</span><span class="mini-sub">User-started actions, no background control</span></span></div>
           </div>
           <span class="hero-art-label">One project · native clients</span>
+        </div>
+      </section>
+
+      <section class="story-section" id="walkthrough" aria-labelledby="walkthrough-title">
+        <div class="section-head">
+          <div>
+            <div class="eyebrow">A day with USSD Manager</div>
+            <h2 id="walkthrough-title">See the workflow, step by step</h2>
+            <p class="section-intro">A short, interactive product-film simulation: one user moves between modem tools, private messaging, a one-time location share, and an assistant question. It is an illustration, not a live account or a recording of real user data.</p>
+          </div>
+        </div>
+        <div class="story-player glass-panel" id="story-player" data-scene="0" data-playing="false">
+          <div class="story-screen" role="img" aria-label="Animated product walkthrough simulation">
+            <div class="story-orbit" aria-hidden="true"></div>
+            <div class="story-app">
+              <div class="story-toolbar"><span class="story-lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="story-title">USSD Manager</span><span class="story-online">● Ready</span></div>
+              <div class="story-layout">
+                <aside class="story-sidebar" aria-hidden="true">
+                  <div class="story-brand">WORKSPACE</div>
+                  <div class="story-nav" data-story-nav="0">Modem</div>
+                  <div class="story-nav" data-story-nav="1">Messages</div>
+                  <div class="story-nav" data-story-nav="2">Device care</div>
+                  <div class="story-nav" data-story-nav="3">Assistant</div>
+                </aside>
+                <div class="story-content">
+                  <div class="story-panel active" data-story-panel="0">
+                    <h3>Modem session</h3><p>Maya chooses the connected USB modem.</p>
+                    <span class="story-chip">COM port selected · 115200 baud</span>
+                    <div class="story-card"><div class="story-row"><span>Device</span><span class="story-value">USB modem</span></div><div class="story-row"><span>Network</span><span class="story-value">Registered</span></div><div class="story-progress"><span></span></div></div>
+                  </div>
+                  <div class="story-panel" data-story-panel="1" hidden>
+                    <h3>Private message</h3><p>Maya checks the recipient before sending.</p>
+                    <span class="story-chip">Trusted relay</span>
+                    <div class="story-bubble">Can you confirm the field visit time?</div><div class="story-bubble sent">Confirmed for 2:30. See you there.</div>
+                  </div>
+                  <div class="story-panel" data-story-panel="2" hidden>
+                    <h3>Device care</h3><p>Maya chooses to share one location fix.</p>
+                    <span class="story-chip">One-time share · user started</span>
+                    <div class="story-card"><div class="story-row"><span>Paired phone</span><span class="story-value">Online</span></div><div class="story-row"><span>Location access</span><span class="story-value">While in use</span></div><div class="story-row"><span>Background tracking</span><span class="story-value">Off</span></div></div>
+                  </div>
+                  <div class="story-panel" data-story-panel="3" hidden>
+                    <h3>Assistant</h3><p>A question gets a text answer—no device action.</p>
+                    <span class="story-chip">Only sent after Ask</span>
+                    <div class="story-bubble">Why is my modem connection slow?</div><div class="story-bubble sent">Check signal quality, modem placement, and your carrier status.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <span class="story-cursor" aria-hidden="true">⌖</span>
+            <div class="story-phone" aria-hidden="true"><div class="story-phone-screen"><div class="story-brand">DEVICE CARE</div><div class="story-map"></div><div class="story-row"><span>One-time share</span><span class="story-value">Ready</span></div></div></div>
+          </div>
+          <div class="story-caption" aria-live="polite">
+            <span class="story-step" id="story-step">Scene 1 of 4 · Windows</span>
+            <h3 id="story-heading">Start with the modem you selected</h3>
+            <p id="story-description">Maya opens the Windows app, chooses her USB modem and checks its network status. The app does not scan or connect to a device until she starts that workflow.</p>
+            <div class="story-note" id="story-note">Real-world boundary: modem, SIM, carrier, and signal determine what works. The interface cannot guarantee network availability.</div>
+          </div>
+        </div>
+        <div class="story-controls" aria-label="Walkthrough controls">
+          <button type="button" class="primary" id="story-play" aria-pressed="false">Play walkthrough</button>
+          <button type="button" id="story-previous" aria-label="Previous scene">Previous</button>
+          <button type="button" id="story-next" aria-label="Next scene">Next scene</button>
+          <div class="story-dots" role="group" aria-label="Choose a walkthrough scene">
+            <button type="button" class="story-dot" data-story-dot="0" aria-label="Scene 1" aria-current="step"></button>
+            <button type="button" class="story-dot" data-story-dot="1" aria-label="Scene 2"></button>
+            <button type="button" class="story-dot" data-story-dot="2" aria-label="Scene 3"></button>
+            <button type="button" class="story-dot" data-story-dot="3" aria-label="Scene 4"></button>
+          </div>
+          <span class="sr-only" id="story-status" aria-live="polite">Walkthrough paused.</span>
         </div>
       </section>
 
@@ -484,7 +775,7 @@
         </div>
         <div class="architecture-grid">
           <div class="architecture-step"><strong>1. Install a matching preview</strong><p>Use the Windows executable and Android debug APK from the same preview release. iOS builds are coming soon and are not included in these downloads.</p></div>
-          <div class="architecture-step"><strong>2. Configure trusted services</strong><p>Connect compatible clients to a reachable relay with valid TLS identity. Calls also need the configured calling/media service; tracking and AI each require their own endpoint and credentials.</p></div>
+          <div class="architecture-step"><strong>2. Configure trusted services</strong><p>Connect compatible clients to a reachable relay and verify its identity. Calls also need the configured calling/media service; tracking and AI each require their own endpoint and credentials.</p></div>
           <div class="architecture-step"><strong>3. Pair and test deliberately</strong><p>Register each app identity, then test a message and call between devices on different networks. Grant location only for an intentional one-time share. Never publish or reuse pairing secrets.</p></div>
         </div>
       </section>
@@ -652,6 +943,139 @@
       range.addEventListener("input", function () { setExplode(range.value); });
       setExplode(range.value);
       updateDetails();
+
+      var storyScenes = [
+        {
+          platform: "Windows",
+          title: "Start with the modem you selected",
+          description: "Maya opens the Windows app, chooses her USB modem and checks its network status. The app does not scan or connect to a device until she starts that workflow.",
+          note: "Real-world boundary: modem, SIM, carrier, and signal determine what works. The interface cannot guarantee network availability."
+        },
+        {
+          platform: "Windows + Android",
+          title: "Send a sealed message",
+          description: "Maya checks the recipient and sends a private text through a relay she trusts. The service must be reachable and the recipient key should be verified out of band.",
+          note: "Real-world boundary: messages use the configured relay. Calls and media have separate service requirements and are not represented as working in this demo."
+        },
+        {
+          platform: "Android",
+          title: "Share one location fix",
+          description: "Maya pairs a phone she controls, taps Share current location once, and approves foreground permission. She can then view the last report or choose to open it in a map app.",
+          note: "Real-world boundary: no background tracking. The map shows a stored report, not a live feed; the selected map provider receives the coordinates."
+        },
+        {
+          platform: "Windows + mobile",
+          title: "Ask for an explanation",
+          description: "Maya types a question and presses Ask. The configured AI provider returns text; it cannot run a shell command, toggle tracking, or control a device.",
+          note: "Real-world boundary: AI requires the user's own provider key and internet access. Prompts are sent only after the user submits them."
+        }
+      ];
+      var storyPlayer = document.getElementById("story-player");
+      var storyPlay = document.getElementById("story-play");
+      var storyTimer = null;
+      var storyIndex = 0;
+      var storyDots = Array.prototype.slice.call(document.querySelectorAll("[data-story-dot]"));
+      var storyPanels = Array.prototype.slice.call(document.querySelectorAll("[data-story-panel]"));
+      var storyNav = Array.prototype.slice.call(document.querySelectorAll("[data-story-nav]"));
+      var motionPreference = window.matchMedia
+        ? window.matchMedia("(prefers-reduced-motion: reduce)")
+        : null;
+      var reducedMotion = motionPreference ? motionPreference.matches : false;
+
+      function stopStory() {
+        if (storyTimer !== null) {
+          window.clearInterval(storyTimer);
+          storyTimer = null;
+        }
+        storyPlayer.setAttribute("data-playing", "false");
+        storyPlay.setAttribute("aria-pressed", "false");
+        storyPlay.textContent = "Play walkthrough";
+      }
+
+      if (motionPreference) {
+        var updateMotionPreference = function (event) {
+          reducedMotion = event.matches;
+          if (reducedMotion && storyTimer !== null) {
+            stopStory();
+            document.getElementById("story-status").textContent =
+              "Walkthrough paused because reduced motion is enabled.";
+          }
+        };
+        if (typeof motionPreference.addEventListener === "function") {
+          motionPreference.addEventListener("change", updateMotionPreference);
+        } else if (typeof motionPreference.addListener === "function") {
+          motionPreference.addListener(updateMotionPreference);
+        }
+      }
+
+      function setStoryScene(index) {
+        storyIndex = (index + storyScenes.length) % storyScenes.length;
+        var scene = storyScenes[storyIndex];
+        storyPlayer.setAttribute("data-scene", String(storyIndex));
+        document.getElementById("story-step").textContent =
+          "Scene " + (storyIndex + 1) + " of " + storyScenes.length + " · " + scene.platform;
+        document.getElementById("story-heading").textContent = scene.title;
+        document.getElementById("story-description").textContent = scene.description;
+        document.getElementById("story-note").textContent = scene.note;
+        storyPanels.forEach(function (panel, panelIndex) {
+          var active = panelIndex === storyIndex;
+          panel.hidden = !active;
+          panel.classList.toggle("active", active);
+        });
+        storyNav.forEach(function (item, itemIndex) {
+          item.classList.toggle("active", itemIndex === storyIndex);
+        });
+        storyDots.forEach(function (dot, dotIndex) {
+          if (dotIndex === storyIndex) dot.setAttribute("aria-current", "step");
+          else dot.removeAttribute("aria-current");
+        });
+      }
+
+      function startStory() {
+        if (reducedMotion) {
+          document.getElementById("story-status").textContent =
+            "Reduced motion is enabled. Use Next scene to move through the walkthrough.";
+          return;
+        }
+        storyPlayer.setAttribute("data-playing", "true");
+        storyPlay.setAttribute("aria-pressed", "true");
+        storyPlay.textContent = "Pause walkthrough";
+        document.getElementById("story-status").textContent = "Walkthrough playing.";
+        storyTimer = window.setInterval(function () { setStoryScene(storyIndex + 1); }, 5600);
+      }
+
+      storyPlay.addEventListener("click", function () {
+        if (storyTimer !== null) {
+          stopStory();
+          document.getElementById("story-status").textContent = "Walkthrough paused.";
+        } else {
+          startStory();
+        }
+      });
+      document.getElementById("story-previous").addEventListener("click", function () {
+        stopStory();
+        setStoryScene(storyIndex - 1);
+        document.getElementById("story-status").textContent = "Walkthrough paused.";
+      });
+      document.getElementById("story-next").addEventListener("click", function () {
+        stopStory();
+        setStoryScene(storyIndex + 1);
+        document.getElementById("story-status").textContent = "Walkthrough paused.";
+      });
+      storyDots.forEach(function (dot, dotIndex) {
+        dot.addEventListener("click", function () {
+          stopStory();
+          setStoryScene(dotIndex);
+          document.getElementById("story-status").textContent = "Walkthrough paused.";
+        });
+      });
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden && storyTimer !== null) {
+          stopStory();
+          document.getElementById("story-status").textContent = "Walkthrough paused while this tab is hidden.";
+        }
+      });
+      setStoryScene(0);
 
       var releaseMessage = document.getElementById("release-message");
       var releaseBanner = document.getElementById("release-banner");
