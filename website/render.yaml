@@ -4,4 +4,4 @@ services:
     runtime: static
     plan: free
     buildCommand: ""
-    staticPublishPath: .
+    staticPublishPath: website

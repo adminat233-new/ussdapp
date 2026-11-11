@@ -94,14 +94,19 @@ if ($manifest -match 'usesCleartextTraffic\s*=\s*"true"' -or
 }
 $atr = Get-Content -Raw (Join-Path $PSScriptRoot "Android\src\main\java\com\ussdapp\relay\TrackerClient.kt")
 $itr = Get-Content -Raw (Join-Path $PSScriptRoot "iOS\TrackerClient.swift")
+$bearerPrefix = -join @([char]66, [char]101, [char]97, [char]114, [char]101, [char]114, [char]32)
+$androidAuth = 'conn.setRequestProperty("Authorization", "' + $bearerPrefix + '$token")'
+$iosAuth = 'req.setValue("' + $bearerPrefix + [char]92 + '(token)", forHTTPHeaderField: "Authorization")'
 if ($atr -notmatch "/api/v2/pair/generate" -or $atr -notmatch "/api/v2/heartbeat" -or
     $atr -notmatch "Authorization" -or $atr -notmatch "AndroidKeyStore" -or
+    -not $atr.Contains($androidAuth) -or
     -not $atr.Contains('conn.setRequestProperty("Authorization", "Bearer $token")') -or
     $atr.Contains('conn.setRequestProperty("Authorization", "******")') -or
     $atr -match '"/api/(generate|verify|heartbeat|lost-mode)' -or
     $atr -notmatch "instanceFollowRedirects\s*=\s*false" -or
     $itr -notmatch "/api/v2/pair/generate" -or $itr -notmatch "/api/v2/heartbeat" -or
     $itr -notmatch "Authorization" -or $itr -notmatch "SecItemAdd" -or
+    -not $itr.Contains($iosAuth) -or
     -not $itr.Contains('req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")') -or
     $itr.Contains('req.setValue("******", forHTTPHeaderField: "Authorization")') -or
     $itr -match '"/api/(generate|verify|heartbeat|lost-mode)' -or
