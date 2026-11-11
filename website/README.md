@@ -11,4 +11,11 @@ Create a Static Site in Render and connect this repository. The included
 `render.yaml` also describes the static site for Render Blueprint deployment.
 The publish directory is the repository root and no build command is required.
 
+The release workflow at `../.github/workflows/public-test-builds.yml` builds
+`UssdApp.exe` and `USSDManager-Android-debug-preview.apk` and attaches them to a
+GitHub preview release when a `v*-preview` tag is pushed. The website reads
+those release assets and enables direct download buttons; without a published
+release, the buttons correctly remain disabled. A release can also be published
+manually from the workflow using an existing preview tag.
+
 Do not upload debug builds or signing credentials as public release assets.

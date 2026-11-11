@@ -96,10 +96,14 @@ $atr = Get-Content -Raw (Join-Path $PSScriptRoot "Android\src\main\java\com\ussd
 $itr = Get-Content -Raw (Join-Path $PSScriptRoot "iOS\TrackerClient.swift")
 if ($atr -notmatch "/api/v2/pair/generate" -or $atr -notmatch "/api/v2/heartbeat" -or
     $atr -notmatch "Authorization" -or $atr -notmatch "AndroidKeyStore" -or
+    -not $atr.Contains('conn.setRequestProperty("Authorization", "Bearer $token")') -or
+    $atr.Contains('conn.setRequestProperty("Authorization", "******")') -or
     $atr -match '"/api/(generate|verify|heartbeat|lost-mode)' -or
     $atr -notmatch "instanceFollowRedirects\s*=\s*false" -or
     $itr -notmatch "/api/v2/pair/generate" -or $itr -notmatch "/api/v2/heartbeat" -or
     $itr -notmatch "Authorization" -or $itr -notmatch "SecItemAdd" -or
+    -not $itr.Contains('req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")') -or
+    $itr.Contains('req.setValue("******", forHTTPHeaderField: "Authorization")') -or
     $itr -match '"/api/(generate|verify|heartbeat|lost-mode)' -or
     $itr -notmatch "completionHandler\(nil\)") {
     throw "Tracker API bridge surface is incomplete"
@@ -107,7 +111,7 @@ if ($atr -notmatch "/api/v2/pair/generate" -or $atr -notmatch "/api/v2/heartbeat
 $androidActivity = Get-Content -Raw (Join-Path $PSScriptRoot "Android\app\src\main\java\com\ussdapp\mobile\MainActivity.kt")
 $iosApp = Get-Content -Raw (Join-Path $PSScriptRoot "iOS\UssdMobileApp.swift")
 $plist = Get-Content -Raw (Join-Path $PSScriptRoot "iOS\Info.plist")
-if ($androidActivity -notmatch "Device tracking session" -or
+if ($androidActivity -notmatch "Device pairing" -or
     $androidActivity -notmatch "Send status-only check-in" -or
     $androidActivity -notmatch "Share current location once" -or
     $androidActivity -notmatch "TrackerCredentialStore" -or

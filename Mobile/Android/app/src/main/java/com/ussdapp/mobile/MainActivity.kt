@@ -107,8 +107,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         })
 
-        val agentPanel = addSectionCard(content, "Agent panel",
-            "User-started voice and AI tools. The assistant does not run remote shell commands or control devices.")
+        val agentPanel = addSectionCard(content, "Agent workspace",
+            "Ask a question or run a local assistant command. Requests are sent only when you submit them; this assistant cannot control devices.")
         wakeNameInput = EditText(this).apply {
             hint = "Voice wake name"
             setText(agent.wakeName)
@@ -160,6 +160,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setTextColor(Color.rgb(36, 41, 47))
             setPadding(0, dp(10), 0, dp(8))
             setTextIsSelectable(true)
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(248, 250, 252))
+                cornerRadius = dp(8).toFloat()
+            }
         }
         agentPanel.addView(responseView)
         agentPanel.addView(Button(this).apply {
@@ -167,7 +171,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             isAllCaps = false
             setOnClickListener { speak(responseView.text.toString()) }
         })
-        agentPanel.addView(TextView(this).apply {
+        val providerPanel = addSectionCard(content, "AI provider",
+            "Use your own API key. It is stored on this device and sent only when you submit an AI prompt.")
+        providerPanel.addView(TextView(this).apply {
             text = "AI model: ${GeminiAssistant.DEFAULT_MODEL}\nPrompts are sent to Google only when you ask. " +
                 "A provider API key is required; any free quota is controlled by the provider."
             textSize = 12f
@@ -180,8 +186,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             isSingleLine = true
         }
-        agentPanel.addView(apiKeyInput)
-        agentPanel.addView(Button(this).apply {
+        providerPanel.addView(apiKeyInput)
+        providerPanel.addView(Button(this).apply {
             text = "Save API key securely"
             isAllCaps = false
             setOnClickListener {
@@ -194,7 +200,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                 }
             }
         })
-        agentPanel.addView(Button(this).apply {
+        providerPanel.addView(Button(this).apply {
             text = "Remove saved API key"
             isAllCaps = false
             setOnClickListener {
@@ -280,8 +286,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         relayPanel.addView(relayEventsView)
 
-        val trackerPanel = addSectionCard(content, "Device tracking session",
-            "Pair devices you control. Refresh status to see their last reported locations and open a point in Maps. This is not a live feed: a device must share its location while available. Lost mode changes status only.")
+        val trackerPanel = addSectionCard(content, "Device pairing",
+            "Pair devices you control with the authenticated tracker service. HTTPS is required; credentials are protected by Android Keystore.")
         trackerUrlInput = EditText(this).apply {
             hint = "Tracker service URL (https://...)"
             isSingleLine = true
@@ -305,36 +311,42 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         addTrackerButton(trackerPanel, "Verify pairing") { client, pair, _ ->
             client.verifyPair(pair)
         }
-        addTrackerButton(trackerPanel, "Refresh status") { client, _, device ->
+
+        val trackerActions = addSectionCard(content, "Recovery actions",
+            "Actions require this paired device's credential. Location sharing is a one-time action you start here; lost mode changes server status only.")
+        addTrackerButton(trackerActions, "Refresh status") { client, _, device ->
             client.pairInfo(device)
         }
-        addTrackerButton(trackerPanel, "Send status-only check-in") { client, _, device ->
+        addTrackerButton(trackerActions, "Send status-only check-in") { client, _, device ->
             client.heartbeat(device, null, null, "ussd-app-status")
         }
         locationButton = Button(this).apply {
             text = "Share current location once"
             setOnClickListener { requestLocationCheckin() }
         }
-        trackerPanel.addView(locationButton)
-        addTrackerButton(trackerPanel, "Enable lost mode") { client, _, device ->
+        trackerActions.addView(locationButton)
+        addTrackerButton(trackerActions, "Enable lost mode") { client, _, device ->
             client.lostMode(device, true)
         }
-        addTrackerButton(trackerPanel, "Disable lost mode") { client, _, device ->
+        addTrackerButton(trackerActions, "Disable lost mode") { client, _, device ->
             client.lostMode(device, false)
         }
+
+        val trackerLocations = addSectionCard(content, "Last reported locations",
+            "These are stored reports, not a live map. Open Maps only when you choose; the map provider receives the selected coordinates.")
         trackerStatusView = TextView(this).apply {
             text = "Not connected."
             setPadding(0, 8, 0, 4)
         }
-        trackerPanel.addView(trackerStatusView)
+        trackerLocations.addView(trackerStatusView)
         trackerOutputView = TextView(this).apply {
             text = ""
             setTextIsSelectable(true)
             setPadding(0, 4, 0, 12)
         }
-        trackerPanel.addView(trackerOutputView)
+        trackerLocations.addView(trackerOutputView)
         trackerMapLinks = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        trackerPanel.addView(trackerMapLinks)
+        trackerLocations.addView(trackerMapLinks)
         setContentView(ScrollView(this).apply {
             setBackgroundColor(Color.rgb(246, 248, 250))
             addView(content)
@@ -486,6 +498,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         trackerMapLinks.removeAllViews()
         try {
             val devices = JSONObject(body).optJSONArray("devices")
+            val points = mutableListOf<Triple<String, Double, Double>>()
             var found = 0
             if (devices != null) {
                 for (index in 0 until devices.length()) {
@@ -502,10 +515,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         " · last report ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(updatedAt))}"
                     } else ""
                     trackerMapLinks.addView(TextView(this).apply {
-                        text = "$deviceId · $status$lost$timestamp"
+                        text = "$deviceId · $status$lost$timestamp\n${"%.6f".format(java.util.Locale.US, lat)}, ${"%.6f".format(java.util.Locale.US, lng)}"
                         setTextColor(Color.rgb(89, 99, 110))
                         setPadding(0, dp(8), 0, dp(4))
                     })
+                    points.add(Triple(deviceId, lat, lng))
                     trackerMapLinks.addView(Button(this).apply {
                         text = "Open last reported location in Maps"
                         isAllCaps = false
@@ -520,6 +534,27 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         }
                     })
                     found++
+                }
+            }
+            if (points.size > 1) {
+                val currentId = trackerDeviceInput.text.toString().trim()
+                val origin = points.firstOrNull { it.first == currentId } ?: points[0]
+                val destination = points.firstOrNull { it.first != origin.first }
+                    ?: points.getOrNull(1)
+                if (destination != null) {
+                    val url = "https://www.google.com/maps/dir/?api=1&origin=${origin.second},${origin.third}" +
+                        "&destination=${destination.second},${destination.third}"
+                    trackerMapLinks.addView(Button(this).apply {
+                        text = "Compare this device and a paired device in Maps"
+                        isAllCaps = false
+                        setOnClickListener {
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            } catch (error: android.content.ActivityNotFoundException) {
+                                showTrackerResult("No map app or browser is installed.", error.message ?: "")
+                            }
+                        }
+                    }, 0)
                 }
             }
             if (found == 0) {

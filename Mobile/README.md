@@ -43,12 +43,15 @@ Both mobile apps include an explicit Device Tracking session for the external
 per-device bearer token; Android protects it with Android Keystore-backed
 AES-GCM, and iOS stores it in the device-only Keychain. Authenticated status,
 heartbeat, and lost-mode actions require the paired device's token. Pairing
-codes and device tokens are never displayed in tracker response output after
-the app stores them. The legacy `/api/*` routes remain available to existing
+codes are shown for device pairing; device tokens are stored securely and
+redacted from tracker response output. Authenticated requests send the saved
+token as a Bearer authorization credential. The legacy `/api/*` routes remain available to existing
 tracker clients, but these mobile app screens do not call them.
 
 Actions run only when the user taps them and require HTTPS. Status check-in
-sends no coordinates. A separate **Share current location once** action
+sends no coordinates. Paired-device reports show their last-known status and
+timestamps; when two locations are available, the app can open both in a
+user-selected map app. This is not a live map. A separate **Share current location once** action
 requires foreground location permission and requests a single location fix
 only after the user taps it; that fix is then sent to the configured tracker
 using the authenticated heartbeat route. Denying permission, turning off
@@ -121,14 +124,20 @@ out-of-band identity by itself.
 
 ## Validation status
 
-All Android Kotlin sources compile against the installed Android 34 API stubs.
-The protocol envelope has a JVM test for round-trip, wrong-recipient, invalid
-signature, and authenticated-ciphertext tampering cases, plus static contract
-validation. Actual relay and Windows-app interoperability has not been run.
-The Android Gradle debug package could not be built previously because the
-configured Android Gradle Plugin was not available locally; emulator/device
-validation is outstanding. iOS requires Xcode on macOS, so Swift compilation,
-signing, permission prompts, and device tests remain outstanding. Voice/video
-calling is not interoperable: Windows uses authenticated custom signaling and
-encrypted UDP media, for which mobile has no compatible call/media engine.
-Push notifications and carrier SMS are also not implemented.
+Run `pwsh -NoProfile -File Mobile\validate.ps1` for the cross-platform source
+contract checks and `Mobile\Android\gradlew.bat :app:assembleDebug` to build the
+Android debug APK. The Android Gradle build and contract checks pass in the
+current development environment. The protocol envelope also has a JVM test for
+round-trip, wrong-recipient, invalid signature, and authenticated-ciphertext
+tampering cases.
+
+The public preview workflow attaches the Windows EXE and Android debug APK to
+GitHub releases created from `v*-preview` tags; the static website enables
+download buttons from those assets. A published release is required before
+downloads are available. These builds are not production app-store packages.
+Actual relay and Windows-app interoperability has not been run; emulator and
+device validation is outstanding. iOS requires Xcode on macOS, so Swift
+compilation, signing, permission prompts, and device tests remain outstanding.
+Mobile voice/video calling is not interoperable: Windows uses authenticated
+custom signaling and encrypted UDP media, for which mobile has no compatible
+call/media engine. Push notifications and carrier SMS are also not implemented.

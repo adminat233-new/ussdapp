@@ -213,6 +213,7 @@
     .release-controls label { color: var(--muted); font-size: 11px; }
     .release-controls select { min-width: min(100%, 300px); padding: 10px 34px 10px 12px; border: 1px solid #35415a; border-radius: 9px; background: #111827; color: #eef2ff; }
     .release-controls select:disabled { color: #73819a; }
+    .release-list-link { color: #0969da; font-size: 12px; font-weight: 650; }
     .downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
     .download-card { display: flex; min-height: 220px; flex-direction: column; padding: 21px; border: 1px solid var(--line); border-radius: 17px; background: linear-gradient(150deg, #151e30, #101725); }
     .download-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -493,7 +494,7 @@
           <div>
             <div class="eyebrow">Builds, not promises</div>
             <h2 id="downloads-title">Downloads</h2>
-            <p class="section-intro">Choose a published release. A platform button appears only when that release includes its installable build.</p>
+            <p class="section-intro">Choose a published release to download its Windows EXE or Android APK. The buttons link directly to the attached release files.</p>
           </div>
         </div>
         <div class="release-banner" id="release-banner" data-state="checking" role="status" aria-live="polite">
@@ -505,6 +506,7 @@
           <select id="release-select" disabled aria-describedby="release-message">
             <option>Checking releases…</option>
           </select>
+          <a class="release-list-link" href="https://github.com/adminat233-new/ussdapp/releases" target="_blank" rel="noopener">Browse all releases</a>
         </div>
         <div class="downloads" aria-label="Platform build downloads">
           <article class="download-card">
@@ -744,7 +746,7 @@
             releaseSelect.add(new Option("No published builds yet", ""));
             releaseSelect.disabled = true;
             releaseBanner.dataset.state = "unavailable";
-            releaseMessage.textContent = "No Windows or Android builds are published yet. Their download buttons will appear when the preview builds finish.";
+            releaseMessage.textContent = "No Windows or Android release assets are published yet. Tag a preview build to publish the EXE and APK downloads.";
             return;
           }
 

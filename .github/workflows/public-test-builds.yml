@@ -109,6 +109,7 @@ jobs:
             release-assets/UssdApp.ico \
             release-assets/USSDManager-Windows-preview.zip \
             release-assets/USSDManager-Android-debug-preview.apk \
+            --repo "$GITHUB_REPOSITORY" \
             --title "USSD Manager $TAG_NAME (preview)" \
             --notes "Public test previews built by GitHub Actions. Windows is an optimized .NET Framework executable. Android is a debug-signed APK for testing only, not a production Play Store build. iOS requires Apple signing and distribution through TestFlight or the App Store; no IPA is included. Messaging, calls, tracking, and AI need their respective trusted relay, calling, tracker, or AI provider configuration. See the project README for setup and known limitations." \
             --prerelease \

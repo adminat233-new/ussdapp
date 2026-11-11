@@ -6851,7 +6851,7 @@ namespace UssdApp
         private Grid BuildAgentTab()
         {
             Grid g = new Grid { Margin = new Thickness(14) };
-            StackPanel content = new StackPanel { MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left };
+            StackPanel content = new StackPanel { MaxWidth = 1100, HorizontalAlignment = HorizontalAlignment.Stretch };
             g.Children.Add(content);
 
             content.Children.Add(new TextBlock
@@ -6869,6 +6869,12 @@ namespace UssdApp
                 Foreground = BrushGray,
                 Margin = new Thickness(4, 0, 4, 12)
             });
+
+            Grid workspace = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             StackPanel request = new StackPanel();
             request.Children.Add(new TextBlock
@@ -6900,7 +6906,9 @@ namespace UssdApp
                 Margin = new Thickness(4, 4, 4, 8)
             };
             request.Children.Add(_agentStatus);
-            content.Children.Add(MakeServiceCard(request));
+            Border requestCard = MakeServiceCard(request);
+            Grid.SetColumn(requestCard, 0);
+            workspace.Children.Add(requestCard);
 
             StackPanel response = new StackPanel();
             response.Children.Add(new TextBlock
@@ -6917,7 +6925,16 @@ namespace UssdApp
             _agentResponse.HorizontalAlignment = HorizontalAlignment.Stretch;
             _agentResponse.Margin = new Thickness(4, 4, 4, 4);
             response.Children.Add(_agentResponse);
-            content.Children.Add(MakeServiceCard(response));
+            Border responseCard = MakeServiceCard(response);
+            Grid.SetColumn(responseCard, 1);
+            workspace.Children.Add(responseCard);
+            workspace.SizeChanged += delegate
+            {
+                bool stackCards = workspace.ActualWidth < 900;
+                Grid.SetColumn(responseCard, stackCards ? 0 : 1);
+                Grid.SetRow(responseCard, stackCards ? 1 : 0);
+            };
+            content.Children.Add(workspace);
             return g;
         }
 
@@ -6959,7 +6976,7 @@ namespace UssdApp
         private Grid BuildTrackerTab()
         {
             Grid g = new Grid { Margin = new Thickness(14) };
-            StackPanel content = new StackPanel { MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left };
+            StackPanel content = new StackPanel { MaxWidth = 1240, HorizontalAlignment = HorizontalAlignment.Stretch };
             g.Children.Add(content);
 
             content.Children.Add(new TextBlock
@@ -6977,6 +6994,15 @@ namespace UssdApp
                 Foreground = BrushGray,
                 Margin = new Thickness(4, 0, 4, 12)
             });
+
+            Grid workspace = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(360) });
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            StackPanel controls = new StackPanel { Margin = new Thickness(0, 0, 8, 0) };
+            StackPanel results = new StackPanel { Margin = new Thickness(8, 0, 0, 0) };
+            workspace.Children.Add(controls);
 
             StackPanel connection = new StackPanel();
             connection.Children.Add(new TextBlock
@@ -6998,7 +7024,7 @@ namespace UssdApp
             _trackerDeviceBox = MakeTextBox(0);
             _trackerDeviceBox.HorizontalAlignment = HorizontalAlignment.Stretch;
             AddTrackerInput(connection, "Device ID", _trackerDeviceBox);
-            content.Children.Add(MakeServiceCard(connection));
+            controls.Children.Add(MakeServiceCard(connection));
 
             StackPanel actionCard = new StackPanel();
             actionCard.Children.Add(new TextBlock
@@ -7030,19 +7056,18 @@ namespace UssdApp
                 delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, false); });
             actionCard.Children.Add(actions);
 
-            content.Children.Add(new TextBlock
+            controls.Children.Add(new TextBlock
             {
                 Text = "Use HTTPS. Device credentials are protected with Windows DPAPI for this user. Share a generated pairing code only with a device you control.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
                 Margin = new Thickness(4, 0, 4, 8)
             });
-            content.Children.Add(MakeServiceCard(actionCard));
+            controls.Children.Add(MakeServiceCard(actionCard));
 
-            StackPanel results = new StackPanel();
             results.Children.Add(new TextBlock
             {
-                Text = "Latest activity",
+                Text = "Latest reports",
                 FontSize = 15,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = BrushFg,
@@ -7065,7 +7090,23 @@ namespace UssdApp
             results.Children.Add(_trackerOutput);
             _trackerMapLinks = new StackPanel { Margin = new Thickness(4, 8, 4, 4) };
             results.Children.Add(_trackerMapLinks);
-            content.Children.Add(MakeServiceCard(results));
+            results.Children.Add(new TextBlock
+            {
+                Text = "Locations are last reported points, not a live feed. Open Maps only when you choose; the map provider receives the selected coordinates.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                Margin = new Thickness(4, 8, 4, 4)
+            });
+            Border resultsCard = MakeServiceCard(results);
+            Grid.SetColumn(resultsCard, 1);
+            workspace.Children.Add(resultsCard);
+            workspace.SizeChanged += delegate
+            {
+                bool stackCards = workspace.ActualWidth < 1000;
+                Grid.SetColumn(resultsCard, stackCards ? 0 : 1);
+                Grid.SetRow(resultsCard, stackCards ? 1 : 0);
+            };
+            content.Children.Add(workspace);
             return g;
         }
 
@@ -7247,6 +7288,7 @@ namespace UssdApp
         {
             if (_trackerMapLinks == null) return;
             _trackerMapLinks.Children.Clear();
+            List<Tuple<string, double, double>> points = new List<Tuple<string, double, double>>();
             string json = body ?? "";
             int devicesIndex = json.IndexOf("\"devices\"", StringComparison.Ordinal);
             if (devicesIndex >= 0) json = json.Substring(devicesIndex);
@@ -7262,9 +7304,11 @@ namespace UssdApp
                     double.IsNaN(lng) || double.IsInfinity(lng) || lng < -180 || lng > 180)
                     continue;
 
+                string deviceId = match.Groups[1].Value;
+                points.Add(Tuple.Create(deviceId, lat, lng));
                 TextBlock coordinates = new TextBlock
                 {
-                    Text = "Paired device " + match.Groups[1].Value + " - last reported location: " +
+                    Text = "Paired device " + deviceId + " - last reported location: " +
                            lat.ToString("F6", CultureInfo.InvariantCulture) +
                            ", " + lng.ToString("F6", CultureInfo.InvariantCulture),
                     Foreground = BrushGray,
@@ -7282,6 +7326,56 @@ namespace UssdApp
                 };
                 _trackerMapLinks.Children.Add(openMap);
                 found++;
+            }
+            if (points.Count > 1)
+            {
+                string ownDevice = _cfg == null ? "" : (_cfg.tracker_device_id ?? "");
+                Tuple<string, double, double> origin = null;
+                Tuple<string, double, double> destination = null;
+                for (int i = 0; i < points.Count; i++)
+                {
+                    if (string.Equals(points[i].Item1, ownDevice, StringComparison.Ordinal))
+                    {
+                        origin = points[i];
+                        break;
+                    }
+                }
+                if (origin == null) origin = points[0];
+                for (int i = 0; i < points.Count; i++)
+                {
+                    if (!string.Equals(points[i].Item1, origin.Item1, StringComparison.Ordinal))
+                    {
+                        destination = points[i];
+                        break;
+                    }
+                }
+                if (destination == null)
+                    for (int i = 1; i < points.Count; i++)
+                        if (!object.ReferenceEquals(points[i], origin))
+                        {
+                            destination = points[i];
+                            break;
+                        }
+
+                if (destination != null)
+                {
+                    string start = origin.Item2.ToString(CultureInfo.InvariantCulture) + "," +
+                                   origin.Item3.ToString(CultureInfo.InvariantCulture);
+                    string end = destination.Item2.ToString(CultureInfo.InvariantCulture) + "," +
+                                 destination.Item3.ToString(CultureInfo.InvariantCulture);
+                    Button compare = MakeButton("Compare two reported locations in Maps");
+                    compare.Margin = new Thickness(2, 8, 2, 4);
+                    compare.Click += delegate
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(
+                                "https://www.google.com/maps/dir/?api=1&origin=" + start + "&destination=" + end);
+                        }
+                        catch (Exception ex) { SetTrackerResult("Could not open a map: " + ex.Message, ""); }
+                    };
+                    _trackerMapLinks.Children.Insert(0, compare);
+                }
             }
             if (found == 0)
                 _trackerMapLinks.Children.Add(new TextBlock
