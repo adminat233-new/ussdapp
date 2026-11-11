@@ -18,12 +18,15 @@ those release assets and enables direct download buttons; without a published
 release, the buttons correctly remain disabled. A release can also be published
 manually from the workflow using an existing preview tag.
 
-The "How it works" section is an interactive, silent product-film simulation,
-not captured footage or a live connected account. Its sample user walks through
-selecting a Windows modem, sending a sealed message through a trusted relay,
-intentionally sharing one phone location, and asking the assistant a question.
-Scene controls are keyboard-accessible; playback pauses when the page is hidden
-and does not auto-start. Each scene calls out real service requirements and
-privacy limits.
+The supplied video in `assets/ussd-manager-walkthrough.mp4` is the muted,
+looping background across the full page. Playback starts automatically when
+motion is allowed and pauses while the page is hidden; browsers that block
+autoplay retry after the first user interaction. Reduced-motion preferences
+pause the background video and scene autoplay. The "How it works" simulation
+advances through its scenes automatically with animated transitions and loops
+back to the first scene. It is not a live account or a recording of real user
+data: the sample user selects a Windows modem, sends a sealed message through a
+trusted relay, intentionally shares one phone location, and asks the assistant
+a question. Each scene calls out real service requirements and privacy limits.
 
 Do not upload debug builds or signing credentials as public release assets.
