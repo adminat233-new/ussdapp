@@ -2,21 +2,21 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <!-- ===== Design tokens - DARK SLATE ===== -->
-  <SolidColorBrush x:Key="AppBg"        Color="#0F172A"/>
-  <SolidColorBrush x:Key="PanelBrush"   Color="#1E293B"/>
-  <SolidColorBrush x:Key="CardBrush"    Color="#1E293B"/>
-  <SolidColorBrush x:Key="CardBorder"   Color="#334155"/>
-  <SolidColorBrush x:Key="ChromeBrush"  Color="#0F172A"/>
+  <SolidColorBrush x:Key="AppBg"        Color="#0B1120"/>
+  <SolidColorBrush x:Key="PanelBrush"   Color="#111B2E"/>
+  <SolidColorBrush x:Key="CardBrush"    Color="#141F33"/>
+  <SolidColorBrush x:Key="CardBorder"   Color="#283750"/>
+  <SolidColorBrush x:Key="ChromeBrush"  Color="#0E1828"/>
 
-  <SolidColorBrush x:Key="TextBrush"    Color="#E2E8F0"/>
-  <SolidColorBrush x:Key="SubtextBrush" Color="#94A3B8"/>
-  <SolidColorBrush x:Key="GrayBrush"    Color="#94A3B8"/>
+  <SolidColorBrush x:Key="TextBrush"    Color="#F1F5FB"/>
+  <SolidColorBrush x:Key="SubtextBrush" Color="#A5B2C5"/>
+  <SolidColorBrush x:Key="GrayBrush"    Color="#A5B2C5"/>
 
-  <SolidColorBrush x:Key="AccentBrush"    Color="#3B82F6"/>
-  <SolidColorBrush x:Key="AccentHover"    Color="#60A5FA"/>
-  <SolidColorBrush x:Key="AccentSoft"     Color="#1D3F73"/>
-  <SolidColorBrush x:Key="CallBrush"      Color="#0084FF"/>
-  <SolidColorBrush x:Key="CallHover"      Color="#33A3FF"/>
+  <SolidColorBrush x:Key="AccentBrush"    Color="#5B8DEF"/>
+  <SolidColorBrush x:Key="AccentHover"    Color="#78A4FF"/>
+  <SolidColorBrush x:Key="AccentSoft"     Color="#1D3156"/>
+  <SolidColorBrush x:Key="CallBrush"      Color="#1685E8"/>
+  <SolidColorBrush x:Key="CallHover"      Color="#3C9CF3"/>
 
   <SolidColorBrush x:Key="DangerBrush"    Color="#EF4444"/>
   <SolidColorBrush x:Key="DangerHover"    Color="#F87171"/>
@@ -28,10 +28,10 @@
   <SolidColorBrush x:Key="RedBrush"       Color="#DC2626"/>
 
   <!-- Keypad must stay visible on CardBrush (#1E293B): lighter ladder -->
-  <SolidColorBrush x:Key="KeypadBrush"    Color="#2C3E56"/>
-  <SolidColorBrush x:Key="KeypadHover"    Color="#3C5070"/>
-  <SolidColorBrush x:Key="KeypadPress"    Color="#4A6382"/>
-  <SolidColorBrush x:Key="PillBrush"      Color="#0F172A"/>
+  <SolidColorBrush x:Key="KeypadBrush"    Color="#1B2A40"/>
+  <SolidColorBrush x:Key="KeypadHover"    Color="#263A56"/>
+  <SolidColorBrush x:Key="KeypadPress"    Color="#314967"/>
+  <SolidColorBrush x:Key="PillBrush"      Color="#0E1828"/>
   <SolidColorBrush x:Key="OnlineBrush"    Color="#22C55E"/>
 
 </ResourceDictionary>

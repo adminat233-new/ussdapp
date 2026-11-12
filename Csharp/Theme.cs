@@ -134,7 +134,7 @@ namespace UssdApp
                 app.Resources[kv.Key] = new SolidColorBrush(kv.Value.Color);
             Diag("registered " + map.Count + " token copies; Bg frozen=" + Bg.IsFrozen);
 
-            string theme = "light";
+            string theme = "dark";
             try
             {
                 AppConfig c = AppConfig.Load();

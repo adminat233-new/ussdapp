@@ -8,6 +8,7 @@ set PF=%GAC%\PresentationFramework\v4.0_4.0.0.0__31bf3856ad364e35\PresentationFr
 set PC=%GAC32%\PresentationCore\v4.0_4.0.0.0__31bf3856ad364e35\PresentationCore.dll
 set WB=%GAC%\WindowsBase\v4.0_4.0.0.0__31bf3856ad364e35\WindowsBase.dll
 set SX=%GAC%\System.Xaml\v4.0_4.0.0.0__b77a5c561934e089\System.Xaml.dll
+set SS=%GAC%\System.Speech\v4.0_4.0.0.0__31bf3856ad364e35\System.Speech.dll
 
 REM Same sources as build.bat, but a separate output name so the running
 REM instances do not lock the file, and /target:exe so --selftest writes to
@@ -17,6 +18,7 @@ REM the console instead of needing a window station.
   /r:"%PF%" /r:"%PC%" /r:"%WB%" /r:"%SX%" ^
   /r:System.Numerics.dll /r:System.Drawing.dll ^
   /r:System.Security.dll ^
+  /r:"%SS%" ^
   /r:System.Device.dll ^
   /r:System.Windows.Forms.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ^
   /resource:"%~dp0Themes\Light.xaml",ussd.Themes.Light.xaml ^

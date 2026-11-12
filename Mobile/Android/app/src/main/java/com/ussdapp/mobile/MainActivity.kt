@@ -11,15 +11,22 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
+import android.view.Gravity
+import android.view.View
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.content.FileProvider
 import org.json.JSONObject
 import com.ussdapp.relay.AgentReply
 import com.ussdapp.relay.AndroidRelayIdentity
@@ -46,6 +53,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var commandInput: EditText
     private lateinit var apiKeyInput: EditText
     private lateinit var aiPromptInput: EditText
+    private lateinit var speakRepliesToggle: CheckBox
     private lateinit var responseView: TextView
     private lateinit var relayEventsView: TextView
     private lateinit var relayHostInput: EditText
@@ -60,6 +68,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var trackerStatusView: TextView
     private lateinit var trackerOutputView: TextView
     private lateinit var trackerMapLinks: LinearLayout
+    private lateinit var appsStatusView: TextView
     private lateinit var locationButton: Button
     private lateinit var ai: GeminiAssistant
     private val trackerCredentials by lazy { TrackerCredentialStore(this) }
@@ -83,29 +92,50 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         ai = GeminiAssistant(this)
         speech = TextToSpeech(this, this)
 
-        val content = LinearLayout(this).apply {
+        window.statusBarColor = Color.rgb(9, 15, 27)
+        window.navigationBarColor = Color.rgb(9, 15, 27)
+
+        val appRoot = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(24))
+            setBackgroundColor(Color.rgb(9, 15, 27))
         }
-        content.addView(TextView(this).apply {
+        val appBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(14), dp(14), dp(14))
+            setBackgroundColor(Color.rgb(16, 25, 41))
+        }
+        val brand = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        brand.addView(TextView(this).apply {
             text = "USSD Manager"
-            textSize = 28f
-            setTextColor(Color.rgb(22, 27, 34))
+            textSize = 18f
+            setTextColor(Color.rgb(238, 243, 251))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
-        content.addView(TextView(this).apply {
-            text = "Modem tools, private communication and device care."
-            textSize = 14f
-            setTextColor(Color.rgb(89, 99, 110))
-            setPadding(0, dp(4), 0, dp(16))
+        brand.addView(TextView(this).apply {
+            text = "Communication  ·  Device care"
+            textSize = 12f
+            setTextColor(Color.rgb(160, 174, 195))
         })
-        content.addView(Button(this).apply {
-            text = "Calls, video, chat and file transfer"
+        appBar.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
+        appBar.addView(Button(this).apply {
+            text = "Calls"
             isAllCaps = false
+            textSize = 12f
+            primaryAction()
+            contentDescription = "Open calls, video, chat and file transfer"
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, CallActivity::class.java))
             }
         })
+        appRoot.addView(appBar)
+
+        val content = createPageContent()
+        val chatContent = createPageContent()
+        val trackerContent = createPageContent()
+        addPageHeading(content, "Assistant", "Ask a question, use a local command, or manage your assistant settings.")
+        addPageHeading(chatContent, "Secure messages", "Connect to your trusted relay before sending an encrypted message.")
+        addPageHeading(trackerContent, "Apps", "Open Laptop Tracker for device management. Its own authentication, pairing, permissions, and privacy controls remain in effect.")
 
         val agentPanel = addSectionCard(content, "Agent workspace",
             "Ask a question or run a local assistant command. Requests are sent only when you submit them; this assistant cannot control devices.")
@@ -138,6 +168,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         agentPanel.addView(Button(this).apply {
             text = "Run /agent command"
             isAllCaps = false
+            primaryAction()
             setOnClickListener {
                 val value = commandInput.text.toString()
                 val prompt = agent.aiPromptForText(value)
@@ -152,17 +183,19 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         agentPanel.addView(Button(this).apply {
             text = "Speak command"
             isAllCaps = false
+            primaryAction()
             setOnClickListener { requestVoiceInput() }
         })
         responseView = TextView(this).apply {
             text = "Ready. Try /agent help."
             textSize = 15f
-            setTextColor(Color.rgb(36, 41, 47))
+            setTextColor(Color.rgb(229, 236, 247))
             setPadding(0, dp(10), 0, dp(8))
             setTextIsSelectable(true)
             background = GradientDrawable().apply {
-                setColor(Color.rgb(248, 250, 252))
-                cornerRadius = dp(8).toFloat()
+                setColor(Color.rgb(10, 17, 29))
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.rgb(42, 57, 78))
             }
         }
         agentPanel.addView(responseView)
@@ -171,13 +204,23 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             isAllCaps = false
             setOnClickListener { speak(responseView.text.toString()) }
         })
+        val speakReplies = CheckBox(this).apply {
+            text = "Read AI responses aloud"
+            isChecked = preferences.getBoolean("speak_replies", false)
+            setTextColor(Color.rgb(160, 174, 195))
+            setOnCheckedChangeListener { _, checked ->
+                preferences.edit().putBoolean("speak_replies", checked).apply()
+            }
+        }
+        speakRepliesToggle = speakReplies
+        agentPanel.addView(speakReplies)
         val providerPanel = addSectionCard(content, "AI provider",
             "Use your own API key. It is stored on this device and sent only when you submit an AI prompt.")
         providerPanel.addView(TextView(this).apply {
             text = "AI model: ${GeminiAssistant.DEFAULT_MODEL}\nPrompts are sent to Google only when you ask. " +
                 "A provider API key is required; any free quota is controlled by the provider."
             textSize = 12f
-            setTextColor(Color.rgb(89, 99, 110))
+            setTextColor(Color.rgb(160, 174, 195))
             setPadding(0, dp(12), 0, dp(4))
         })
         apiKeyInput = EditText(this).apply {
@@ -225,13 +268,14 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         agentPanel.addView(Button(this).apply {
             text = "Ask AI"
             isAllCaps = false
+            primaryAction()
             setOnClickListener {
                 askAi(aiPromptInput.text.toString())
                 aiPromptInput.text.clear()
             }
         })
 
-        val relayPanel = addSectionCard(content, "Secure relay chat",
+        val relayPanel = addSectionCard(chatContent, "Relay connection",
             "Compatible with the Windows ECHATK format. The app contacts your relay only when you tap Connect. TLS certificate and hostname validation stay enabled.")
         relayHostInput = EditText(this).apply {
             hint = "Relay hostname or IP"
@@ -260,6 +304,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         relayPanel.addView(Button(this).apply {
             text = "Connect to relay (TLS)"
             isAllCaps = false
+            primaryAction()
             setOnClickListener { connectRelay() }
         })
         recipientInput = EditText(this).apply {
@@ -277,6 +322,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         relayPanel.addView(Button(this).apply {
             text = "Send encrypted message"
             isAllCaps = false
+            primaryAction()
             setOnClickListener { sendSecureMessage() }
         })
         relayEventsView = TextView(this).apply {
@@ -286,71 +332,188 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         relayPanel.addView(relayEventsView)
 
-        val trackerPanel = addSectionCard(content, "Device pairing",
-            "Pair devices you control with the authenticated tracker service. HTTPS is required; credentials are protected by Android Keystore.")
-        trackerUrlInput = EditText(this).apply {
-            hint = "Tracker service URL (https://...)"
-            isSingleLine = true
-            setText(preferences.getString("tracker_url", ""))
+        val trackerApps = addSectionCard(trackerContent, "Laptop Tracker",
+            "The dedicated Laptop Tracker app manages device pairing, account access, permissions, and tracking. This launcher does not add remote shell or hidden device controls.")
+        appsStatusView = TextView(this).apply {
+            text = "Open Apps to launch Laptop Tracker. If it is not installed, Android will ask you to confirm installation."
+            textSize = 13f
+            setTextColor(Color.rgb(160, 174, 195))
+            setPadding(0, dp(4), 0, dp(12))
         }
-        trackerPanel.addView(trackerUrlInput)
-        trackerPairInput = EditText(this).apply {
-            hint = "Pairing code"
-            isSingleLine = true
-        }
-        trackerPanel.addView(trackerPairInput)
-        trackerDeviceInput = EditText(this).apply {
-            hint = "Device ID"
-            isSingleLine = true
-            setText(preferences.getString("tracker_device_id", ""))
-        }
-        trackerPanel.addView(trackerDeviceInput)
-        addTrackerButton(trackerPanel, "Generate pairing code") { client, _, _ ->
-            client.generatePair("phone")
-        }
-        addTrackerButton(trackerPanel, "Verify pairing") { client, pair, _ ->
-            client.verifyPair(pair)
-        }
-
-        val trackerActions = addSectionCard(content, "Recovery actions",
-            "Actions require this paired device's credential. Location sharing is a one-time action you start here; lost mode changes server status only.")
-        addTrackerButton(trackerActions, "Refresh status") { client, _, device ->
-            client.pairInfo(device)
-        }
-        addTrackerButton(trackerActions, "Send status-only check-in") { client, _, device ->
-            client.heartbeat(device, null, null, "ussd-app-status")
-        }
-        locationButton = Button(this).apply {
-            text = "Share current location once"
-            setOnClickListener { requestLocationCheckin() }
-        }
-        trackerActions.addView(locationButton)
-        addTrackerButton(trackerActions, "Enable lost mode") { client, _, device ->
-            client.lostMode(device, true)
-        }
-        addTrackerButton(trackerActions, "Disable lost mode") { client, _, device ->
-            client.lostMode(device, false)
-        }
-
-        val trackerLocations = addSectionCard(content, "Last reported locations",
-            "These are stored reports, not a live map. Open Maps only when you choose; the map provider receives the selected coordinates.")
-        trackerStatusView = TextView(this).apply {
-            text = "Not connected."
-            setPadding(0, 8, 0, 4)
-        }
-        trackerLocations.addView(trackerStatusView)
-        trackerOutputView = TextView(this).apply {
-            text = ""
-            setTextIsSelectable(true)
-            setPadding(0, 4, 0, 12)
-        }
-        trackerLocations.addView(trackerOutputView)
-        trackerMapLinks = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        trackerLocations.addView(trackerMapLinks)
-        setContentView(ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(246, 248, 250))
-            addView(content)
+        trackerApps.addView(appsStatusView)
+        trackerApps.addView(Button(this).apply {
+            text = "Open Laptop Tracker"
+            isAllCaps = false
+            primaryAction()
+            setOnClickListener { openLaptopTrackerApp() }
         })
+        trackerApps.addView(TextView(this).apply {
+            text = "The included installer is handled by Android's package installer and requires your confirmation."
+            textSize = 12f
+            setTextColor(Color.rgb(160, 174, 195))
+            setPadding(0, dp(12), 0, 0)
+        })
+        val pages = listOf(content, chatContent, trackerContent).map { page ->
+            ScrollView(this).apply {
+                isFillViewport = true
+                setBackgroundColor(Color.rgb(9, 15, 27))
+                addView(page)
+            }
+        }
+        val pageHost = FrameLayout(this)
+        pages.forEachIndexed { index, page ->
+            if (index != (state?.getInt("selected_page", 0) ?: 0)) page.visibility = View.GONE
+            pageHost.addView(page, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ))
+        }
+        appRoot.addView(pageHost, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+
+        val navBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setBackgroundColor(Color.rgb(16, 25, 41))
+        }
+        val navButtons = listOf("Assistant", "Messages", "Apps").map { label ->
+            Button(this).apply {
+                text = label
+                isAllCaps = false
+                textSize = 12f
+                minHeight = dp(48)
+                minimumHeight = dp(48)
+                minWidth = 0
+                contentDescription = "Show $label"
+                setPadding(dp(4), dp(8), dp(4), dp(8))
+            }.also { button ->
+                navBar.addView(button, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                    leftMargin = dp(4)
+                    rightMargin = dp(4)
+                })
+            }
+        }
+        appRoot.addView(navBar)
+        fun selectPage(index: Int) {
+            val selected = index.coerceIn(0, pages.lastIndex)
+            val changed = selected != selectedPage
+            if (changed) {
+                pages[selectedPage].animate().cancel()
+                pages[selectedPage].visibility = View.GONE
+                pages[selected].apply {
+                    alpha = 0f
+                    translationY = dp(8).toFloat()
+                    visibility = View.VISIBLE
+                    animate().alpha(1f).translationY(0f).setDuration(180).start()
+                }
+            }
+            navButtons.forEachIndexed { buttonIndex, button ->
+                val active = buttonIndex == selected
+                button.setTextColor(if (active) Color.WHITE else Color.rgb(177, 190, 208))
+                button.background = roundedSurface(
+                    if (active) Color.rgb(49, 91, 206) else Color.rgb(22, 34, 52),
+                    dp(12)
+                )
+                button.isSelected = active
+            }
+            selectedPage = selected
+            if (selected == 2 && changed) openLaptopTrackerApp()
+        }
+        navButtons.forEachIndexed { index, button -> button.setOnClickListener { selectPage(index) } }
+        setContentView(appRoot)
+        selectPage(state?.getInt("selected_page", 0) ?: 0)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("selected_page", selectedPage)
+        super.onSaveInstanceState(outState)
+    }
+
+    private var selectedPage = 0
+
+    private fun createPageContent(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(16), dp(20), dp(16), dp(20))
+    }
+
+    private fun addPageHeading(parent: LinearLayout, title: String, description: String) {
+        parent.addView(TextView(this).apply {
+            text = title
+            textSize = 24f
+            setTextColor(Color.rgb(238, 243, 251))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        parent.addView(TextView(this).apply {
+            text = description
+            textSize = 13f
+            setTextColor(Color.rgb(160, 174, 195))
+            setPadding(0, dp(4), 0, dp(16))
+        })
+    }
+
+    private fun roundedSurface(color: Int, radius: Int): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius.toFloat()
+        }
+
+    private fun Button.primaryAction() {
+        background = getDrawable(R.drawable.button_primary)
+        setTextColor(Color.WHITE)
+        minHeight = dp(48)
+        minimumHeight = dp(48)
+    }
+
+    private fun openLaptopTrackerApp() {
+        try {
+            val installed = packageManager.getLaunchIntentForPackage(LAPTOP_TRACKER_PACKAGE)
+            if (installed != null) {
+                appsStatusView.text = "Laptop Tracker is installed. Opening it now."
+                startActivity(installed)
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !packageManager.canRequestPackageInstalls()) {
+                appsStatusView.text =
+                    "Allow USSD Manager to install apps in Android settings, then return and tap Open Laptop Tracker."
+                startActivity(Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName")
+                ))
+                return
+            }
+
+            val destination = java.io.File(cacheDir, "apps/laptop-tracker.apk")
+            destination.parentFile?.let { parent ->
+                if (!parent.exists() && !parent.mkdirs()) {
+                    throw java.io.IOException("Could not create the temporary installer directory.")
+                }
+            }
+            assets.open(LAPTOP_TRACKER_APK_ASSET).use { input ->
+                destination.outputStream().use { output -> input.copyTo(output) }
+            }
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", destination)
+            val installer = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                data = uri
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                putExtra(Intent.EXTRA_RETURN_RESULT, true)
+                clipData = android.content.ClipData.newRawUri("Laptop Tracker installer", uri)
+            }
+            appsStatusView.text =
+                "Laptop Tracker is not installed. Confirm installation in Android's package installer."
+            startActivity(installer)
+        } catch (error: Exception) {
+            val message = "Could not open or install Laptop Tracker: ${error.message ?: "unknown error"}"
+            if (::appsStatusView.isInitialized) appsStatusView.text = message
+        }
+    }
+
+    companion object {
+        private const val LAPTOP_TRACKER_PACKAGE = "com.find.tracker"
+        private const val LAPTOP_TRACKER_APK_ASSET = "laptop-tracker.apk"
     }
 
     private fun addSectionCard(parent: LinearLayout, title: String, description: String): LinearLayout {
@@ -358,9 +521,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(16), dp(18), dp(14))
             background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = dp(14).toFloat()
-                setStroke(dp(1), Color.rgb(208, 215, 222))
+                setColor(Color.rgb(17, 27, 43))
+                cornerRadius = dp(16).toFloat()
+                setStroke(dp(1), Color.rgb(42, 57, 78))
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -372,13 +535,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         card.addView(TextView(this).apply {
             text = title
             textSize = 18f
-            setTextColor(Color.rgb(22, 27, 34))
+            setTextColor(Color.rgb(238, 243, 251))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         card.addView(TextView(this).apply {
             text = description
             textSize = 13f
-            setTextColor(Color.rgb(89, 99, 110))
+            setTextColor(Color.rgb(160, 174, 195))
             setPadding(0, dp(5), 0, dp(8))
         })
         parent.addView(card)
@@ -516,7 +679,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     } else ""
                     trackerMapLinks.addView(TextView(this).apply {
                         text = "$deviceId · $status$lost$timestamp\n${"%.6f".format(java.util.Locale.US, lat)}, ${"%.6f".format(java.util.Locale.US, lng)}"
-                        setTextColor(Color.rgb(89, 99, 110))
+                        setTextColor(Color.rgb(160, 174, 195))
                         setPadding(0, dp(8), 0, dp(4))
                     })
                     points.add(Triple(deviceId, lat, lng))
@@ -560,7 +723,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (found == 0) {
                 trackerMapLinks.addView(TextView(this).apply {
                     text = "No paired-device location has been reported. The device must share a location while it is available."
-                    setTextColor(Color.rgb(89, 99, 110))
+                    setTextColor(Color.rgb(160, 174, 195))
                     setPadding(0, dp(8), 0, dp(4))
                 })
             }
@@ -852,6 +1015,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     }
 
     private fun askAi(prompt: String, speakResponse: Boolean = false) {
+        val shouldSpeak = speakResponse ||
+            (::speakRepliesToggle.isInitialized && speakRepliesToggle.isChecked)
         if (prompt.isBlank()) {
             showReply(AgentReply("Enter a question or say a question after the wake name."))
             return
@@ -864,7 +1029,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         ai.ask(prompt) { result ->
             runOnUiThread {
                 result.fold(
-                    onSuccess = { answer -> showReply(AgentReply(answer), speakResponse) },
+                    onSuccess = { answer -> showReply(AgentReply(answer), shouldSpeak) },
                     onFailure = { error ->
                         showReply(AgentReply("AI request failed: ${error.message ?: "unknown provider error"}"))
                     }

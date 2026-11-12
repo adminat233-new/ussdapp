@@ -2125,6 +2125,7 @@ namespace UssdApp
         public string tracker_pair_code = "";
         public string tracker_device_id = "";
         public string tracker_token_protected = "";
+        public string laptop_tracker_exe = "";
         public bool host_calls = false;    // run the call server on this PC
         // Put a call's audio/video on the relay instead of trying UDP first. Off by
         // default; it exists for networks that block or shape UDP, and it is NOT what
@@ -2160,7 +2161,7 @@ namespace UssdApp
         public bool gateway_enabled = false;
         public string gateway_name = "";
         // UI / identity / connectivity tokens.
-        public string theme = "light";             // "light" | "dark"
+        public string theme = "dark";              // "light" | "dark"
         public string display_name = "";           // shown to peers on calls & messages
         public string stun_servers = "stun.l.google.com:19302,stun1.l.google.com:19302,stun.stunprotocol.org:3478,stun.voip.blackberry.com:3478";
         // Call audio quality / archive.
@@ -3601,6 +3602,9 @@ namespace UssdApp
         private Grid _contentHost;
         private readonly System.Collections.Generic.List<FrameworkElement> _pages = new System.Collections.Generic.List<FrameworkElement>();
         private readonly System.Collections.Generic.List<string> _pageNames = new System.Collections.Generic.List<string>();
+        private readonly System.Collections.Generic.List<string> _pageIcons = new System.Collections.Generic.List<string>();
+        private readonly System.Collections.Generic.List<string> _pageLabels = new System.Collections.Generic.List<string>();
+        private readonly System.Collections.Generic.List<TextBlock> _navSectionLabels = new System.Collections.Generic.List<TextBlock>();
         private RowDefinition _logRow;
         private Grid _dialerGrid;
         private Grid _smsGrid;
@@ -3622,11 +3626,22 @@ namespace UssdApp
         private TextBox _agentPrompt, _agentResponse;
         private TextBlock _agentStatus;
         private Button _agentAskButton;
+        private StackPanel _agentTranscript;
+        private ScrollViewer _agentChatScroll;
         private TextBox _trackerServerBox, _trackerPairBox, _trackerDeviceBox, _trackerOutput;
         private TextBlock _trackerStatus;
         private StackPanel _trackerMapLinks;
+        private Canvas _trackerMapCanvas;
+        private TextBlock _trackerMapHint;
+        private List<Tuple<string, double, double>> _trackerMapPoints;
         private readonly List<Button> _trackerActionButtons = new List<Button>();
         private bool _trackerBusy;
+        private TextBlock _appsStatus;
+        private string _laptopTrackerExe;
+        private Process _laptopTrackerProcess;
+        private System.Speech.Synthesis.SpeechSynthesizer _agentSpeech;
+        private CheckBox _agentSpeakReplies;
+        private string _agentLastResponse = "";
         // modem setup popover (shown when user clicks COM pill)
         private System.Windows.Controls.Primitives.Popup _modemPopup;
         // video conference page (was: separate popup window)
@@ -6373,6 +6388,38 @@ namespace UssdApp
             return b;
         }
 
+        private static FrameworkElement MakeTelemetrySep()
+        {
+            return new Border
+            {
+                Width = 1,
+                Height = 14,
+                Background = Theme.CardBorder,
+                Margin = new Thickness(8, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+        }
+
+        private static FrameworkElement MakeTelemetryItem(string icon, TextBlock value)
+        {
+            StackPanel row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            row.Children.Add(new TextBlock
+            {
+                Text = icon,
+                FontSize = 12,
+                Foreground = Theme.Subtle,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0)
+            });
+            value.VerticalAlignment = VerticalAlignment.Center;
+            row.Children.Add(value);
+            return row;
+        }
+
         private static TextBox MakeTextBox(double width)
         {
             // Surface colors come from the implicit TextBox style (theme tokens).
@@ -6405,6 +6452,14 @@ namespace UssdApp
                 FontFamily = new FontFamily("Segoe UI")
             };
             WireButtonEffects(b);
+            return b;
+        }
+
+        private static Button MakeStyledButton(string text, string styleKey)
+        {
+            Button b = MakeButton(text);
+            Style s = TryStyle(styleKey);
+            if (s != null) b.Style = s;
             return b;
         }
 
@@ -6558,19 +6613,19 @@ namespace UssdApp
                 Foreground = BrushGray,
                 VerticalAlignment = VerticalAlignment.Center
             };
-            // Wrap the COM pill in a clickable button that opens the modem setup popover
             Button pillComBtn = new Button
             {
-                Content = _pillCom,
+                Content = MakeTelemetryItem("\uD83D\uDD0C", _pillCom),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand,
                 ToolTip = "Click to open Modem Setup (port, baud, connect)",
-                Padding = new Thickness(6, 3, 6, 3)
+                Padding = new Thickness(4, 0, 4, 0)
             };
+            Style ghostCom = TryStyle("GhostButton");
+            if (ghostCom != null) pillComBtn.Style = ghostCom;
+            pillComBtn.BorderThickness = new Thickness(0);
             pillComBtn.Click += delegate { ShowModemSetupPopover(pillComBtn); };
-            DockPanel.SetDock(pillComBtn, Dock.Right);
-            hd.Children.Add(pillComBtn);
 
             _sigText = new TextBlock
             {
@@ -6578,8 +6633,6 @@ namespace UssdApp
                 Foreground = BrushGray,
                 VerticalAlignment = VerticalAlignment.Center
             };
-            Border pillSig = MakePill(_sigText, Theme.Pill);
-            DockPanel.SetDock(pillSig, Dock.Right);
             _status = new TextBlock
             {
                 Text = "Disconnected",
@@ -6587,8 +6640,6 @@ namespace UssdApp
                 Foreground = BrushError,
                 VerticalAlignment = VerticalAlignment.Center
             };
-            Border pillStatus = MakePill(_status, Theme.Pill);
-            DockPanel.SetDock(pillStatus, Dock.Right);
             TextBlock simPillText = new TextBlock
             {
                 Text = "no SIM",
@@ -6596,14 +6647,35 @@ namespace UssdApp
                 VerticalAlignment = VerticalAlignment.Center
             };
             _simPillText = simPillText;
-            Border pillSim = MakePill(simPillText, Theme.Pill);
-            DockPanel.SetDock(pillSim, Dock.Right);
+
+            StackPanel telemetryRow = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            telemetryRow.Children.Add(MakeTelemetryItem("\uD83D\uDCF1", simPillText));
+            telemetryRow.Children.Add(MakeTelemetrySep());
+            telemetryRow.Children.Add(MakeTelemetryItem("\uD83D\uDCF6", _sigText));
+            telemetryRow.Children.Add(MakeTelemetrySep());
+            telemetryRow.Children.Add(MakeTelemetryItem("\u25CF", _status));
+            telemetryRow.Children.Add(MakeTelemetrySep());
+            telemetryRow.Children.Add(pillComBtn);
+            Border telemetryCluster = new Border
+            {
+                Background = Theme.Pill,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(10, 4, 8, 4),
+                Margin = new Thickness(6, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = telemetryRow
+            };
+            DockPanel.SetDock(telemetryCluster, Dock.Right);
 
             hd.Children.Add(title);
             hd.Children.Add(_liveDot);
-            hd.Children.Add(pillStatus);
-            hd.Children.Add(pillSig);
-            hd.Children.Add(pillSim);
+            hd.Children.Add(telemetryCluster);
             header.Child = hd;
             Grid.SetRow(header, 0);
             root.Children.Add(header);
@@ -6672,24 +6744,54 @@ namespace UssdApp
                 "\uD83D\uDCAC  SMS",           // speech balloon
                 "\uD83D\uDCF1  SIM Manager",   // mobile phone (was ⚙, now distinct from Settings gear)
                 "\u2708  USSD",                // airplane / send
-                "\uD83D\uDCCD  Device Tracking", // location pin
+                "\uD83D\uDCE6  Apps",            // application package
                 "\uD83E\uDD16  Agent"          // assistant panel
             };
             Grid[] pageGrids = new Grid[]
             {
-                BuildDialerTab(), BuildContactsTab(), BuildVideoTab(), BuildSmsTab(), BuildSimTab(), BuildUssdTab(), BuildTrackerTab(), BuildAgentTab()
+                BuildDialerTab(), BuildContactsTab(), BuildVideoTab(), BuildSmsTab(), BuildSimTab(), BuildUssdTab(), BuildAppsTab(), BuildAgentTab()
+            };
+            string[] pageIcons = new string[]
+            {
+                "\uD83D\uDCDE", "\uD83D\uDC64", "\uD83D\uDCF9", "\uD83D\uDCAC",
+                "\uD83D\uDCF1", "\u2708", "\uD83D\uDCE6", "\uD83E\uDD16"
+            };
+            string[] pageLabels = new string[]
+            {
+                "Dialer", "Contacts", "Video Call", "SMS",
+                "SIM Manager", "USSD", "Apps", "Agent"
             };
             for (int i = 0; i < pageGrids.Length; i++)
             {
-                Border card = MakePageCard(pageGrids[i], i == 0, i != 3);
+                if (i == 0 || i == 4 || i == 7)
+                {
+                    string sectionName = i == 0 ? "COMMUNICATION" : (i == 4 ? "DEVICE TOOLS" : "ASSISTANT");
+                    TextBlock sectionLabel = new TextBlock
+                    {
+                        Text = sectionName,
+                        Foreground = BrushGray,
+                        FontWeight = FontWeights.Bold,
+                        FontSize = 10,
+                        Margin = new Thickness(8, i == 0 ? 2 : 14, 4, 5)
+                    };
+                    nav.Children.Add(sectionLabel);
+                    _navSectionLabels.Add(sectionLabel);
+                }
+                Border card = MakePageCard(pageGrids[i], i == 0, i != 3 && i != 6 && i != 7);
                 _pages.Add(card);
                 _pageNames.Add(pageNames[i]);
+                _pageIcons.Add(pageIcons[i]);
+                _pageLabels.Add(pageLabels[i]);
                 _contentHost.Children.Add(card);
 
                 Button navBtn = MakeButton(pageNames[i]);
                 Style navStyle = TryStyle("NavItem");
                 if (navStyle != null) navBtn.Style = navStyle;
                 navBtn.Margin = new Thickness(0, 2, 0, 2);
+                navBtn.MinHeight = 40;
+                navBtn.ToolTip = pageLabels[i];
+                System.Windows.Automation.AutomationProperties.SetName(navBtn, pageLabels[i]);
+                System.Windows.Automation.AutomationProperties.SetHelpText(navBtn, "Open " + pageLabels[i]);
                 int idx = i;
                 navBtn.Click += delegate { ShowPage(idx); };
                 nav.Children.Add(navBtn);
@@ -6850,92 +6952,143 @@ namespace UssdApp
 
         private Grid BuildAgentTab()
         {
-            Grid g = new Grid { Margin = new Thickness(14) };
-            StackPanel content = new StackPanel { MaxWidth = 1100, HorizontalAlignment = HorizontalAlignment.Stretch };
-            g.Children.Add(content);
+            Grid g = new Grid { Margin = new Thickness(14, 10, 14, 10) };
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            content.Children.Add(new TextBlock
+            StackPanel heading = new StackPanel { Margin = new Thickness(4, 0, 4, 10) };
+            heading.Children.Add(new TextBlock
             {
                 Text = "Agent panel",
                 FontSize = 22,
                 FontWeight = FontWeights.Bold,
-                Foreground = BrushFg,
-                Margin = new Thickness(4, 4, 4, 8)
+                Foreground = BrushFg
             });
-            content.Children.Add(new TextBlock
+            heading.Children.Add(new TextBlock
             {
-                Text = "Ask the configured AI assistant for help with USSD Manager. A prompt is sent only when you click Ask. The assistant provides text; it cannot run shell commands or control this PC, a phone, or a server.",
+                Text = "Ask the configured AI assistant, use safe local navigation commands, or read a response aloud. Prompts are sent only when you click Send. Device tracking and permissions stay in Laptop Tracker.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
-                Margin = new Thickness(4, 0, 4, 12)
+                Margin = new Thickness(0, 4, 0, 0)
             });
-
-            Grid workspace = new Grid { Margin = new Thickness(0, 0, 0, 8) };
-            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            StackPanel request = new StackPanel();
-            request.Children.Add(new TextBlock
+            CheckBox readReplies = new CheckBox
             {
-                Text = "Ask the assistant",
-                FontSize = 15,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = BrushFg,
-                Margin = new Thickness(2, 0, 2, 8)
-            });
-            _agentPrompt = MakeMultiBox();
-            _agentPrompt.Height = 110;
-            _agentPrompt.MaxLength = 4000;
-            _agentPrompt.AcceptsReturn = true;
-            _agentPrompt.HorizontalAlignment = HorizontalAlignment.Stretch;
-            _agentPrompt.Margin = new Thickness(4, 4, 4, 8);
-            request.Children.Add(_agentPrompt);
+                Content = "Read AI responses aloud",
+                Foreground = BrushGray,
+                IsChecked = false,
+                Margin = new Thickness(4, 8, 4, 0),
+                ToolTip = "Speech is local and starts only after you enable this option."
+            };
+            _agentSpeakReplies = readReplies;
+            heading.Children.Add(readReplies);
+            Grid.SetRow(heading, 0);
+            g.Children.Add(heading);
 
-            _agentAskButton = MakeButton("Ask assistant");
-            _agentAskButton.Margin = new Thickness(4, 4, 4, 8);
-            _agentAskButton.Click += async delegate { await RunAgentPromptAsync(); };
-            request.Children.Add(_agentAskButton);
+            Grid chat = new Grid();
+            chat.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            chat.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
+            _agentTranscript = new StackPanel { Margin = new Thickness(4, 4, 4, 8) };
+            _agentChatScroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Focusable = false
+            };
+            _agentChatScroll.Content = _agentTranscript;
             _agentStatus = new TextBlock
             {
                 Text = "Ready. Configure the assistant in Settings > AI.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
-                Margin = new Thickness(4, 4, 4, 8)
+                Margin = new Thickness(8, 8, 8, 8)
             };
-            request.Children.Add(_agentStatus);
-            Border requestCard = MakeServiceCard(request);
-            Grid.SetColumn(requestCard, 0);
-            workspace.Children.Add(requestCard);
+            _agentTranscript.Children.Add(_agentStatus);
 
-            StackPanel response = new StackPanel();
-            response.Children.Add(new TextBlock
-            {
-                Text = "Assistant response",
-                FontSize = 15,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = BrushFg,
-                Margin = new Thickness(2, 0, 2, 8)
-            });
             _agentResponse = MakeMultiBox();
             _agentResponse.IsReadOnly = true;
-            _agentResponse.MinHeight = 180;
-            _agentResponse.HorizontalAlignment = HorizontalAlignment.Stretch;
-            _agentResponse.Margin = new Thickness(4, 4, 4, 4);
-            response.Children.Add(_agentResponse);
-            Border responseCard = MakeServiceCard(response);
-            Grid.SetColumn(responseCard, 1);
-            workspace.Children.Add(responseCard);
-            workspace.SizeChanged += delegate
-            {
-                bool stackCards = workspace.ActualWidth < 900;
-                Grid.SetColumn(responseCard, stackCards ? 0 : 1);
-                Grid.SetRow(responseCard, stackCards ? 1 : 0);
-            };
-            content.Children.Add(workspace);
+            _agentResponse.Visibility = Visibility.Collapsed;
+            _agentTranscript.Children.Add(_agentResponse);
+
+            Border transcriptCard = MakeServiceCard(_agentChatScroll);
+            transcriptCard.Margin = new Thickness(0, 0, 0, 8);
+            transcriptCard.VerticalAlignment = VerticalAlignment.Stretch;
+            Grid.SetRow(transcriptCard, 0);
+            chat.Children.Add(transcriptCard);
+
+            Grid composer = new Grid();
+            composer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            composer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            composer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            _agentPrompt = MakeMultiBox();
+            _agentPrompt.Height = 72;
+            _agentPrompt.MaxLength = 4000;
+            _agentPrompt.AcceptsReturn = true;
+            _agentPrompt.HorizontalAlignment = HorizontalAlignment.Stretch;
+            _agentPrompt.VerticalAlignment = VerticalAlignment.Stretch;
+            _agentPrompt.Margin = new Thickness(0, 0, 8, 0);
+            _agentPrompt.PreviewKeyDown += AgentPromptKeyDown;
+            Grid.SetColumn(_agentPrompt, 0);
+            composer.Children.Add(_agentPrompt);
+
+            Button speak = MakeButton("Read aloud");
+            speak.Height = 40;
+            speak.Margin = new Thickness(0, 0, 8, 0);
+            speak.VerticalAlignment = VerticalAlignment.Bottom;
+            speak.ToolTip = "Speak the latest assistant response using the local Windows voice.";
+            speak.Click += delegate { SpeakAgentText(_agentLastResponse); };
+            Grid.SetColumn(speak, 1);
+            composer.Children.Add(speak);
+
+            _agentAskButton = MakeStyledButton("Send  \u2191", "PrimaryButton");
+            _agentAskButton.MinWidth = 96;
+            _agentAskButton.Height = 40;
+            _agentAskButton.VerticalAlignment = VerticalAlignment.Bottom;
+            _agentAskButton.Click += async delegate { await RunAgentPromptAsync(); };
+            Grid.SetColumn(_agentAskButton, 2);
+            composer.Children.Add(_agentAskButton);
+
+            Border composerCard = MakeServiceCard(composer);
+            composerCard.Margin = new Thickness(0);
+            Grid.SetRow(composerCard, 1);
+            chat.Children.Add(composerCard);
+
+            Grid.SetRow(chat, 1);
+            g.Children.Add(chat);
             return g;
+        }
+
+        private void AgentPromptKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Enter) return;
+            if (Keyboard.Modifiers == ModifierKeys.Shift) return;
+            e.Handled = true;
+            if (_agentAskButton != null && _agentAskButton.IsEnabled)
+                _agentAskButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        }
+
+        private void AppendAgentBubble(string text, bool fromUser)
+        {
+            if (_agentTranscript == null) return;
+            Border bubble = new Border
+            {
+                Background = fromUser ? Theme.Accent : Theme.Chrome,
+                BorderBrush = fromUser ? Theme.AccentHover : Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = fromUser ? new CornerRadius(14, 14, 4, 14) : new CornerRadius(14, 14, 14, 4),
+                Padding = new Thickness(12, 9, 12, 9),
+                Margin = fromUser ? new Thickness(72, 4, 8, 4) : new Thickness(8, 4, 72, 4),
+                HorizontalAlignment = fromUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+                MaxWidth = 760
+            };
+            bubble.Child = new TextBlock
+            {
+                Text = text ?? "",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = fromUser ? Brushes.White : BrushFg
+            };
+            _agentTranscript.Children.Add(bubble);
+            if (_agentChatScroll != null) _agentChatScroll.ScrollToEnd();
         }
 
         private async Task RunAgentPromptAsync()
@@ -6947,6 +7100,18 @@ namespace UssdApp
                 _agentStatus.Text = "Enter a question first.";
                 return;
             }
+            if (prompt.StartsWith("/agent", StringComparison.OrdinalIgnoreCase) &&
+                (prompt.Length == 6 || char.IsWhiteSpace(prompt[6])))
+            {
+                string localResponse = RunLocalAgentCommand(prompt);
+                _agentPrompt.Text = "";
+                AppendAgentBubble(prompt, true);
+                AppendAgentBubble(localResponse, false);
+                _agentLastResponse = localResponse;
+                _agentStatus.Text = "Local command completed. No prompt was sent to an AI provider.";
+                if (_agentSpeakReplies.IsChecked == true) SpeakAgentText(localResponse);
+                return;
+            }
             if (!_aiEnabled || string.IsNullOrEmpty(_aiApiKey))
             {
                 _agentStatus.Text = "Configure and enable the AI assistant in Settings > AI first.";
@@ -6954,17 +7119,23 @@ namespace UssdApp
                 return;
             }
 
+            _agentPrompt.Text = "";
+            AppendAgentBubble(prompt, true);
             _agentAskButton.IsEnabled = false;
             _agentStatus.Text = "Sending your prompt to the configured AI provider...";
             try
             {
                 string response = await Task.Run(delegate { return CallAiApi(prompt); });
                 _agentResponse.Text = response;
+                AppendAgentBubble(response, false);
+                _agentLastResponse = response;
                 _agentStatus.Text = "Response received. No device action was executed.";
+                if (_agentSpeakReplies.IsChecked == true) SpeakAgentText(response);
             }
             catch (Exception ex)
             {
                 _agentStatus.Text = "Assistant request failed: " + ex.Message;
+                AppendAgentBubble("Assistant request failed: " + ex.Message, false);
                 Log("Agent: " + ex.Message, BrushError);
             }
             finally
@@ -6973,36 +7144,312 @@ namespace UssdApp
             }
         }
 
+        private string RunLocalAgentCommand(string prompt)
+        {
+            string command = prompt.Length > 6 ? prompt.Substring(6).Trim() : "";
+            int split = command.IndexOfAny(new char[] { ' ', '\t', '\r', '\n' });
+            string verb = split < 0 ? command : command.Substring(0, split);
+            string argument = split < 0 ? "" : command.Substring(split).Trim();
+            if (string.Equals(verb, "help", StringComparison.OrdinalIgnoreCase) || verb.Length == 0)
+                return "Local commands: /agent help, /agent status, /agent open apps, /agent open dialer, /agent open contacts, /agent open video, /agent open messages, /agent open sim, /agent open ussd, and /agent say <text>. Device operations require the Laptop Tracker app.";
+            if (string.Equals(verb, "status", StringComparison.OrdinalIgnoreCase))
+                return "USSD Manager is open. Modem status: " + (_status != null ? _status.Text : "unknown") +
+                    ". Device controls remain in Laptop Tracker and were not triggered.";
+            if (string.Equals(verb, "say", StringComparison.OrdinalIgnoreCase))
+            {
+                if (argument.Length == 0) return "Add text after /agent say. No speech was played.";
+                if (argument.Length > 500) return "Speech is limited to 500 characters.";
+                SpeakAgentText(argument);
+                return "Spoke the text locally. No network request was made.";
+            }
+            if (string.Equals(verb, "open", StringComparison.OrdinalIgnoreCase))
+            {
+                int page = -1;
+                if (string.Equals(argument, "apps", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(argument, "tracking", StringComparison.OrdinalIgnoreCase)) page = 6;
+                else if (string.Equals(argument, "dialer", StringComparison.OrdinalIgnoreCase)) page = 0;
+                else if (string.Equals(argument, "contacts", StringComparison.OrdinalIgnoreCase)) page = 1;
+                else if (string.Equals(argument, "video", StringComparison.OrdinalIgnoreCase)) page = 2;
+                else if (string.Equals(argument, "messages", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(argument, "sms", StringComparison.OrdinalIgnoreCase)) page = 3;
+                else if (string.Equals(argument, "sim", StringComparison.OrdinalIgnoreCase)) page = 4;
+                else if (string.Equals(argument, "ussd", StringComparison.OrdinalIgnoreCase)) page = 5;
+                if (page >= 0)
+                {
+                    ShowPage(page);
+                    return page == 6
+                        ? "Opened Apps. " + (_appsStatus != null ? _appsStatus.Text : "Laptop Tracker was not launched.")
+                        : "Opened " + _pageLabels[page] + ".";
+                }
+            }
+            return "That command is not available. Use /agent help. No device action was run.";
+        }
+
+        private void SpeakAgentText(string text)
+        {
+            string value = (text ?? "").Trim();
+            if (value.Length == 0)
+            {
+                if (_agentStatus != null) _agentStatus.Text = "There is no response to read aloud yet.";
+                return;
+            }
+            try
+            {
+                if (_agentSpeech == null) _agentSpeech = new System.Speech.Synthesis.SpeechSynthesizer();
+                _agentSpeech.SpeakAsyncCancelAll();
+                _agentSpeech.SpeakAsync(value);
+            }
+            catch (Exception ex)
+            {
+                if (_agentStatus != null) _agentStatus.Text = "Local text-to-speech failed: " + ex.Message;
+                Log("Agent speech failed: " + ex.Message, BrushError);
+            }
+        }
+
+        private Grid BuildAppsTab()
+        {
+            Grid g = new Grid { Margin = new Thickness(18, 14, 18, 14) };
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            StackPanel heading = new StackPanel { Margin = new Thickness(4, 0, 4, 14) };
+            heading.Children.Add(new TextBlock
+            {
+                Text = "Apps",
+                FontSize = 24,
+                FontWeight = FontWeights.Bold,
+                Foreground = BrushFg
+            });
+            heading.Children.Add(new TextBlock
+            {
+                Text = "Open Laptop Tracker for device management. The tracker handles its own sign-in, pairing, permissions, and privacy controls.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                Margin = new Thickness(0, 4, 0, 0)
+            });
+            Grid.SetRow(heading, 0);
+            g.Children.Add(heading);
+
+            _appsStatus = new TextBlock
+            {
+                Text = "Laptop Tracker opens when you enter Apps.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                Margin = new Thickness(6, 0, 6, 8)
+            };
+            Grid.SetRow(_appsStatus, 1);
+            g.Children.Add(_appsStatus);
+
+            Grid cards = new Grid();
+            cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            StackPanel windows = new StackPanel();
+            windows.Children.Add(new TextBlock
+            {
+                Text = "Windows",
+                FontSize = 17,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = BrushFg
+            });
+            windows.Children.Add(new TextBlock
+            {
+                Text = "Laptop Tracker desktop app",
+                FontSize = 13,
+                Foreground = BrushGray,
+                Margin = new Thickness(0, 3, 0, 10)
+            });
+            if (string.IsNullOrEmpty(_laptopTrackerExe))
+                _laptopTrackerExe = AppConfig.Load().laptop_tracker_exe;
+            if (string.IsNullOrEmpty(_laptopTrackerExe))
+                _laptopTrackerExe = @"C:\Users\Admin\Documents\Default Project\laptop-tracker\windows-app\dist\FIND-App-win32-x64\FIND-App.exe";
+            TextBlock exePath = new TextBlock
+            {
+                Text = _laptopTrackerExe,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            windows.Children.Add(exePath);
+
+            WrapPanel windowsActions = new WrapPanel();
+            Button launch = MakeStyledButton("Open Laptop Tracker", "PrimaryButton");
+            launch.Margin = new Thickness(0, 0, 8, 6);
+            launch.Click += delegate { LaunchLaptopTracker(); };
+            windowsActions.Children.Add(launch);
+            Button browse = MakeButton("Choose app...");
+            browse.Margin = new Thickness(0, 0, 8, 6);
+            browse.Click += delegate
+            {
+                Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "Choose Laptop Tracker",
+                    Filter = "Laptop Tracker executable (FIND-App.exe;FIND.exe)|FIND-App.exe;FIND.exe|Executable files (*.exe)|*.exe",
+                    CheckFileExists = true,
+                    Multiselect = false
+                };
+                if (dialog.ShowDialog(this) != true) return;
+                _laptopTrackerExe = dialog.FileName;
+                AppConfig config = AppConfig.Load();
+                config.laptop_tracker_exe = _laptopTrackerExe;
+                config.Save();
+                exePath.Text = _laptopTrackerExe;
+                _appsStatus.Text = "Laptop Tracker path saved. Open it here or re-enter Apps to launch it.";
+            };
+            windowsActions.Children.Add(browse);
+            windows.Children.Add(windowsActions);
+
+            Border windowsCard = MakeServiceCard(windows);
+            windowsCard.Margin = new Thickness(4, 4, 8, 4);
+            Grid.SetColumn(windowsCard, 0);
+            cards.Children.Add(windowsCard);
+
+            StackPanel android = new StackPanel();
+            android.Children.Add(new TextBlock
+            {
+                Text = "Android",
+                FontSize = 17,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = BrushFg
+            });
+            android.Children.Add(new TextBlock
+            {
+                Text = "Laptop Tracker installer",
+                FontSize = 13,
+                Foreground = BrushGray,
+                Margin = new Thickness(0, 3, 0, 10)
+            });
+            string apkPath = @"C:\Users\Admin\Documents\Default Project\laptop-tracker\android-app\app\build\outputs\apk\debug\app-debug.apk";
+            android.Children.Add(new TextBlock
+            {
+                Text = apkPath,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                Margin = new Thickness(0, 0, 0, 10)
+            });
+            Button showApk = MakeButton("Show Android APK");
+            showApk.Click += delegate { OpenLaptopTrackerApkLocation(apkPath); };
+            android.Children.Add(showApk);
+            android.Children.Add(new TextBlock
+            {
+                Text = "Copy the APK to your Android device and install it through Android's package installer. The installer will ask you to confirm.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                Margin = new Thickness(0, 10, 0, 0)
+            });
+            Border androidCard = MakeServiceCard(android);
+            androidCard.Margin = new Thickness(8, 4, 4, 4);
+            Grid.SetColumn(androidCard, 1);
+            cards.Children.Add(androidCard);
+
+            Grid.SetRow(cards, 2);
+            g.Children.Add(cards);
+            return g;
+        }
+
+        private void LaunchLaptopTracker()
+        {
+            try
+            {
+                if (_laptopTrackerProcess != null && !_laptopTrackerProcess.HasExited)
+                {
+                    _appsStatus.Text = "Laptop Tracker is already running.";
+                    return;
+                }
+                if (_laptopTrackerProcess != null)
+                {
+                    _laptopTrackerProcess.Dispose();
+                    _laptopTrackerProcess = null;
+                }
+                if (string.IsNullOrWhiteSpace(_laptopTrackerExe) || !File.Exists(_laptopTrackerExe))
+                {
+                    _appsStatus.Text = "Laptop Tracker was not found. Choose its executable, then open it again.";
+                    Log("Laptop Tracker executable is missing: " + (_laptopTrackerExe ?? ""), BrushWarn);
+                    return;
+                }
+                string path = Path.GetFullPath(_laptopTrackerExe);
+                _laptopTrackerProcess = Process.Start(new ProcessStartInfo
+                {
+                    FileName = path,
+                    WorkingDirectory = Path.GetDirectoryName(path),
+                    UseShellExecute = true
+                });
+                if (_laptopTrackerProcess == null)
+                    throw new InvalidOperationException("Windows did not return a process for Laptop Tracker.");
+                _appsStatus.Text = "Laptop Tracker is open. Device access and tracking controls are managed in its window.";
+                Log("Opened Laptop Tracker.", BrushSuccess);
+            }
+            catch (Exception ex)
+            {
+                _appsStatus.Text = "Laptop Tracker could not be opened: " + ex.Message;
+                Log("Laptop Tracker launch failed: " + ex.Message, BrushError);
+            }
+        }
+
+        private void OpenLaptopTrackerApkLocation(string path)
+        {
+            if (!File.Exists(path))
+            {
+                _appsStatus.Text = "Laptop Tracker Android APK was not found at " + path;
+                Log("Laptop Tracker APK is missing: " + path, BrushWarn);
+                return;
+            }
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = "/select,\"" + path + "\"",
+                    UseShellExecute = true
+                });
+                _appsStatus.Text = "Opened File Explorer with the Laptop Tracker Android APK selected.";
+            }
+            catch (Exception ex)
+            {
+                _appsStatus.Text = "The APK could not be shown in File Explorer: " + ex.Message;
+                Log("Laptop Tracker APK open failed: " + ex.Message, BrushError);
+            }
+        }
+
         private Grid BuildTrackerTab()
         {
-            Grid g = new Grid { Margin = new Thickness(14) };
-            StackPanel content = new StackPanel { MaxWidth = 1240, HorizontalAlignment = HorizontalAlignment.Stretch };
-            g.Children.Add(content);
+            Grid g = new Grid { Margin = new Thickness(14, 10, 14, 10) };
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            content.Children.Add(new TextBlock
+            StackPanel heading = new StackPanel { Margin = new Thickness(4, 0, 4, 10) };
+            heading.Children.Add(new TextBlock
             {
                 Text = "Device tracking session",
                 FontSize = 22,
                 FontWeight = FontWeights.Bold,
-                Foreground = BrushFg,
-                Margin = new Thickness(4, 4, 4, 8)
+                Foreground = BrushFg
             });
-            content.Children.Add(new TextBlock
+            heading.Children.Add(new TextBlock
             {
                 Text = "Connect to the authenticated tracker service for paired-device status and last reported locations. Refresh status to view those points on a map. This app never tracks in the background; it reads and shares its own location only after you click Share current location once.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
-                Margin = new Thickness(4, 0, 4, 12)
+                Margin = new Thickness(0, 4, 0, 0)
             });
+            Grid.SetRow(heading, 0);
+            g.Children.Add(heading);
 
-            Grid workspace = new Grid { Margin = new Thickness(0, 0, 0, 8) };
-            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(360) });
+            Grid workspace = new Grid();
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(380) });
             workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            workspace.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            StackPanel controls = new StackPanel { Margin = new Thickness(0, 0, 8, 0) };
-            StackPanel results = new StackPanel { Margin = new Thickness(8, 0, 0, 0) };
-            workspace.Children.Add(controls);
+
+            ScrollViewer controlScroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            StackPanel controls = new StackPanel();
+            controlScroll.Content = controls;
 
             StackPanel connection = new StackPanel();
             connection.Children.Add(new TextBlock
@@ -7037,76 +7484,117 @@ namespace UssdApp
             });
             WrapPanel actions = new WrapPanel { Margin = new Thickness(0, 2, 0, 4) };
             AddTrackerAction(actions, "Generate pairing code", "Generate pairing code", false, false,
-                delegate(TrackerBridge bridge, string pair, string device) { return bridge.GeneratePair(); });
+                delegate(TrackerBridge bridge, string pair, string device) { return bridge.GeneratePair(); }, "PrimaryButton");
             AddTrackerAction(actions, "Verify pairing", "Verify pairing", true, false,
-                delegate(TrackerBridge bridge, string pair, string device) { return bridge.VerifyPair(pair); });
+                delegate(TrackerBridge bridge, string pair, string device) { return bridge.VerifyPair(pair); }, "GhostButton");
             AddTrackerAction(actions, "Refresh status", "Refresh status", false, true,
-                delegate(TrackerBridge bridge, string pair, string device) { return bridge.PairInfo(device); });
+                delegate(TrackerBridge bridge, string pair, string device) { return bridge.PairInfo(device); }, "GhostButton");
             AddTrackerAction(actions, "Send status check-in", "Send status check-in", false, true,
-                delegate(TrackerBridge bridge, string pair, string device) { return bridge.Heartbeat(device, null, null, "ussd-app-status"); });
+                delegate(TrackerBridge bridge, string pair, string device) { return bridge.Heartbeat(device, null, null, "ussd-app-status"); }, "GhostButton");
             AddTrackerAction(actions, "Share current location once", "Share current location once", false, true,
                 delegate(TrackerBridge bridge, string pair, string device)
                 {
                     System.Device.Location.GeoCoordinate location = ReadCurrentLocationOnce();
                     return bridge.Heartbeat(device, location.Latitude, location.Longitude, "ussd-app-location");
-                });
+                }, "PrimaryButton");
             AddTrackerAction(actions, "Enable lost mode", "Enable lost mode", false, true,
-                delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, true); });
+                delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, true); }, "DangerQuietButton");
             AddTrackerAction(actions, "Disable lost mode", "Disable lost mode", false, true,
-                delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, false); });
+                delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, false); }, "GhostButton");
             actionCard.Children.Add(actions);
-
-            controls.Children.Add(new TextBlock
+            actionCard.Children.Add(new TextBlock
             {
                 Text = "Use HTTPS. Device credentials are protected with Windows DPAPI for this user. Share a generated pairing code only with a device you control.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
-                Margin = new Thickness(4, 0, 4, 8)
+                Margin = new Thickness(4, 8, 4, 0)
             });
             controls.Children.Add(MakeServiceCard(actionCard));
+            Grid.SetColumn(controlScroll, 0);
+            workspace.Children.Add(controlScroll);
 
-            results.Children.Add(new TextBlock
+            Grid results = new Grid { Margin = new Thickness(8, 0, 0, 0) };
+            results.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            results.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            results.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            StackPanel statusHead = new StackPanel();
+            statusHead.Children.Add(new TextBlock
             {
-                Text = "Latest reports",
+                Text = "Device status",
                 FontSize = 15,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = BrushFg,
-                Margin = new Thickness(2, 0, 2, 8)
+                Margin = new Thickness(2, 0, 2, 6)
             });
             _trackerStatus = new TextBlock
             {
                 Text = "Not connected",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
-                Margin = new Thickness(4, 4, 4, 4)
+                Margin = new Thickness(2, 0, 2, 8)
             };
-            results.Children.Add(_trackerStatus);
+            statusHead.Children.Add(_trackerStatus);
+            Grid.SetRow(statusHead, 0);
+            results.Children.Add(statusHead);
 
-            _trackerOutput = MakeMultiBox();
-            _trackerOutput.IsReadOnly = true;
-            _trackerOutput.MinHeight = 150;
-            _trackerOutput.HorizontalAlignment = HorizontalAlignment.Stretch;
-            _trackerOutput.Margin = new Thickness(4, 4, 4, 4);
-            results.Children.Add(_trackerOutput);
-            _trackerMapLinks = new StackPanel { Margin = new Thickness(4, 8, 4, 4) };
-            results.Children.Add(_trackerMapLinks);
-            results.Children.Add(new TextBlock
+            Grid mapHost = new Grid { MinHeight = 220 };
+            _trackerMapCanvas = new Canvas
             {
-                Text = "Locations are last reported points, not a live feed. Open Maps only when you choose; the map provider receives the selected coordinates.",
+                ClipToBounds = true,
+                Background = Theme.Chrome,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch
+            };
+            _trackerMapCanvas.SizeChanged += delegate { PlotTrackerMap(); };
+            _trackerMapHint = new TextBlock
+            {
+                Text = "Refresh status to plot last reported points. Locations are last reported, not a live feed.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
-                Margin = new Thickness(4, 8, 4, 4)
+                Margin = new Thickness(16),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            mapHost.Children.Add(_trackerMapCanvas);
+            mapHost.Children.Add(_trackerMapHint);
+            Grid.SetRow(mapHost, 1);
+            results.Children.Add(mapHost);
+
+            StackPanel report = new StackPanel();
+            _trackerOutput = MakeMultiBox();
+            _trackerOutput.IsReadOnly = true;
+            _trackerOutput.Height = 90;
+            _trackerOutput.HorizontalAlignment = HorizontalAlignment.Stretch;
+            _trackerOutput.Margin = new Thickness(0, 8, 0, 4);
+            report.Children.Add(_trackerOutput);
+            _trackerMapLinks = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+            report.Children.Add(_trackerMapLinks);
+            report.Children.Add(new TextBlock
+            {
+                Text = "Open Maps only when you choose; the map provider receives the selected coordinates.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                Margin = new Thickness(2, 8, 2, 0)
             });
+            Grid.SetRow(report, 2);
+            results.Children.Add(report);
+
             Border resultsCard = MakeServiceCard(results);
+            resultsCard.Margin = new Thickness(0);
             Grid.SetColumn(resultsCard, 1);
             workspace.Children.Add(resultsCard);
             workspace.SizeChanged += delegate
             {
-                bool stackCards = workspace.ActualWidth < 1000;
+                bool stackCards = workspace.ActualWidth < 900;
+                workspace.ColumnDefinitions[0].Width = stackCards ? new GridLength(1, GridUnitType.Star) : new GridLength(380);
                 Grid.SetColumn(resultsCard, stackCards ? 0 : 1);
                 Grid.SetRow(resultsCard, stackCards ? 1 : 0);
+                workspace.RowDefinitions[0].Height = stackCards ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+                workspace.RowDefinitions[1].Height = stackCards ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
             };
-            content.Children.Add(workspace);
+            Grid.SetRow(workspace, 1);
+            g.Children.Add(workspace);
             return g;
         }
 
@@ -7173,7 +7661,13 @@ namespace UssdApp
         private void AddTrackerAction(WrapPanel parent, string label, string action, bool needsPair, bool needsDevice,
             Func<TrackerBridge, string, string, TrackerBridge.Reply> request)
         {
-            Button button = MakeButton(label);
+            AddTrackerAction(parent, label, action, needsPair, needsDevice, request, null);
+        }
+
+        private void AddTrackerAction(WrapPanel parent, string label, string action, bool needsPair, bool needsDevice,
+            Func<TrackerBridge, string, string, TrackerBridge.Reply> request, string styleKey)
+        {
+            Button button = string.IsNullOrEmpty(styleKey) ? MakeButton(label) : MakeStyledButton(label, styleKey);
             button.Margin = new Thickness(3);
             button.Click += delegate { RunTrackerRequest(action, needsPair, needsDevice, request); };
             parent.Children.Add(button);
@@ -7385,6 +7879,71 @@ namespace UssdApp
                     Foreground = BrushGray,
                     Margin = new Thickness(2, 6, 2, 2)
                 });
+            _trackerMapPoints = points;
+            PlotTrackerMap();
+        }
+
+        private void PlotTrackerMap()
+        {
+            if (_trackerMapCanvas == null) return;
+            _trackerMapCanvas.Children.Clear();
+            double w = _trackerMapCanvas.ActualWidth;
+            double h = _trackerMapCanvas.ActualHeight;
+            if (w < 8 || h < 8) return;
+
+            for (int i = 0; i < 6; i++)
+            {
+                double x = (w / 6.0) * i;
+                double y = (h / 6.0) * i;
+                _trackerMapCanvas.Children.Add(new System.Windows.Shapes.Line
+                {
+                    X1 = x, Y1 = 0, X2 = x, Y2 = h,
+                    Stroke = Theme.CardBorder, StrokeThickness = 1
+                });
+                _trackerMapCanvas.Children.Add(new System.Windows.Shapes.Line
+                {
+                    X1 = 0, Y1 = y, X2 = w, Y2 = y,
+                    Stroke = Theme.CardBorder, StrokeThickness = 1
+                });
+            }
+
+            List<Tuple<string, double, double>> points = _trackerMapPoints;
+            if (points == null || points.Count == 0)
+            {
+                if (_trackerMapHint != null) _trackerMapHint.Visibility = Visibility.Visible;
+                return;
+            }
+            if (_trackerMapHint != null) _trackerMapHint.Visibility = Visibility.Collapsed;
+
+            double minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+            for (int i = 0; i < points.Count; i++)
+            {
+                if (points[i].Item2 < minLat) minLat = points[i].Item2;
+                if (points[i].Item2 > maxLat) maxLat = points[i].Item2;
+                if (points[i].Item3 < minLng) minLng = points[i].Item3;
+                if (points[i].Item3 > maxLng) maxLng = points[i].Item3;
+            }
+            if (Math.Abs(maxLat - minLat) < 0.002) { minLat -= 0.01; maxLat += 0.01; }
+            if (Math.Abs(maxLng - minLng) < 0.002) { minLng -= 0.01; maxLng += 0.01; }
+
+            for (int i = 0; i < points.Count; i++)
+            {
+                double nx = (points[i].Item3 - minLng) / (maxLng - minLng);
+                double ny = 1.0 - (points[i].Item2 - minLat) / (maxLat - minLat);
+                double cx = 16 + nx * (w - 32);
+                double cy = 16 + ny * (h - 32);
+                System.Windows.Shapes.Ellipse pin = new System.Windows.Shapes.Ellipse
+                {
+                    Width = 14,
+                    Height = 14,
+                    Fill = Theme.Accent,
+                    Stroke = Brushes.White,
+                    StrokeThickness = 2
+                };
+                Canvas.SetLeft(pin, cx - 7);
+                Canvas.SetTop(pin, cy - 7);
+                _trackerMapCanvas.Children.Add(pin);
+            }
         }
 
         private void SetTrackerButtonsEnabled(bool enabled)
@@ -11962,6 +12521,8 @@ namespace UssdApp
                 _sidebarCol.Width = new GridLength(220);
                 _sidebar.Visibility = Visibility.Visible;
                 _sidebar.Padding = new Thickness(10, 12, 10, 10);
+                for (int i = 0; i < _navSectionLabels.Count; i++)
+                    _navSectionLabels[i].Visibility = Visibility.Visible;
                 // Show full nav button text
                 for (int i = 0; i < _navButtons.Count; i++)
                 {
@@ -11977,14 +12538,15 @@ namespace UssdApp
                 _sidebarCol.Width = new GridLength(52);
                 _sidebar.Visibility = Visibility.Visible;
                 _sidebar.Padding = new Thickness(4, 12, 4, 10);
+                for (int i = 0; i < _navSectionLabels.Count; i++)
+                    _navSectionLabels[i].Visibility = Visibility.Collapsed;
                 // Show only emoji icon in each nav button
-                string[] icons = new[] { "\uD83D\uDCDE", "\uD83D\uDC64", "\uD83D\uDCF9", "\uD83D\uDCAC", "\uD83D\uDCF1", "\u2708" };
-                for (int i = 0; i < _navButtons.Count && i < icons.Length; i++)
+                for (int i = 0; i < _navButtons.Count; i++)
                 {
-                    _navButtons[i].Content = icons[i];
+                    _navButtons[i].Content = _pageIcons[i];
                     _navButtons[i].HorizontalContentAlignment = HorizontalAlignment.Center;
                     _navButtons[i].Padding = new Thickness(4, 9, 4, 9);
-                    _navButtons[i].ToolTip = _pageNames[i].Trim();
+                    _navButtons[i].ToolTip = _pageLabels[i];
                 }
             }
         }
@@ -12075,6 +12637,7 @@ namespace UssdApp
             _pages[_pageIndex].Visibility = Visibility.Visible;
             AnimateSlideIn(_pages[_pageIndex]);
             HighlightNav();
+            if (index == 6) LaunchLaptopTracker();
         }
 
         // Switch the dialer between Cellular and VoIP transport modes.
@@ -16392,6 +16955,7 @@ namespace UssdApp
             _cfg.ai_model = _aiModel ?? "gpt-4o-mini";
             _cfg.ai_endpoint = _aiEndpoint ?? "https://api.openai.com/v1/chat/completions";
             _cfg.ai_enabled = _aiEnabled;
+            _cfg.laptop_tracker_exe = _laptopTrackerExe ?? "";
             _cfg.Save();
         }
 
@@ -16559,6 +17123,12 @@ namespace UssdApp
             try { if (_trayStateTimer != null) _trayStateTimer.Stop(); } catch { }
             try { if (_trayIcon != null) { _trayIcon.Visible = false; _trayIcon.Dispose(); } } catch { }
             try { ToneSynth.StopRing(); } catch { }
+            if (_agentSpeech != null)
+            {
+                _agentSpeech.SpeakAsyncCancelAll();
+                _agentSpeech.Dispose();
+                _agentSpeech = null;
+            }
             try { StopRecording(); } catch { }
             try { StopCamera(); } catch { }
             try { _bgRunning = false; if (_bgReconnectThread != null) _bgReconnectThread.Interrupt(); } catch { }

@@ -5,6 +5,8 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
@@ -84,98 +86,120 @@ class CallActivity : Activity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         val preferences = getSharedPreferences("assistant", MODE_PRIVATE)
+        window.statusBarColor = Color.rgb(9, 15, 27)
+        window.navigationBarColor = Color.rgb(9, 15, 27)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 20)
+            setPadding(dp(16), dp(18), dp(16), dp(20))
+            setBackgroundColor(Color.rgb(9, 15, 27))
         }
         root.addView(TextView(this).apply {
-            text = "Group calling"
-            textSize = 22f
+            text = "Calls and video"
+            textSize = 24f
+            setTextColor(Color.rgb(238, 243, 251))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         root.addView(TextView(this).apply {
             text = "Create or join an invitation. Voice stays connected when video is toggled. Calls support up to eight people. Audio/video are encrypted in transit but are not app-level end-to-end encrypted yet; chat and files use the invitation key."
-            setPadding(0, 6, 0, 10)
+            textSize = 13f
+            setTextColor(Color.rgb(160, 174, 195))
+            setPadding(0, dp(6), 0, dp(14))
         })
+        val setupPanel = sectionCard("Start or join a call")
+        root.addView(setupPanel)
         apiInput = EditText(this).apply {
             hint = "Call service URL (https://api.your-domain)"
             isSingleLine = true
             setText(preferences.getString("call_api_url", ""))
         }
-        root.addView(apiInput)
+        setupPanel.addView(apiInput)
         nameInput = EditText(this).apply {
             hint = "Your display name"
             isSingleLine = true
             setText(preferences.getString("call_display_name", android.os.Build.MODEL ?: "Android"))
         }
-        root.addView(nameInput)
+        setupPanel.addView(nameInput)
         val createActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         createActions.addView(Button(this).apply {
             text = "Start voice call"
+            isAllCaps = false
+            primaryAction()
             setOnClickListener { requestMicrophone { createRoomAndJoin(false) } }
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         createActions.addView(Button(this).apply {
             text = "Start video call"
+            isAllCaps = false
+            primaryAction()
             setOnClickListener { requestCameraAndMicrophone { createRoomAndJoin(true) } }
         }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(createActions)
+        setupPanel.addView(createActions)
         inviteView = TextView(this).apply {
             text = "Your invitation code appears here after creating a call."
             setTextIsSelectable(true)
             setPadding(0, 8, 0, 8)
         }
-        root.addView(inviteView)
-        root.addView(Button(this).apply {
+        setupPanel.addView(inviteView)
+        setupPanel.addView(Button(this).apply {
             text = "Share invitation"
+            isAllCaps = false
             setOnClickListener { shareInvitation() }
         })
         inviteInput = EditText(this).apply {
             hint = "Paste invitation code from a friend"
             isSingleLine = true
         }
-        root.addView(inviteInput)
-        root.addView(Button(this).apply {
+        setupPanel.addView(inviteInput)
+        setupPanel.addView(Button(this).apply {
             text = "Join call"
+            isAllCaps = false
+            primaryAction()
             setOnClickListener { requestMicrophone { joinInvitation(inviteInput.text.toString(), false) } }
         })
+        val callPanel = sectionCard("In-call workspace")
+        root.addView(callPanel)
         callStatus = TextView(this).apply {
             text = "Not in a call."
-            setPadding(0, 8, 0, 8)
+            setPadding(0, dp(8), 0, dp(8))
         }
-        root.addView(callStatus)
+        callPanel.addView(callStatus)
 
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         microphoneButton = Button(this).apply {
             text = "Mute microphone"
+            isAllCaps = false
             isEnabled = false
             setOnClickListener { toggleMicrophone() }
         }
         cameraButton = Button(this).apply {
             text = "Turn video on"
+            isAllCaps = false
             isEnabled = false
             setOnClickListener { toggleCamera() }
         }
         controls.addView(microphoneButton, LinearLayout.LayoutParams(0, -2, 1f))
         controls.addView(cameraButton, LinearLayout.LayoutParams(0, -2, 1f))
-        root.addView(controls)
+        callPanel.addView(controls)
 
         tiles = GridLayout(this).apply {
             columnCount = 1
             useDefaultMargins = true
         }
-        root.addView(tiles)
+        callPanel.addView(tiles)
         chatLog = TextView(this).apply {
             text = "In-call chat is end-to-end encrypted with the invitation's private key."
             setTextIsSelectable(true)
             setPadding(0, 8, 0, 8)
         }
-        root.addView(chatLog)
+        callPanel.addView(chatLog)
         chatInput = EditText(this).apply {
             hint = "Message people in this call"
         }
-        root.addView(chatInput)
+        callPanel.addView(chatInput)
         val chatActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         chatActions.addView(Button(this).apply {
             text = "Send encrypted chat"
+            isAllCaps = false
+            primaryAction()
             setOnClickListener { sendChat() }
         }, LinearLayout.LayoutParams(0, -2, 1f))
         transferButton = Button(this).apply {
@@ -192,20 +216,57 @@ class CallActivity : Activity() {
             }
         }
         chatActions.addView(transferButton, LinearLayout.LayoutParams(0, -2, 1f))
-        root.addView(chatActions)
+        callPanel.addView(chatActions)
         saveIncomingButton = Button(this).apply {
             text = "Save received file"
             setOnClickListener { chooseIncomingFileDestination() }
             visibility = View.GONE
         }
-        root.addView(saveIncomingButton)
-        root.addView(Button(this).apply {
+        callPanel.addView(saveIncomingButton)
+        callPanel.addView(Button(this).apply {
             text = "Leave call"
+            isAllCaps = false
             setOnClickListener { leaveCall() }
         })
 
-        setContentView(ScrollView(this).apply { addView(root) })
+        setContentView(ScrollView(this).apply {
+            setBackgroundColor(Color.rgb(9, 15, 27))
+            addView(root)
+        })
         rebuildTiles()
+    }
+
+    private fun sectionCard(title: String): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(16), dp(14), dp(16), dp(14))
+        background = GradientDrawable().apply {
+            setColor(Color.rgb(17, 27, 43))
+            cornerRadius = dp(16).toFloat()
+            setStroke(dp(1), Color.rgb(42, 57, 78))
+        }
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            bottomMargin = dp(14)
+        }
+        addView(TextView(this@CallActivity).apply {
+            text = title
+            textSize = 17f
+            setTextColor(Color.rgb(238, 243, 251))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, 0, 0, dp(10))
+        })
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density + 0.5f).toInt()
+
+    private fun Button.primaryAction() {
+        background = getDrawable(R.drawable.button_primary)
+        setTextColor(Color.WHITE)
+        minHeight = dp(48)
+        minimumHeight = dp(48)
     }
 
     private fun requestMicrophone(continuation: () -> Unit) {

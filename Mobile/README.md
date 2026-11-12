@@ -28,6 +28,9 @@ the user taps the listen button; neither app keeps a microphone open in the
 background. Android uses the installed OS speech service (its offline
 preference may not be honored by every provider) and the system TTS engine.
 iOS requires on-device speech recognition support for the current language.
+Android can read AI replies aloud when the user enables **Read AI responses aloud**;
+the setting is saved on the device. Both platforms speak only in response to
+user-initiated interactions.
 The AI path uses Google's Gemini Developer API with the default
 `gemini-2.5-flash` model. Users must provide their own API key; Android stores
 it encrypted with an Android Keystore AES-GCM key, and iOS stores it in the
@@ -38,27 +41,37 @@ only when the user explicitly submits them. Local commands remain available
 without an API key. The model cannot invoke tracker actions, shell commands,
 or remote device control.
 
-Both mobile apps include an explicit Device Tracking session for the external
+The Windows **Apps** panel opens the configured Laptop Tracker desktop
+executable. The Android **Apps** destination opens the installed
+`com.find.tracker` app, or offers the bundled Laptop Tracker APK through
+Android's package installer if it is not installed. Android requires the user
+to allow installs from USSD Manager in system settings when that source is not
+already allowed, then confirm the installation in the package installer.
+Neither platform replaces Laptop Tracker's own sign-in, pairing, consent, or
+permission checks.
+
+The iOS app includes an explicit Device Tracking session for the external
 `laptop-tracker` service's authenticated `/api/v2/*` routes. Pairing returns a
-per-device bearer token; Android protects it with Android Keystore-backed
-AES-GCM, and iOS stores it in the device-only Keychain. Authenticated status,
+per-device bearer token stored in the device-only Keychain. Authenticated status,
 heartbeat, and lost-mode actions require the paired device's token. Pairing
 codes are shown for device pairing; device tokens are stored securely and
 redacted from tracker response output. Authenticated requests send the saved
-token as a Bearer authorization credential. The legacy `/api/*` routes remain available to existing
-tracker clients, but these mobile app screens do not call them.
+token as a Bearer authorization credential. Android USSD Manager routes device management to the dedicated Laptop Tracker
+app instead of calling tracker service APIs directly. The legacy `/api/*`
+routes remain available to existing tracker clients.
 
-Actions run only when the user taps them and require HTTPS. Status check-in
+In the iOS tracking session, actions run only when the user taps them and
+require HTTPS. Status check-in
 sends no coordinates. Paired-device reports show their last-known status and
 timestamps; when two locations are available, the app can open both in a
 user-selected map app. This is not a live map. A separate **Share current location once** action
 requires foreground location permission and requests a single location fix
 only after the user taps it; that fix is then sent to the configured tracker
 using the authenticated heartbeat route. Denying permission, turning off
-location, or failing to obtain a fix sends no coordinates. Neither platform
-requests background location permission or starts background tracking. No
-hidden capture, background autostart, or remote-shell execution path is added.
-Lost mode is a server-side status flag only; it does not lock or command a
+location, or failing to obtain a fix sends no coordinates. The iOS app does
+not request background location permission or start background tracking. No
+hidden capture, background autostart, or remote-shell execution path is added
+to USSD Manager. Lost mode is a server-side status flag only; it does not lock or command a
 device. The tracker service's v2 schema migration must be applied and the Prisma client
 regenerated before these routes can work in a deployment; no live migration
 was applied as part of this change.

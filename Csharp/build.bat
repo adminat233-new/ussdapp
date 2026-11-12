@@ -10,6 +10,7 @@ set PC=%GAC32%\PresentationCore\v4.0_4.0.0.0__31bf3856ad364e35\PresentationCore.
 set WB=%GAC%\WindowsBase\v4.0_4.0.0.0__31bf3856ad364e35\WindowsBase.dll
 set SX=%GAC%\System.Xaml\v4.0_4.0.0.0__b77a5c561934e089\System.Xaml.dll
 set SM=%GAC%\System.Management\v4.0_4.0.0.0__b03f5f7f11d50a3a\System.Management.dll
+set SS=%GAC%\System.Speech\v4.0_4.0.0.0__31bf3856ad364e35\System.Speech.dll
 
 echo Compiling C# WPF app with %CSC% ...
 "%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ ^
@@ -18,6 +19,7 @@ echo Compiling C# WPF app with %CSC% ...
   /r:"%PF%" /r:"%PC%" /r:"%WB%" /r:"%SX%" ^
   /r:System.Numerics.dll /r:System.Drawing.dll ^
   /r:System.Security.dll ^
+  /r:"%SS%" ^
   /r:System.Device.dll ^
   /r:System.Windows.Forms.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ^
   /resource:"%~dp0Themes\Light.xaml",ussd.Themes.Light.xaml ^
