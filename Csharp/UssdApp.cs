@@ -287,7 +287,33 @@ namespace UssdApp
                 { sb.AppendLine("Signed update rejects the wrong publisher key: FAIL"); secOk = false; }
                 else sb.AppendLine("Signed update rejects the wrong publisher key: OK");
 
-                // 9. Tracker bridge requires an HTTPS endpoint without embedded credentials.
+                // 9. A file chunk is independently encrypted/authenticated by
+                // the one-time transfer key disclosed only in the sealed offer.
+                byte[] transferSecret = new byte[32];
+                for (int i = 0; i < transferSecret.Length; i++) transferSecret[i] = (byte)(i * 7 + 3);
+                ChatKey transferTx = ChatKey.FromMaterial(transferSecret);
+                ChatKey transferRx = ChatKey.FromMaterial(transferSecret);
+                byte[] fileChunk = new byte[1024];
+                for (int i = 0; i < fileChunk.Length; i++) fileChunk[i] = (byte)(i * 13);
+                string sealedChunk = transferTx.Encrypt(Convert.ToBase64String(fileChunk));
+                byte[] sealedRaw = Convert.FromBase64String(sealedChunk);
+                sealedRaw[sealedRaw.Length / 2] ^= 1;
+                bool tamperRejected = transferRx.Decrypt(Convert.ToBase64String(sealedRaw)) == null;
+                string openedChunk = transferRx.Decrypt(sealedChunk);
+                bool chunkOk = false;
+                if (openedChunk != null)
+                {
+                    byte[] openedBytes = Convert.FromBase64String(openedChunk);
+                    chunkOk = openedBytes.Length == fileChunk.Length;
+                    if (chunkOk)
+                        for (int i = 0; i < fileChunk.Length; i++)
+                            if (openedBytes[i] != fileChunk[i]) { chunkOk = false; break; }
+                }
+                if (!chunkOk || !tamperRejected)
+                { sb.AppendLine("Encrypted file chunk roundtrip and tamper rejection: FAIL"); secOk = false; }
+                else sb.AppendLine("Encrypted file chunk roundtrip and tamper rejection: OK");
+
+                // 10. Tracker bridge requires an HTTPS endpoint without embedded credentials.
                 bool tr0 = TrackerBridge.IsSafeServerUrl("http://127.0.0.1:8080");
                 bool tr1 = TrackerBridge.IsSafeServerUrl("https://example.com");
                 bool tr2 = TrackerBridge.IsSafeServerUrl("file://c:/tmp");
@@ -4251,9 +4277,9 @@ namespace UssdApp
                 // ── Advanced signal handlers ──────────────────────────────
                 _voip.ChatReadReceived += delegate(string f, long ts) { Dispatcher.BeginInvoke((Action)delegate { ChatMarkDelivered(f); }); };
                 _voip.ReactionReceived += delegate(string f, string mid, string em) { Dispatcher.BeginInvoke((Action)delegate { HandleReactionReceived(f, mid, em); }); };
-                _voip.FileOfferReceived += delegate(string f, string tid, string nm, long sz) { Dispatcher.BeginInvoke((Action)delegate { HandleFileOffer(f, tid, nm, sz); }); };
+                _voip.FileOfferReceived += delegate(string f, string tid, string nm, long sz, string key, string hash) { Dispatcher.BeginInvoke((Action)delegate { HandleFileOffer(f, tid, nm, sz, key, hash); }); };
                 _voip.FileAcceptReceived += delegate(string f, string tid, int port) { Dispatcher.BeginInvoke((Action)delegate { HandleFileAccept(f, tid, port); }); };
-                _voip.FileRejectReceived += delegate(string f, string tid) { Dispatcher.BeginInvoke((Action)delegate { Log("File transfer rejected by " + f + " [" + tid + "]", BrushWarn); }); };
+                _voip.FileRejectReceived += delegate(string f, string tid) { Dispatcher.BeginInvoke((Action)delegate { HandleFileReject(f, tid); }); };
                 _voip.ChatAckReceived += delegate(string f) { Dispatcher.BeginInvoke((Action)delegate { ChatMarkDelivered(f); }); };
                 _voip.ChatTypingReceived += delegate(string f, bool on) { Dispatcher.BeginInvoke((Action)delegate { ChatShowPeerTyping(f, on); }); };
                 _voip.ChatQueued += delegate(string f) { Dispatcher.BeginInvoke((Action)delegate { ChatQueuedNotice(f); }); };
@@ -10971,150 +10997,374 @@ namespace UssdApp
         private readonly Dictionary<string, FileTransferSession> _transfers =
             new Dictionary<string, FileTransferSession>();
 
-        private void OfferFileTransfer(string peerNumber, string filePath)
+        private bool PrepareFileTransfer(string peerNumber, string filePath, out string transferId,
+            out string fileName, out long size, out string error)
         {
-            if (!File.Exists(filePath)) { Log("File not found: " + filePath, BrushWarn); return; }
-            if (_voip == null || !_voip.RelayReady) { Log("File transfer requires relay.", BrushWarn); return; }
-            string id = Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
-            long size = new FileInfo(filePath).Length;
-            string name = Path.GetFileName(filePath);
-            FileTransferSession s = new FileTransferSession
+            transferId = null;
+            fileName = null;
+            size = 0;
+            error = null;
+            try
             {
-                Id = id, PeerNumber = peerNumber, FilePath = filePath,
-                FileName = name, SizeBytes = size, Direction = "out", State = "offered"
-            };
-            _transfers[id] = s;
-            _voip.SendFileOffer(peerNumber, name, size, id);
-            Log("File offer sent: " + name + " (" + (size / 1024) + " KB)  ID=" + id, BrushAccent);
-            // Add progress bubble to chat
-            ChatPersist("sys", peerNumber, "\uD83D\uDCCE Offering file: " + name +
-                " (" + (size / 1024) + " KB)  [" + id + "]");
+                if (!File.Exists(filePath)) throw new FileNotFoundException("Attachment file not found.", filePath);
+                FileInfo info = new FileInfo(filePath);
+                size = info.Length;
+                if (size > 52428800L) throw new InvalidOperationException("Attachments are limited to 50 MB.");
+                fileName = Path.GetFileName(filePath);
+                if (string.IsNullOrEmpty(fileName)) throw new InvalidOperationException("Attachment has no file name.");
+                string hash = FileSha256(filePath);
+                byte[] secret = new byte[32];
+                using (System.Security.Cryptography.RandomNumberGenerator rng =
+                    System.Security.Cryptography.RandomNumberGenerator.Create()) rng.GetBytes(secret);
+                string secretBase64 = Convert.ToBase64String(secret);
+                ChatKey transferKey = ChatKey.FromMaterial(secret);
+                Array.Clear(secret, 0, secret.Length);
+                transferId = Guid.NewGuid().ToString("N").Substring(0, 16).ToUpperInvariant();
+                FileTransferSession session = new FileTransferSession
+                {
+                    Id = transferId, PeerNumber = peerNumber, FilePath = filePath,
+                    FileName = fileName, SizeBytes = size, Direction = "out", State = "offered",
+                    TransferKey = transferKey, Sha256 = hash
+                };
+                _transfers[transferId] = session;
+                if (_voip == null || !_voip.SendFileOffer(peerNumber, fileName, size, transferId, secretBase64, hash))
+                    throw new InvalidOperationException("The secure file offer could not be sent. Establish an encrypted chat session and retry.");
+                Log("Secure file offer sent: " + fileName + " (" + FormatFileSize(size) + ").", BrushAccent);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                if (transferId != null) _transfers.Remove(transferId);
+                return false;
+            }
         }
 
-        private void HandleFileOffer(string from, string transferId, string name, long size)
+        private void HandleFileOffer(string from, string transferId, string name, long size, string keyBase64, string hash)
         {
-            Log("File offer from #" + from + ": " + name + " (" + (size / 1024) + " KB)", BrushAccent);
-            _transfers[transferId] = new FileTransferSession
+            try
             {
-                Id = transferId, PeerNumber = from, FileName = name,
-                SizeBytes = size, Direction = "in", State = "offered"
-            };
-            // Show accept/reject prompt in chat
-            string prompt = "\uD83D\uDCCE " + from + " wants to send you: " + name +
-                " (" + (size / 1024) + " KB)  [" + transferId + "]";
-            ChatPersist("sys", from, prompt);
-            // Toast notification
-            Toast.Show("File offer from #" + from, name + " (" + (size / 1024) + " KB)", delegate
-            {
-                AcceptFileTransfer(transferId, from);
-            });
+                string safeName = SafeReceivedFileName(name);
+                byte[] key = Convert.FromBase64String(keyBase64);
+                if (key.Length != 32 || size < 0 || size > 52428800L ||
+                    !Regex.IsMatch(hash ?? "", "^[A-Fa-f0-9]{64}$"))
+                {
+                    Array.Clear(key, 0, key.Length);
+                    throw new InvalidDataException("Invalid secure file offer.");
+                }
+                if (_transfers.ContainsKey(transferId))
+                {
+                    Array.Clear(key, 0, key.Length);
+                    throw new InvalidDataException("Duplicate file-transfer identifier.");
+                }
+                ChatKey transferKey = ChatKey.FromMaterial(key);
+                Array.Clear(key, 0, key.Length);
+                _transfers[transferId] = new FileTransferSession
+                {
+                    Id = transferId, PeerNumber = from, FileName = safeName,
+                    SizeBytes = size, Direction = "in", State = "offered",
+                    TransferKey = transferKey, Sha256 = hash.ToUpperInvariant()
+                };
+                Log("Encrypted file offer from #" + from + ": " + safeName + " (" + FormatFileSize(size) + ").", BrushAccent);
+                Toast.Show("File offer from #" + from, safeName + " (" + FormatFileSize(size) + ") - select to accept",
+                    delegate { AcceptFileTransfer(transferId, from); });
+                if (_chatOpenNum == from) ChatReRender();
+            }
+            catch (Exception ex) { Log("File offer rejected: " + ex.Message, BrushWarn); }
         }
 
         private void AcceptFileTransfer(string transferId, string from)
         {
             FileTransferSession s;
-            if (!_transfers.TryGetValue(transferId, out s)) return;
+            if (!_transfers.TryGetValue(transferId, out s) || s.Direction != "in" ||
+                s.PeerNumber != from || s.State != "offered") return;
             s.State = "accepted";
-            // Start TCP listener for the file data
             System.Threading.Tasks.Task.Run(delegate
             {
+                TcpListener lis = null;
+                TcpClient tc = null;
+                string partPath = null;
                 try
                 {
-                    TcpListener lis = new TcpListener(IPAddress.Any, 0);
+                    lis = new TcpListener(IPAddress.Any, 0);
                     lis.Start();
                     int port = ((IPEndPoint)lis.LocalEndpoint).Port;
-                    Dispatcher.BeginInvoke((Action)delegate
-                    {
-                        if (_voip != null) _voip.SendFileAccept(from, transferId, port);
-                        Log("File transfer: listening on port " + port, BrushGray);
-                    });
-                    lis.Server.ReceiveTimeout = 30000;
-                    TcpClient tc = lis.AcceptTcpClient();
+                    if (_voip == null || !_voip.SendFileAccept(from, transferId, port))
+                        throw new IOException("The encrypted acceptance could not be delivered.");
+                    Dispatcher.BeginInvoke((Action)delegate { Log("Accepting encrypted transfer: " + s.FileName, BrushGray); });
+                    tc = AcceptTransferClient(lis, 120000);
+                    tc.ReceiveTimeout = 30000;
+                    tc.SendTimeout = 30000;
                     lis.Stop();
-                    string savePath = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                        s.FileName);
+
+                    string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                        "USSD Manager", "Received Files");
+                    Directory.CreateDirectory(folder);
+                    partPath = Path.Combine(folder, transferId + ".part");
                     using (NetworkStream ns = tc.GetStream())
-                    using (FileStream fs = File.Create(savePath))
+                    using (FileStream fs = new FileStream(partPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     {
-                        byte[] buf = new byte[65536];
                         long received = 0;
-                        int n;
-                        while ((n = ns.Read(buf, 0, buf.Length)) > 0)
+                        int lastPct = -1;
+                        while (received < s.SizeBytes)
                         {
-                            fs.Write(buf, 0, n);
-                            received += n;
-                            int pct = (int)(received * 100 / Math.Max(1, s.SizeBytes));
-                            Dispatcher.BeginInvoke((Action)delegate
+                            byte[] frame = ReadTransferFrame(ns);
+                            string plain = s.TransferKey.Decrypt(Encoding.ASCII.GetString(frame));
+                            if (plain == null) throw new InvalidDataException("A file chunk failed authentication.");
+                            byte[] chunk = Convert.FromBase64String(plain);
+                            if (chunk.Length == 0 || chunk.Length > 24 * 1024 || received + chunk.Length > s.SizeBytes)
+                                throw new InvalidDataException("Invalid file chunk length.");
+                            fs.Write(chunk, 0, chunk.Length);
+                            received += chunk.Length;
+                            int pct = s.SizeBytes == 0 ? 100 : (int)(received * 100 / s.SizeBytes);
+                            if (pct != lastPct)
                             {
-                                if (_hubPane3ContactMeta != null && s.Direction == "in")
-                                    _hubPane3ContactMeta.Text = "Receiving file... " + pct + "%";
-                            });
+                                lastPct = pct;
+                                int progress = pct;
+                                Dispatcher.BeginInvoke((Action)delegate
+                                {
+                                    if (_hubPane3ContactMeta != null) _hubPane3ContactMeta.Text = "Receiving file... " + progress + "%";
+                                });
+                            }
                         }
+                        fs.Flush();
+                        if (ns.ReadByte() != -1) throw new InvalidDataException("Unexpected data after the file.");
                     }
                     tc.Close();
+                    tc = null;
+                    string actualHash = FileSha256(partPath);
+                    if (!string.Equals(actualHash, s.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("The file hash did not match the authenticated offer.");
+                    string savePath = UniqueReceivedPath(folder, s.FileName);
+                    File.Move(partPath, savePath);
+                    partPath = null;
                     Dispatcher.BeginInvoke((Action)delegate
                     {
-                        Log("File received: " + savePath, BrushSuccess);
-                        ChatPersist("sys", from, "\u2705 File saved: " + savePath);
+                        s.ReceivedPath = savePath;
+                        s.State = "complete";
+                        s.TransferKey = null;
+                        Log("File received and verified: " + savePath, BrushSuccess);
                         if (_hubPane3ContactMeta != null) _hubPane3ContactMeta.Text = "";
+                        if (_chatOpenNum == from) ChatReRender();
                     });
                 }
                 catch (Exception ex)
                 {
-                    Dispatcher.BeginInvoke((Action)delegate { Log("File transfer error: " + ex.Message, BrushError); });
+                    if (partPath != null && File.Exists(partPath))
+                    {
+                        try { File.Delete(partPath); }
+                        catch (Exception cleanup) { Dispatcher.BeginInvoke((Action)delegate { Log("Could not remove partial attachment: " + cleanup.Message, BrushWarn); }); }
+                    }
+                    Dispatcher.BeginInvoke((Action)delegate
+                    {
+                        s.State = "failed";
+                        s.TransferKey = null;
+                        Log("File transfer failed: " + ex.Message, BrushError);
+                        if (_hubPane3ContactMeta != null) _hubPane3ContactMeta.Text = "";
+                        if (_chatOpenNum == from) ChatReRender();
+                    });
+                }
+                finally
+                {
+                    if (lis != null) try { lis.Stop(); } catch (Exception ex) { Dispatcher.BeginInvoke((Action)delegate { Log("File listener cleanup failed: " + ex.Message, BrushWarn); }); }
+                    if (tc != null) try { tc.Close(); } catch (Exception ex) { Dispatcher.BeginInvoke((Action)delegate { Log("File socket cleanup failed: " + ex.Message, BrushWarn); }); }
                 }
             });
+        }
+
+        private void RejectFileTransfer(string transferId, string from)
+        {
+            FileTransferSession s;
+            if (!_transfers.TryGetValue(transferId, out s) || s.Direction != "in" ||
+                s.PeerNumber != from || s.State != "offered") return;
+            if (_voip == null || !_voip.SendFileReject(from, transferId))
+            {
+                Log("Could not send the encrypted decline for this file offer.", BrushWarn);
+                return;
+            }
+            s.State = "rejected";
+            s.TransferKey = null;
+            Log("File offer declined.", BrushGray);
+            if (_chatOpenNum == from) ChatReRender();
         }
 
         private void HandleFileAccept(string from, string transferId, int port)
         {
             FileTransferSession s;
-            if (!_transfers.TryGetValue(transferId, out s)) return;
-            Log("File accepted by " + from + " — sending on port " + port, BrushGray);
+            if (!_transfers.TryGetValue(transferId, out s) || s.Direction != "out" ||
+                s.PeerNumber != from || s.State != "offered") return;
+            s.State = "accepted";
+            Log("Encrypted file offer accepted by #" + from + ".", BrushGray);
             System.Threading.Tasks.Task.Run(delegate
             {
+                TcpClient tc = null;
                 try
                 {
-                    // Connect to receiver's port on peer's IP
-                    string ip = from;  // resolve IP via relay directory
-                    if (_voip != null)
-                    {
-                        var peer = _voip.FindByNumber(from);
-                        if (peer != null && !string.IsNullOrEmpty(peer.Ip)) ip = peer.Ip;
-                    }
-                    TcpClient tc = new TcpClient(ip, port);
+                    if (_voip == null) throw new IOException("Relay service is unavailable.");
+                    VoipPeer peer = _voip.FindByNumber(from);
+                    if (peer == null || string.IsNullOrEmpty(peer.Ip))
+                        throw new IOException("The recipient is no longer reachable through the relay directory.");
+                    tc = new TcpClient(peer.Ip, port);
+                    tc.SendTimeout = 30000;
+                    tc.ReceiveTimeout = 30000;
                     using (NetworkStream ns = tc.GetStream())
                     using (FileStream fs = File.OpenRead(s.FilePath))
                     {
-                        byte[] buf = new byte[65536];
+                        byte[] buf = new byte[24 * 1024];
                         long sent = 0;
-                        int n;
-                        while ((n = fs.Read(buf, 0, buf.Length)) > 0)
+                        int lastPct = -1;
+                        while (sent < s.SizeBytes)
                         {
-                            ns.Write(buf, 0, n);
+                            int want = (int)Math.Min(buf.Length, s.SizeBytes - sent);
+                            int n = fs.Read(buf, 0, want);
+                            if (n <= 0) throw new EndOfStreamException("The source file changed during transfer.");
+                            byte[] chunk = new byte[n];
+                            Buffer.BlockCopy(buf, 0, chunk, 0, n);
+                            string sealedChunk = s.TransferKey.Encrypt(Convert.ToBase64String(chunk));
+                            WriteTransferFrame(ns, Encoding.ASCII.GetBytes(sealedChunk));
                             sent += n;
-                            int pct = (int)(sent * 100 / Math.Max(1, s.SizeBytes));
-                            Dispatcher.BeginInvoke((Action)delegate
+                            int pct = s.SizeBytes == 0 ? 100 : (int)(sent * 100 / s.SizeBytes);
+                            if (pct != lastPct)
                             {
-                                if (_hubPane3ContactMeta != null)
-                                    _hubPane3ContactMeta.Text = "Sending... " + pct + "%";
-                            });
+                                lastPct = pct;
+                                int progress = pct;
+                                Dispatcher.BeginInvoke((Action)delegate
+                                {
+                                    if (_hubPane3ContactMeta != null) _hubPane3ContactMeta.Text = "Sending file... " + progress + "%";
+                                });
+                            }
                         }
+                        ns.Flush();
+                        tc.Client.Shutdown(SocketShutdown.Send);
                     }
                     tc.Close();
+                    tc = null;
                     Dispatcher.BeginInvoke((Action)delegate
                     {
-                        Log("File sent: " + s.FileName, BrushSuccess);
-                        ChatPersist("sys", from, "\u2705 File sent: " + s.FileName);
+                        s.State = "complete";
+                        s.TransferKey = null;
+                        Log("Encrypted file sent: " + s.FileName, BrushSuccess);
                         if (_hubPane3ContactMeta != null) _hubPane3ContactMeta.Text = "";
+                        if (_chatOpenNum == from) ChatReRender();
                     });
                 }
                 catch (Exception ex)
                 {
-                    Dispatcher.BeginInvoke((Action)delegate { Log("File send error: " + ex.Message, BrushError); });
+                    Dispatcher.BeginInvoke((Action)delegate
+                    {
+                        s.State = "failed";
+                        s.TransferKey = null;
+                        Log("File send failed: " + ex.Message, BrushError);
+                        if (_hubPane3ContactMeta != null) _hubPane3ContactMeta.Text = "";
+                        if (_chatOpenNum == from) ChatReRender();
+                    });
+                }
+                finally
+                {
+                    if (tc != null) try { tc.Close(); } catch (Exception ex) { Dispatcher.BeginInvoke((Action)delegate { Log("File socket cleanup failed: " + ex.Message, BrushWarn); }); }
                 }
             });
+        }
+
+        private void HandleFileReject(string from, string transferId)
+        {
+            FileTransferSession s;
+            if (!_transfers.TryGetValue(transferId, out s) || s.PeerNumber != from) return;
+            if (s.State == "accepted") return;
+            s.State = "rejected";
+            s.TransferKey = null;
+            Log("File transfer declined or cancelled by #" + from + ".", BrushWarn);
+            if (_chatOpenNum == from) ChatReRender();
+        }
+
+        private static string FileSha256(string path)
+        {
+            using (System.Security.Cryptography.SHA256 sha = System.Security.Cryptography.SHA256.Create())
+            using (FileStream fs = File.OpenRead(path))
+            {
+                byte[] hash = sha.ComputeHash(fs);
+                StringBuilder hex = new StringBuilder(hash.Length * 2);
+                for (int i = 0; i < hash.Length; i++) hex.Append(hash[i].ToString("X2"));
+                return hex.ToString();
+            }
+        }
+
+        private static string FormatFileSize(long bytes)
+        {
+            return bytes >= 1048576 ? (bytes / 1048576.0).ToString("0.0") + " MB"
+                : bytes >= 1024 ? (bytes / 1024.0).ToString("0") + " KB" : bytes + " B";
+        }
+
+        private static string SafeReceivedFileName(string name)
+        {
+            string value = Path.GetFileName(name ?? "");
+            char[] invalid = Path.GetInvalidFileNameChars();
+            StringBuilder safe = new StringBuilder();
+            for (int i = 0; i < value.Length && safe.Length < 180; i++)
+                safe.Append(Array.IndexOf(invalid, value[i]) >= 0 ? '_' : value[i]);
+            value = safe.ToString().Trim().Trim('.');
+            return value.Length == 0 ? "attachment.bin" : value;
+        }
+
+        private static string UniqueReceivedPath(string folder, string name)
+        {
+            string safe = SafeReceivedFileName(name);
+            string stem = Path.GetFileNameWithoutExtension(safe);
+            string ext = Path.GetExtension(safe);
+            string candidate = Path.Combine(folder, safe);
+            int suffix = 1;
+            while (File.Exists(candidate))
+            {
+                candidate = Path.Combine(folder, stem + " (" + suffix + ")" + ext);
+                suffix++;
+            }
+            return candidate;
+        }
+
+        private static void WriteTransferFrame(Stream stream, byte[] payload)
+        {
+            if (payload == null || payload.Length == 0 || payload.Length > 65536)
+                throw new InvalidDataException("Invalid encrypted chunk frame.");
+            byte[] header = new byte[] {
+                (byte)(payload.Length >> 24), (byte)(payload.Length >> 16),
+                (byte)(payload.Length >> 8), (byte)payload.Length
+            };
+            stream.Write(header, 0, header.Length);
+            stream.Write(payload, 0, payload.Length);
+        }
+
+        private static byte[] ReadTransferFrame(Stream stream)
+        {
+            byte[] header = ReadTransferBytes(stream, 4);
+            int length = (header[0] << 24) | (header[1] << 16) | (header[2] << 8) | header[3];
+            if (length < 1 || length > 65536) throw new InvalidDataException("Invalid encrypted chunk frame length.");
+            return ReadTransferBytes(stream, length);
+        }
+
+        private static TcpClient AcceptTransferClient(TcpListener listener, int timeoutMs)
+        {
+            IAsyncResult pending = listener.BeginAcceptTcpClient(null, null);
+            WaitHandle wait = pending.AsyncWaitHandle;
+            try
+            {
+                if (!wait.WaitOne(timeoutMs, false))
+                    throw new TimeoutException("No file connection arrived within two minutes.");
+                return listener.EndAcceptTcpClient(pending);
+            }
+            finally { wait.Close(); }
+        }
+
+        private static byte[] ReadTransferBytes(Stream stream, int length)
+        {
+            byte[] data = new byte[length];
+            int offset = 0;
+            while (offset < length)
+            {
+                int n = stream.Read(data, offset, length - offset);
+                if (n <= 0) throw new EndOfStreamException("The encrypted file stream ended unexpectedly.");
+                offset += n;
+            }
+            return data;
         }
 
         // ── USSD session replay ───────────────────────────────────────────
@@ -14428,7 +14678,7 @@ namespace UssdApp
                 // payload stays simple; they must not *display* as plain text -
                 // a local path means nothing to the peer and should not be
                 // readable off somebody's screen.
-                UIElement rich = TryRenderToken(text);
+                UIElement rich = ChatMessageContent(text, dir);
                 if (rich != null) sp.Children.Add(rich);
                 else
                 {
@@ -14497,7 +14747,7 @@ namespace UssdApp
             // right-click menu: copy the text, delete this message, or the whole conversation
             System.Windows.Controls.ContextMenu cm = new System.Windows.Controls.ContextMenu();
             System.Windows.Controls.MenuItem miCopy = new System.Windows.Controls.MenuItem { Header = "\uD83D\uDCCB  Copy text" };
-            string copyText = voice ? "(voice note)" : text;
+            string copyText = voice ? "(voice note)" : FormatChatAttachmentText(text);
             miCopy.Click += delegate { try { Clipboard.SetText(copyText); } catch { } };
             cm.Items.Add(miCopy);
             System.Windows.Controls.MenuItem miExport = new System.Windows.Controls.MenuItem { Header = "\u2B07  Export transcript" };
@@ -14542,10 +14792,8 @@ namespace UssdApp
 
         // Remove ONE message from the open conversation and rewrite its file.
         // ── Token rendering ───────────────────────────────────────────────
-        // Attachments and cards are sent as a single token so the sealed
-        // payload stays text. On screen they become thumbnails and cards; the
-        // absolute path inside them is never shown - it belongs to whichever
-        // device created the message, and on the peer it points at nothing.
+        // Legacy local-path tokens remain readable for old chat history.
+        // New attachments use a path-free transfer reference.
         private UIElement TryRenderToken(string text)
         {
             string t = (text ?? "").Trim();
@@ -14574,6 +14822,98 @@ namespace UssdApp
             }
             catch { }
             return null;
+        }
+
+        private UIElement ChatMessageContent(string text, string dir)
+        {
+            MatchCollection matches = Regex.Matches(text ?? "",
+                @"\[ATTACHMENT:([A-F0-9]{16})\|([A-Za-z0-9+/=]+)\|([0-9]+)\]");
+            if (matches.Count == 0) return TryRenderToken(text);
+            StackPanel content = new StackPanel();
+            int offset = 0;
+            foreach (Match match in matches)
+            {
+                if (match.Index > offset)
+                    content.Children.Add(new TextBlock
+                    {
+                        Text = text.Substring(offset, match.Index - offset),
+                        TextWrapping = TextWrapping.Wrap,
+                        FontSize = 13,
+                        LineHeight = 19,
+                        Foreground = dir == "out" ? Brushes.White : new SolidColorBrush(Color.FromRgb(0xe2, 0xe8, 0xf0))
+                    });
+                string name;
+                long size;
+                try
+                {
+                    name = Encoding.UTF8.GetString(Convert.FromBase64String(match.Groups[2].Value));
+                    if (!long.TryParse(match.Groups[3].Value, out size)) size = 0;
+                }
+                catch
+                {
+                    name = "Attachment";
+                    size = 0;
+                }
+                content.Children.Add(ChatAttachmentChip(match.Groups[1].Value, name, size, dir));
+                offset = match.Index + match.Length;
+            }
+            if (offset < text.Length)
+                content.Children.Add(new TextBlock
+                {
+                    Text = text.Substring(offset),
+                    TextWrapping = TextWrapping.Wrap,
+                    FontSize = 13,
+                    LineHeight = 19,
+                    Foreground = dir == "out" ? Brushes.White : new SolidColorBrush(Color.FromRgb(0xe2, 0xe8, 0xf0))
+                });
+            return content;
+        }
+
+        private UIElement ChatAttachmentChip(string transferId, string name, long size, string dir)
+        {
+            StackPanel card = new StackPanel { Margin = new Thickness(0, 3, 0, 3) };
+            card.Children.Add(new TextBlock
+            {
+                Text = "\uD83D\uDCCE  " + SafeReceivedFileName(name),
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                TextWrapping = TextWrapping.Wrap
+            });
+            card.Children.Add(TokenLabel(FormatFileSize(size)));
+            FileTransferSession session;
+            if (_transfers.TryGetValue(transferId, out session))
+            {
+                if (session.State == "complete" && !string.IsNullOrEmpty(session.ReceivedPath) &&
+                    File.Exists(session.ReceivedPath))
+                    card.Children.Add(OpenPathLink(session.ReceivedPath, "Open"));
+                else if (session.Direction == "in" && session.State == "offered" && dir == "in")
+                {
+                    Button download = MakeButton("Accept and download");
+                    string id = transferId;
+                    string peer = _chatOpenNum;
+                    download.Margin = new Thickness(0, 4, 0, 0);
+                    download.HorizontalAlignment = HorizontalAlignment.Left;
+                    download.Click += delegate { AcceptFileTransfer(id, peer); };
+                    card.Children.Add(download);
+                    Button decline = MakeButton("Decline");
+                    decline.Margin = new Thickness(0, 2, 0, 0);
+                    decline.HorizontalAlignment = HorizontalAlignment.Left;
+                    decline.Click += delegate { RejectFileTransfer(id, peer); };
+                    card.Children.Add(decline);
+                }
+                else
+                {
+                    string state = session.State == "accepted" ? "Transfer in progress..."
+                        : session.State == "complete" ? (session.Direction == "out" ? "Sent securely" : "Verified")
+                        : session.State == "failed" ? "Transfer failed"
+                        : session.Direction == "out" ? "Waiting for recipient"
+                        : "Accept from the file offer notification";
+                    card.Children.Add(TokenLabel(state));
+                }
+            }
+            else card.Children.Add(TokenLabel("Secure transfer offer pending"));
+            return card;
         }
 
         private static TextBlock TokenLabel(string s)
@@ -15084,7 +15424,7 @@ namespace UssdApp
                         int.TryParse(vp[0], out secs);
                         body = "[voice note: " + secs + " s]";   // never export local paths
                     }
-                    else body = m.Text == null ? "" : m.Text.Replace("\r", " ").Replace("\n", " ");
+                    else body = FormatChatAttachmentText(m.Text == null ? "" : m.Text.Replace("\r", " ").Replace("\n", " "));
                     sb.AppendLine((m.Time == null ? "" : m.Time) + "  " + who + ": " + body);
                 }
                 File.WriteAllText(fileName, sb.ToString(), Encoding.UTF8);
@@ -15109,6 +15449,22 @@ namespace UssdApp
 
         // One-line conversation preview for the list panes: voice notes and
         // large messages must never leak raw payloads or file paths into the UI.
+        private static string FormatChatAttachmentText(string text)
+        {
+            return Regex.Replace(text ?? "", @"\[ATTACHMENT:([A-F0-9]{16})\|([A-Za-z0-9+/=]+)\|([0-9]+)\]",
+                delegate(Match match)
+                {
+                    try
+                    {
+                        string name = Encoding.UTF8.GetString(Convert.FromBase64String(match.Groups[2].Value));
+                        long size;
+                        if (!long.TryParse(match.Groups[3].Value, out size)) size = 0;
+                        return "\uD83D\uDCCE " + SafeReceivedFileName(name) + " (" + FormatFileSize(size) + ")";
+                    }
+                    catch { return "\uD83D\uDCCE Attachment"; }
+                });
+        }
+
         private static string ChatPreview(string dir, string text)
         {
             string t = text ?? "";
@@ -15138,7 +15494,7 @@ namespace UssdApp
                 if (fp.Length >= 2 && fp[1].Length > 0) return "\uD83D\uDCC4 " + fp[1];
                 return "\uD83D\uDCC4 Attachment";
             }
-            return t;
+            return FormatChatAttachmentText(t);
         }
 
         // Header chip text for the open conversation. No string switch here: the
@@ -15644,13 +16000,93 @@ namespace UssdApp
             }
         }
 
+        private bool PrepareAttachmentMessage(string number, ref string text, out List<string> transferIds, out string error)
+        {
+            transferIds = new List<string>();
+            error = null;
+            MatchCollection matches = Regex.Matches(text ?? "", @"\[(IMAGE|FILE):([^\]\r\n]+)\]");
+            if (matches.Count == 0) return true;
+            if (matches.Count > 3)
+            {
+                error = "Send no more than three attachments in one message.";
+                return false;
+            }
+            if (_voip == null || !_voip.ChatRelayReady || _voip.FindByNumber(number) == null)
+            {
+                error = "Secure attachments require the recipient to be online through the relay.";
+                return false;
+            }
+            if (_voip.ChatSecurityState(number) != "locked")
+            {
+                error = "Send a text message first to establish the encrypted chat session, then retry the attachment.";
+                return false;
+            }
+
+            StringBuilder updated = new StringBuilder();
+            int offset = 0;
+            foreach (Match match in matches)
+            {
+                string payload = match.Groups[2].Value;
+                string filePath = payload;
+                if (match.Groups[1].Value == "FILE")
+                {
+                    int separator = payload.IndexOf('|');
+                    if (separator >= 0) filePath = payload.Substring(0, separator);
+                }
+                string id, name, failure;
+                long size;
+                if (!PrepareFileTransfer(number, filePath, out id, out name, out size, out failure))
+                {
+                    for (int i = 0; i < transferIds.Count; i++)
+                    {
+                        try { if (_voip != null) _voip.SendFileReject(number, transferIds[i]); }
+                        catch (Exception ex) { Log("Could not cancel a partial file offer: " + ex.Message, BrushWarn); }
+                        _transfers.Remove(transferIds[i]);
+                    }
+                    error = failure;
+                    return false;
+                }
+                transferIds.Add(id);
+                updated.Append(text.Substring(offset, match.Index - offset));
+                updated.Append("[ATTACHMENT:");
+                updated.Append(id);
+                updated.Append("|");
+                updated.Append(Convert.ToBase64String(Encoding.UTF8.GetBytes(SafeReceivedFileName(name))));
+                updated.Append("|");
+                updated.Append(size);
+                updated.Append("]");
+                offset = match.Index + match.Length;
+            }
+            updated.Append(text.Substring(offset));
+            text = updated.ToString();
+            return true;
+        }
+
+        private void CancelPreparedAttachments(string number, List<string> transferIds)
+        {
+            if (transferIds == null) return;
+            foreach (string id in transferIds)
+            {
+                try { if (_voip != null) _voip.SendFileReject(number, id); }
+                catch (Exception ex) { Log("Could not cancel file offer " + id + ": " + ex.Message, BrushWarn); }
+                _transfers.Remove(id);
+            }
+        }
+
         private async Task ChatSendAsync()
         {
             if (_txtChatInput == null) return;
-            string text = _txtChatInput.Text.Trim();
+            string originalText = _txtChatInput.Text.Trim();
+            string text = originalText;
             if (text.Length == 0) { Log("Chat: type a message.", BrushWarn); return; }
             string num = ChatNumber();
             if (num.Length < 3) { Log("Chat: enter a recipient number.", BrushWarn); return; }
+
+            if (text.Length > 100000 && Regex.IsMatch(text, @"\[(IMAGE|FILE):[^\]\r\n]+\]"))
+            {
+                Log("Remove attachments or shorten the message below 100,000 characters before sending.", BrushWarn);
+                return;
+            }
 
             // ── 100k+ character compression ──────────────────────────────
             // Messages over 100,000 chars are saved to a .txt file and a
@@ -15675,24 +16111,41 @@ namespace UssdApp
                 }
             }
 
+            string realNum = ResolveChatNumber(_txtChatTo.Text);
+            string target = realNum.Length >= 3 ? realNum : num;
+            List<string> transferIds;
+            string attachmentError;
+            if (!PrepareAttachmentMessage(target, ref text, out transferIds, out attachmentError))
+            {
+                Log("Attachment not sent: " + attachmentError, BrushWarn);
+                return;
+            }
+            bool hasAttachments = transferIds.Count > 0;
             _txtChatInput.Text = "";
             if (_hubCharCount != null) _hubCharCount.Text = "";
 
             // 1) saved-contact name typed? resolve it first
-            string realNum = ResolveChatNumber(_txtChatTo.Text);
             if (realNum.Length >= 3 && realNum != num && _voip != null && _voip.RelayReady && _voip.SendChat(realNum, text))
             {
                 Log("Chat sent to " + _txtChatTo.Text, BrushSuccess);
-                ChatPersist("out", num, text);
+                ChatPersist("out", target, text);
                 return;
             }
 
             // 2) registered peer with relay -> instant peer-to-peer chat
-            if (_voip != null && _voip.RelayReady && _voip.SendChat(num, text))
+            if (_voip != null && _voip.RelayReady && _voip.SendChat(target, text))
             {
-                Log("Chat sent to #" + num + " (relay)", BrushSuccess);
-                HangTrace("chat: relay out -> #" + num);
-                ChatPersist("out", num, text);
+                Log("Chat sent to #" + target + " (relay)", BrushSuccess);
+                HangTrace("chat: relay out -> #" + target);
+                ChatPersist("out", target, text);
+                return;
+            }
+
+            if (hasAttachments)
+            {
+                CancelPreparedAttachments(target, transferIds);
+                _txtChatInput.Text = originalText;
+                Log("Attachment not sent: the chat message could not be delivered.", BrushWarn);
                 return;
             }
 
@@ -17565,9 +18018,10 @@ namespace UssdApp
             if (sp.Children.Count >= 2)
             {
                 (sp.Children[0] as TextBlock).Text = _replyToMsg.Dir == "out" ? "You" : (_voipPeerName ?? "Peer");
-                (sp.Children[1] as TextBlock).Text = _replyToMsg.Text != null
-                    ? (_replyToMsg.Text.Length > 60 ? _replyToMsg.Text.Substring(0, 60) + "…" : _replyToMsg.Text)
-                    : "(voice note)";
+                string reply = _replyToMsg.Dir == "vin" || _replyToMsg.Dir == "vout"
+                    ? "(voice note)" : FormatChatAttachmentText(_replyToMsg.Text ?? "");
+                (sp.Children[1] as TextBlock).Text = reply.Length > 60
+                    ? reply.Substring(0, 60) + "…" : reply;
             }
             _replyPreview.Visibility = Visibility.Visible;
         }
@@ -17658,6 +18112,9 @@ namespace UssdApp
         public long SizeBytes;
         public string Direction;   // "in" | "out"
         public string State;       // "offered" | "accepted" | "rejected" | "complete"
+        public ChatKey TransferKey;
+        public string Sha256;
+        public string ReceivedPath;
     }
 
     internal sealed class UssdReplayItem

@@ -2003,25 +2003,12 @@ namespace UssdApp
                     if (hrx != null) hrx(from, p[1], p[2]);
                     return;
                 }
-                // File transfer signaling
-                if (p[0] == "FTOFFER" && p.Length >= 4)
+                // Legacy file-transfer controls were unauthenticated and must
+                // not be allowed to trigger a listener or an outbound connection.
+                if (p[0] == "FTOFFER" || p[0] == "FTACCEPT" || p[0] == "FTREJECT" ||
+                    p[0] == "FTOFFER2" || p[0] == "FTACCEPT2" || p[0] == "FTREJECT2")
                 {
-                    long sz = 0; long.TryParse(p[3], out sz);
-                    Action<string, string, string, long> hfo = FileOfferReceived;
-                    if (hfo != null) hfo(from, p[1], p[2], sz);
-                    return;
-                }
-                if (p[0] == "FTACCEPT" && p.Length >= 3)
-                {
-                    int port = 0; int.TryParse(p[2], out port);
-                    Action<string, string, int> hfa = FileAcceptReceived;
-                    if (hfa != null) hfa(from, p[1], port);
-                    return;
-                }
-                if (p[0] == "FTREJECT" && p.Length >= 2)
-                {
-                    Action<string, string> hfr = FileRejectReceived;
-                    if (hfr != null) hfr(from, p[1]);
+                    Emit("Security: ignored unauthenticated file-transfer signal from #" + from + ".");
                     return;
                 }
                 // Session key rotation (PFS)
@@ -3789,6 +3776,7 @@ namespace UssdApp
                 // Ratchet: advance the key chain after RATCHET_INTERVAL messages.
                 // Ratchet AFTER receiving so we decrypt with the old key, then advance.
                 RatchetMaybe(from, k);
+                if (TryHandleSecureFileSignal(from, inner)) return;
                 HandleRelayMessage(from, inner);   // same dispatcher, now in clear
                 return;
             }
@@ -4045,31 +4033,109 @@ namespace UssdApp
 
         public event Action<string, string, string> ReactionReceived;  // from, msgId, emoji
 
-        // ── File transfer offer ───────────────────────────────────────────
-        // Offer a file to a peer; they accept/reject, then we open a direct TCP stream.
-        public bool SendFileOffer(string number, string fileName, long sizeBytes, string transferId)
+        // File controls are sent only with an established E2E session. The data
+        // key and hash are carried inside that authenticated, encrypted offer.
+        private bool SendSessionSecure(string number, string line)
         {
-            if (string.IsNullOrEmpty(number)) return false;
-            RelayClient r = Relay;
-            if (r == null) return false;
-            return r.SendMessage(number, MyNumber, "FTOFFER|" + transferId + "|" + fileName + "|" + sizeBytes);
+            if (string.IsNullOrEmpty(number) || string.IsNullOrEmpty(line)) return false;
+            ChatKey k = null;
+            lock (_secLock)
+            {
+                if (_secBlocked.ContainsKey(number)) return false;
+                _e2eKeys.TryGetValue(number, out k);
+            }
+            if (k == null) return false;
+            try
+            {
+                bool ok = LineOut(number, "ECHAT|" + k.Encrypt(line));
+                if (ok) RatchetMaybe(number, k);
+                return ok;
+            }
+            catch (Exception ex)
+            {
+                Emit("Security: could not send file-transfer control to #" + number + ": " + ex.Message);
+                return false;
+            }
+        }
+
+        static bool ValidTransferId(string id)
+        {
+            return !string.IsNullOrEmpty(id) && Regex.IsMatch(id, "^[A-F0-9]{16}$");
+        }
+
+        private bool TryHandleSecureFileSignal(string from, string line)
+        {
+            string[] p = (line ?? "").Split('|');
+            if (p.Length == 0) return false;
+            if (p[0] != "FTOFFER2" && p[0] != "FTACCEPT2" && p[0] != "FTREJECT2") return false;
+            try
+            {
+                if (p[0] == "FTOFFER2" && p.Length == 6 && ValidTransferId(p[1]))
+                {
+                    string name = Encoding.UTF8.GetString(Convert.FromBase64String(p[2]));
+                    long size;
+                    byte[] key = Convert.FromBase64String(p[4]);
+                    if (name.Length == 0 || name.Length > 240 ||
+                        !long.TryParse(p[3], out size) || size < 0 || size > 52428800L ||
+                        key.Length != 32 || !Regex.IsMatch(p[5], "^[A-Fa-f0-9]{64}$"))
+                    {
+                        Array.Clear(key, 0, key.Length);
+                        Emit("Security: rejected invalid file offer from #" + from + ".");
+                        return true;
+                    }
+                    Array.Clear(key, 0, key.Length);
+                    Action<string, string, string, long, string, string> hfo = FileOfferReceived;
+                    if (hfo != null) hfo(from, p[1], name, size, p[4], p[5].ToUpperInvariant());
+                    return true;
+                }
+                if (p[0] == "FTACCEPT2" && p.Length == 3 && ValidTransferId(p[1]))
+                {
+                    int port;
+                    if (!int.TryParse(p[2], out port) || port < 1 || port > 65535) return true;
+                    Action<string, string, int> hfa = FileAcceptReceived;
+                    if (hfa != null) hfa(from, p[1], port);
+                    return true;
+                }
+                if (p[0] == "FTREJECT2" && p.Length == 2 && ValidTransferId(p[1]))
+                {
+                    Action<string, string> hfr = FileRejectReceived;
+                    if (hfr != null) hfr(from, p[1]);
+                    return true;
+                }
+            }
+            catch (Exception ex) { Emit("Security: rejected malformed file-transfer control from #" + from + ": " + ex.Message); }
+            return true;
+        }
+
+        public bool SendFileOffer(string number, string fileName, long sizeBytes, string transferId, string keyBase64, string sha256)
+        {
+            if (!ValidTransferId(transferId) || string.IsNullOrEmpty(fileName) || fileName.Length > 240 ||
+                sizeBytes < 0 || sizeBytes > 52428800L || string.IsNullOrEmpty(keyBase64) ||
+                !Regex.IsMatch(sha256 ?? "", "^[A-Fa-f0-9]{64}$")) return false;
+            byte[] key;
+            try { key = Convert.FromBase64String(keyBase64); }
+            catch { return false; }
+            bool keyOk = key.Length == 32;
+            Array.Clear(key, 0, key.Length);
+            if (!keyOk) return false;
+            string name = Convert.ToBase64String(Encoding.UTF8.GetBytes(fileName));
+            return SendSessionSecure(number, "FTOFFER2|" + transferId + "|" + name + "|" +
+                sizeBytes + "|" + keyBase64 + "|" + sha256.ToUpperInvariant());
         }
 
         public bool SendFileAccept(string number, string transferId, int tcpPort)
         {
-            RelayClient r = Relay;
-            if (r == null) return false;
-            return r.SendMessage(number, MyNumber, "FTACCEPT|" + transferId + "|" + tcpPort);
+            if (!ValidTransferId(transferId) || tcpPort < 1 || tcpPort > 65535) return false;
+            return SendSessionSecure(number, "FTACCEPT2|" + transferId + "|" + tcpPort);
         }
 
         public bool SendFileReject(string number, string transferId)
         {
-            RelayClient r = Relay;
-            if (r == null) return false;
-            return r.SendMessage(number, MyNumber, "FTREJECT|" + transferId);
+            if (!ValidTransferId(transferId)) return false;
+            return SendSessionSecure(number, "FTREJECT2|" + transferId);
         }
 
-        public event Action<string, string, string, long> FileOfferReceived;   // from, transferId, name, size
+        public event Action<string, string, string, long, string, string> FileOfferReceived;   // from, id, name, size, key, SHA-256
         public event Action<string, string, int> FileAcceptReceived;           // from, transferId, port
         public event Action<string, string> FileRejectReceived;                // from, transferId
 
