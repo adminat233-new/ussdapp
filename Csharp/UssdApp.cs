@@ -3600,11 +3600,16 @@ namespace UssdApp
         private Border _sidebar;
         private ColumnDefinition _sidebarCol;
         private Grid _contentHost;
+        private FrameworkElement _sidebarHeading;
+        private FrameworkElement _sidebarFooter;
         private readonly System.Collections.Generic.List<FrameworkElement> _pages = new System.Collections.Generic.List<FrameworkElement>();
         private readonly System.Collections.Generic.List<string> _pageNames = new System.Collections.Generic.List<string>();
         private readonly System.Collections.Generic.List<string> _pageIcons = new System.Collections.Generic.List<string>();
         private readonly System.Collections.Generic.List<string> _pageLabels = new System.Collections.Generic.List<string>();
+        private readonly System.Collections.Generic.List<string> _pageDescriptions = new System.Collections.Generic.List<string>();
         private readonly System.Collections.Generic.List<TextBlock> _navSectionLabels = new System.Collections.Generic.List<TextBlock>();
+        private TextBlock _shellPageTitle;
+        private TextBlock _shellPageDescription;
         private RowDefinition _logRow;
         private Grid _dialerGrid;
         private Grid _smsGrid;
@@ -3704,20 +3709,20 @@ namespace UssdApp
         public MainWindow()
         {
             Title = "USSD Manager Pro";
-            MinWidth = 860;
+            MinWidth = 920;
             MinHeight = 640;
             try
             {
                 Rect wa = SystemParameters.WorkArea;
-                Width = Math.Max(MinWidth, Math.Min(1000, wa.Width - 24));
-                Height = Math.Max(MinHeight, Math.Min(800, wa.Height - 24));
+                Width = Math.Max(MinWidth, Math.Min(1180, wa.Width - 24));
+                Height = Math.Max(MinHeight, Math.Min(840, wa.Height - 24));
                 MaxWidth = Math.Max(MinWidth, wa.Width);
                 MaxHeight = Math.Max(MinHeight, wa.Height);
             }
             catch
             {
-                Width = 1000;
-                Height = 800;
+                Width = 1180;
+                Height = 840;
             }
             Background = BrushBg;
             FontFamily = new FontFamily("Segoe UI");
@@ -6528,9 +6533,9 @@ namespace UssdApp
                 Background = Theme.Card,
                 BorderBrush = Theme.CardBorder,
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(16),
-                Padding = new Thickness(6),
-                Margin = new Thickness(4),
+                CornerRadius = new CornerRadius(18),
+                Padding = new Thickness(10),
+                Margin = new Thickness(8),
                 // Never let overflow (e.g. a very short window) draw outside the
                 // card - the chat composer must stay inside the pane.
                 ClipToBounds = true,
@@ -6563,7 +6568,8 @@ namespace UssdApp
                 Background = Theme.Panel,
                 BorderBrush = Theme.CardBorder,
                 BorderThickness = new Thickness(0, 0, 0, 1),
-                Padding = new Thickness(12, 7, 12, 7)
+                Padding = new Thickness(16, 10, 16, 10),
+                MinHeight = 76
             };
             DockPanel hd = new DockPanel { LastChildFill = false };
             _btnMenu = MakeButton("\u2261");
@@ -6579,15 +6585,36 @@ namespace UssdApp
             DockPanel.SetDock(logo, Dock.Left);
             hd.Children.Add(logo);
 
-            TextBlock title = new TextBlock
+            StackPanel titleBlock = new StackPanel
             {
-                Text = "  USSD Manager Pro",
-                FontSize = 17,
-                FontWeight = FontWeights.Bold,
-                Foreground = BrushFg,
-                VerticalAlignment = VerticalAlignment.Center
+                Orientation = Orientation.Vertical,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 0)
             };
-            DockPanel.SetDock(title, Dock.Left);
+            titleBlock.Children.Add(new TextBlock
+            {
+                Text = "USSD MANAGER PRO",
+                FontSize = 10,
+                FontWeight = FontWeights.Bold,
+                Foreground = BrushAccent,
+                Margin = new Thickness(0, 0, 0, 1)
+            });
+            _shellPageTitle = new TextBlock
+            {
+                Text = "Dialer",
+                FontSize = 18,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = BrushFg
+            };
+            titleBlock.Children.Add(_shellPageTitle);
+            _shellPageDescription = new TextBlock
+            {
+                Text = "Cellular and internet calling",
+                FontSize = 11,
+                Foreground = BrushGray
+            };
+            titleBlock.Children.Add(_shellPageDescription);
+            DockPanel.SetDock(titleBlock, Dock.Left);
             _liveDot = new System.Windows.Shapes.Ellipse
             {
                 Width = 8,
@@ -6673,7 +6700,7 @@ namespace UssdApp
             };
             DockPanel.SetDock(telemetryCluster, Dock.Right);
 
-            hd.Children.Add(title);
+            hd.Children.Add(titleBlock);
             hd.Children.Add(_liveDot);
             hd.Children.Add(telemetryCluster);
             header.Child = hd;
@@ -6707,7 +6734,7 @@ namespace UssdApp
 
             // ---------- Sidebar + content pages ----------
             Grid body = new Grid();
-            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(252) });
             body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             _sidebarCol = body.ColumnDefinitions[0];
 
@@ -6718,16 +6745,69 @@ namespace UssdApp
                 BorderThickness = new Thickness(0, 0, 1, 0),
                 Padding = new Thickness(10, 12, 10, 10)
             };
-            StackPanel nav = new StackPanel();
-            nav.Children.Add(new TextBlock
+            Grid sidebarLayout = new Grid();
+            sidebarLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            sidebarLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            sidebarLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            StackPanel sidebarHeading = new StackPanel { Margin = new Thickness(8, 2, 8, 18) };
+            sidebarHeading.Children.Add(new TextBlock
             {
-                Text = "MENU",
-                Foreground = BrushGray,
+                Text = "YOUR WORKSPACE",
+                Foreground = BrushAccent,
                 FontWeight = FontWeights.Bold,
-                FontSize = 11,
-                Margin = new Thickness(6, 0, 0, 8)
+                FontSize = 10,
+                Margin = new Thickness(0, 0, 0, 4)
             });
-            _sidebar.Child = nav;
+            sidebarHeading.Children.Add(new TextBlock
+            {
+                Text = "Communication, made simple.",
+                Foreground = BrushGray,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap
+            });
+            Grid.SetRow(sidebarHeading, 0);
+            sidebarLayout.Children.Add(sidebarHeading);
+            _sidebarHeading = sidebarHeading;
+
+            StackPanel nav = new StackPanel();
+            Grid.SetRow(nav, 1);
+            sidebarLayout.Children.Add(nav);
+
+            Border modemCard = new Border
+            {
+                Background = Theme.Chrome,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(12),
+                Margin = new Thickness(2, 12, 2, 2)
+            };
+            StackPanel modemInfo = new StackPanel();
+            modemInfo.Children.Add(new TextBlock
+            {
+                Text = "MODEM CONNECTION",
+                FontSize = 10,
+                FontWeight = FontWeights.Bold,
+                Foreground = BrushGray,
+                Margin = new Thickness(0, 0, 0, 5)
+            });
+            modemInfo.Children.Add(new TextBlock
+            {
+                Text = "Connect only when you're ready.",
+                FontSize = 11,
+                Foreground = BrushFg,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 8)
+            });
+            Button configureModem = MakeButton("Configure modem");
+            configureModem.HorizontalContentAlignment = HorizontalAlignment.Center;
+            configureModem.Click += delegate { ShowModemSetupPopover(pillComBtn); };
+            modemInfo.Children.Add(configureModem);
+            modemCard.Child = modemInfo;
+            Grid.SetRow(modemCard, 2);
+            sidebarLayout.Children.Add(modemCard);
+            _sidebarFooter = modemCard;
+            _sidebar.Child = sidebarLayout;
             Grid.SetColumn(_sidebar, 0);
             body.Children.Add(_sidebar);
 
@@ -6756,6 +6836,12 @@ namespace UssdApp
                 "\uD83D\uDCDE", "\uD83D\uDC64", "\uD83D\uDCF9", "\uD83D\uDCAC",
                 "\uD83D\uDCF1", "\u2708", "\uD83D\uDCE6", "\uD83E\uDD16"
             };
+            string[] pageDescriptions = new string[]
+            {
+                "Cellular and internet calling", "Manage saved contacts", "Voice and video rooms",
+                "Messages and secure chat", "SIM information and tools", "Run carrier USSD codes",
+                "Open your companion apps", "Your local and AI assistant"
+            };
             string[] pageLabels = new string[]
             {
                 "Dialer", "Contacts", "Video Call", "SMS",
@@ -6782,13 +6868,14 @@ namespace UssdApp
                 _pageNames.Add(pageNames[i]);
                 _pageIcons.Add(pageIcons[i]);
                 _pageLabels.Add(pageLabels[i]);
+                _pageDescriptions.Add(pageDescriptions[i]);
                 _contentHost.Children.Add(card);
 
                 Button navBtn = MakeButton(pageNames[i]);
                 Style navStyle = TryStyle("NavItem");
                 if (navStyle != null) navBtn.Style = navStyle;
                 navBtn.Margin = new Thickness(0, 2, 0, 2);
-                navBtn.MinHeight = 40;
+                navBtn.MinHeight = 44;
                 navBtn.ToolTip = pageLabels[i];
                 System.Windows.Automation.AutomationProperties.SetName(navBtn, pageLabels[i]);
                 System.Windows.Automation.AutomationProperties.SetHelpText(navBtn, "Open " + pageLabels[i]);
@@ -6798,6 +6885,7 @@ namespace UssdApp
                 _navButtons.Add(navBtn);
             }
             _pageIndex = 0;
+            UpdateShellPageHeading();
             HighlightNav();
 
             Grid.SetRow(body, 1);
@@ -12518,9 +12606,11 @@ namespace UssdApp
             {
                 // Restore full sidebar
                 _sidebarIconOnly = false;
-                _sidebarCol.Width = new GridLength(220);
+                _sidebarCol.Width = new GridLength(252);
                 _sidebar.Visibility = Visibility.Visible;
                 _sidebar.Padding = new Thickness(10, 12, 10, 10);
+                if (_sidebarHeading != null) _sidebarHeading.Visibility = Visibility.Visible;
+                if (_sidebarFooter != null) _sidebarFooter.Visibility = Visibility.Visible;
                 for (int i = 0; i < _navSectionLabels.Count; i++)
                     _navSectionLabels[i].Visibility = Visibility.Visible;
                 // Show full nav button text
@@ -12535,9 +12625,11 @@ namespace UssdApp
             {
                 // Collapse to icon-only strip (40px)
                 _sidebarIconOnly = true;
-                _sidebarCol.Width = new GridLength(52);
+                _sidebarCol.Width = new GridLength(58);
                 _sidebar.Visibility = Visibility.Visible;
                 _sidebar.Padding = new Thickness(4, 12, 4, 10);
+                if (_sidebarHeading != null) _sidebarHeading.Visibility = Visibility.Collapsed;
+                if (_sidebarFooter != null) _sidebarFooter.Visibility = Visibility.Collapsed;
                 for (int i = 0; i < _navSectionLabels.Count; i++)
                     _navSectionLabels[i].Visibility = Visibility.Collapsed;
                 // Show only emoji icon in each nav button
@@ -12636,8 +12728,17 @@ namespace UssdApp
             _pageIndex = index;
             _pages[_pageIndex].Visibility = Visibility.Visible;
             AnimateSlideIn(_pages[_pageIndex]);
+            UpdateShellPageHeading();
             HighlightNav();
             if (index == 6) LaunchLaptopTracker();
+        }
+
+        private void UpdateShellPageHeading()
+        {
+            if (_shellPageTitle == null || _shellPageDescription == null ||
+                _pageIndex < 0 || _pageIndex >= _pageLabels.Count) return;
+            _shellPageTitle.Text = _pageLabels[_pageIndex];
+            _shellPageDescription.Text = _pageDescriptions[_pageIndex];
         }
 
         // Switch the dialer between Cellular and VoIP transport modes.

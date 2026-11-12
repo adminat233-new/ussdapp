@@ -144,10 +144,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setText(agent.wakeName)
             isSingleLine = true
         }
-        agentPanel.addView(wakeNameInput)
-        agentPanel.addView(Button(this).apply {
+        val wakeNameRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        wakeNameRow.addView(wakeNameInput, LinearLayout.LayoutParams(0, -2, 1f).apply {
+            rightMargin = dp(8)
+        })
+        wakeNameRow.addView(Button(this).apply {
             text = "Save wake name"
             isAllCaps = false
+            minWidth = 0
+            setPadding(dp(12), dp(8), dp(12), dp(8))
             setOnClickListener {
                 val value = wakeNameInput.text.toString().trim()
                 if (value.isBlank()) {
@@ -158,34 +166,35 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     showReply(AgentReply("Wake name saved as \"$value\"."))
                 }
             }
-        })
+        }, LinearLayout.LayoutParams(-2, -2))
+        agentPanel.addView(wakeNameRow)
 
         commandInput = EditText(this).apply {
-            hint = "Type /agent help"
+            hint = "Type /agent help or enter a local command"
             isSingleLine = true
         }
         agentPanel.addView(commandInput)
-        agentPanel.addView(Button(this).apply {
-            text = "Run /agent command"
+        val commandActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        commandActions.addView(Button(this).apply {
+            text = "Run command"
             isAllCaps = false
             primaryAction()
             setOnClickListener {
                 val value = commandInput.text.toString()
                 val prompt = agent.aiPromptForText(value)
-                if (prompt != null) {
-                    askAi(prompt)
-                } else {
-                    showReply(agent.handleText(value))
-                }
+                if (prompt != null) askAi(prompt) else showReply(agent.handleText(value))
                 commandInput.text.clear()
             }
-        })
-        agentPanel.addView(Button(this).apply {
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
+        commandActions.addView(Button(this).apply {
             text = "Speak command"
             isAllCaps = false
-            primaryAction()
             setOnClickListener { requestVoiceInput() }
-        })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        agentPanel.addView(commandActions)
         responseView = TextView(this).apply {
             text = "Ready. Try /agent help."
             textSize = 15f
@@ -378,16 +387,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setPadding(dp(8), dp(8), dp(8), dp(8))
             setBackgroundColor(Color.rgb(16, 25, 41))
         }
-        val navButtons = listOf("Assistant", "Messages", "Apps").map { label ->
+        val navLabels = listOf("⌂\nAssistant", "✉\nMessages", "▦\nApps")
+        val navButtons = navLabels.mapIndexed { index, label ->
+            val destination = listOf("Assistant", "Messages", "Apps")[index]
             Button(this).apply {
                 text = label
                 isAllCaps = false
-                textSize = 12f
-                minHeight = dp(48)
-                minimumHeight = dp(48)
+                textSize = 11f
+                minHeight = dp(56)
+                minimumHeight = dp(56)
                 minWidth = 0
-                contentDescription = "Show $label"
-                setPadding(dp(4), dp(8), dp(4), dp(8))
+                contentDescription = "Show $destination"
+                setPadding(dp(4), dp(4), dp(4), dp(4))
             }.also { button ->
                 navBar.addView(button, LinearLayout.LayoutParams(0, -2, 1f).apply {
                     leftMargin = dp(4)
