@@ -86,23 +86,23 @@ class CallActivity : Activity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         val preferences = getSharedPreferences("assistant", MODE_PRIVATE)
-        window.statusBarColor = Color.rgb(9, 15, 27)
-        window.navigationBarColor = Color.rgb(9, 15, 27)
+        window.statusBarColor = Color.rgb(248, 250, 252)
+        window.navigationBarColor = Color.WHITE
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(18), dp(16), dp(20))
-            setBackgroundColor(Color.rgb(9, 15, 27))
+            setBackgroundColor(Color.rgb(248, 250, 252))
         }
         root.addView(TextView(this).apply {
             text = "Calls and video"
             textSize = 24f
-            setTextColor(Color.rgb(238, 243, 251))
+            setTextColor(Color.rgb(23, 36, 58))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         root.addView(TextView(this).apply {
             text = "Create or join an invitation. Voice stays connected when video is toggled. Calls support up to eight people. Audio/video are encrypted in transit but are not app-level end-to-end encrypted yet; chat and files use the invitation key."
             textSize = 13f
-            setTextColor(Color.rgb(160, 174, 195))
+            setTextColor(Color.rgb(91, 107, 130))
             setPadding(0, dp(6), 0, dp(14))
         })
         val setupPanel = sectionCard("Start or join a call")
@@ -230,7 +230,7 @@ class CallActivity : Activity() {
         })
 
         setContentView(ScrollView(this).apply {
-            setBackgroundColor(Color.rgb(9, 15, 27))
+            setBackgroundColor(Color.rgb(248, 250, 252))
             addView(root)
         })
         rebuildTiles()
@@ -240,9 +240,9 @@ class CallActivity : Activity() {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(16), dp(14), dp(16), dp(14))
         background = GradientDrawable().apply {
-            setColor(Color.rgb(17, 27, 43))
+            setColor(Color.WHITE)
             cornerRadius = dp(16).toFloat()
-            setStroke(dp(1), Color.rgb(42, 57, 78))
+            setStroke(dp(1), Color.rgb(220, 228, 239))
         }
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -253,7 +253,7 @@ class CallActivity : Activity() {
         addView(TextView(this@CallActivity).apply {
             text = title
             textSize = 17f
-            setTextColor(Color.rgb(238, 243, 251))
+            setTextColor(Color.rgb(23, 36, 58))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(0, 0, 0, dp(10))
         })

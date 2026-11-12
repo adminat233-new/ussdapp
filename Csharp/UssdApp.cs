@@ -7,6 +7,7 @@ using System.IO.Compression;
 using System.IO.Ports;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -20,6 +21,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
+using System.Windows.Interop;
 using System.Windows.Threading;
 
 namespace UssdApp
@@ -2152,6 +2154,7 @@ namespace UssdApp
         public string tracker_device_id = "";
         public string tracker_token_protected = "";
         public string laptop_tracker_exe = "";
+        public string calls_companion_exe = "";
         public bool host_calls = false;    // run the call server on this PC
         // Put a call's audio/video on the relay instead of trying UDP first. Off by
         // default; it exists for networks that block or shape UDP, and it is NOT what
@@ -2187,7 +2190,7 @@ namespace UssdApp
         public bool gateway_enabled = false;
         public string gateway_name = "";
         // UI / identity / connectivity tokens.
-        public string theme = "dark";              // "light" | "dark"
+        public string theme = "light";             // "light" | "dark"
         public string display_name = "";           // shown to peers on calls & messages
         public string stun_servers = "stun.l.google.com:19302,stun1.l.google.com:19302,stun.stunprotocol.org:3478,stun.voip.blackberry.com:3478";
         // Call audio quality / archive.
@@ -2260,6 +2263,8 @@ namespace UssdApp
                     m = Regex.Match(t, "\"tracker_pair_code\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_pair_code = m.Groups[1].Value;
                     m = Regex.Match(t, "\"tracker_device_id\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_device_id = m.Groups[1].Value;
                     m = Regex.Match(t, "\"tracker_token_protected\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_token_protected = m.Groups[1].Value;
+                    m = Regex.Match(t, "\"laptop_tracker_exe\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.laptop_tracker_exe = m.Groups[1].Value;
+                    m = Regex.Match(t, "\"calls_companion_exe\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.calls_companion_exe = m.Groups[1].Value;
                     m = Regex.Match(t, "\"host_calls\"\\s*:\\s*(true|false)"); if (m.Success) c.host_calls = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"relay_media\"\\s*:\\s*(true|false)"); if (m.Success) c.relay_media = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"relay_port_map\"\\s*:\\s*(true|false)"); if (m.Success) c.relay_port_map = m.Groups[1].Value == "true";
@@ -2318,6 +2323,8 @@ namespace UssdApp
                 "  \"tracker_pair_code\": \"" + J(tracker_pair_code) + "\",\n" +
                 "  \"tracker_device_id\": \"" + J(tracker_device_id) + "\",\n" +
                 "  \"tracker_token_protected\": \"" + J(tracker_token_protected) + "\",\n" +
+                "  \"laptop_tracker_exe\": \"" + J(laptop_tracker_exe) + "\",\n" +
+                "  \"calls_companion_exe\": \"" + J(calls_companion_exe) + "\",\n" +
                 "  \"host_calls\": " + (host_calls ? "true" : "false") + ",\n" +
                 "  \"relay_media\": " + (relay_media ? "true" : "false") + ",\n" +
                 "  \"relay_port_map\": " + (relay_port_map ? "true" : "false") + ",\n" +
@@ -3670,6 +3677,9 @@ namespace UssdApp
         private TextBlock _appsStatus;
         private string _laptopTrackerExe;
         private Process _laptopTrackerProcess;
+        private TrackerWindowHost _laptopTrackerHost;
+        private string _callsCompanionExe;
+        private Process _callsCompanionProcess;
         private System.Speech.Synthesis.SpeechSynthesizer _agentSpeech;
         private CheckBox _agentSpeakReplies;
         private string _agentLastResponse = "";
@@ -7326,6 +7336,7 @@ namespace UssdApp
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             StackPanel heading = new StackPanel { Margin = new Thickness(4, 0, 4, 14) };
             heading.Children.Add(new TextBlock
@@ -7337,7 +7348,7 @@ namespace UssdApp
             });
             heading.Children.Add(new TextBlock
             {
-                Text = "Open Laptop Tracker for device management. The tracker handles its own sign-in, pairing, permissions, and privacy controls.",
+                Text = "Use Laptop Tracker here as a full app panel. Its own sign-in, pairing, permissions, and privacy controls remain in effect.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
                 Margin = new Thickness(0, 4, 0, 0)
@@ -7347,7 +7358,7 @@ namespace UssdApp
 
             _appsStatus = new TextBlock
             {
-                Text = "Laptop Tracker opens when you enter Apps.",
+                Text = "Choose Laptop Tracker to start it inside this panel.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
                 Margin = new Thickness(6, 0, 6, 8)
@@ -7355,45 +7366,31 @@ namespace UssdApp
             Grid.SetRow(_appsStatus, 1);
             g.Children.Add(_appsStatus);
 
-            Grid cards = new Grid();
-            cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            cards.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            StackPanel windows = new StackPanel();
-            windows.Children.Add(new TextBlock
-            {
-                Text = "Windows",
-                FontSize = 17,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = BrushFg
-            });
-            windows.Children.Add(new TextBlock
-            {
-                Text = "Laptop Tracker desktop app",
-                FontSize = 13,
-                Foreground = BrushGray,
-                Margin = new Thickness(0, 3, 0, 10)
-            });
             if (string.IsNullOrEmpty(_laptopTrackerExe))
                 _laptopTrackerExe = AppConfig.Load().laptop_tracker_exe;
-            if (string.IsNullOrEmpty(_laptopTrackerExe))
-                _laptopTrackerExe = @"C:\Users\Admin\Documents\Default Project\laptop-tracker\windows-app\dist\FIND-App-win32-x64\FIND-App.exe";
-            TextBlock exePath = new TextBlock
+            Border trackerPanel = new Border
             {
-                Text = _laptopTrackerExe,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = BrushGray,
-                Margin = new Thickness(0, 0, 0, 10)
+                Background = BrushBg,
+                BorderBrush = BrushBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                ClipToBounds = true,
+                MinHeight = 280
             };
-            windows.Children.Add(exePath);
+            _laptopTrackerHost = new TrackerWindowHost();
+            trackerPanel.Child = _laptopTrackerHost;
+            Grid.SetRow(trackerPanel, 2);
+            g.Children.Add(trackerPanel);
 
-            WrapPanel windowsActions = new WrapPanel();
-            Button launch = MakeStyledButton("Open Laptop Tracker", "PrimaryButton");
-            launch.Margin = new Thickness(0, 0, 8, 6);
+            WrapPanel actions = new WrapPanel
+            {
+                Margin = new Thickness(4, 10, 4, 8)
+            };
+            Button launch = MakeStyledButton("Open Laptop Tracker in panel", "PrimaryButton");
+            launch.Margin = new Thickness(0, 0, 8, 0);
             launch.Click += delegate { LaunchLaptopTracker(); };
-            windowsActions.Children.Add(launch);
+            actions.Children.Add(launch);
             Button browse = MakeButton("Choose app...");
-            browse.Margin = new Thickness(0, 0, 8, 6);
             browse.Click += delegate
             {
                 Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
@@ -7408,58 +7405,86 @@ namespace UssdApp
                 AppConfig config = AppConfig.Load();
                 config.laptop_tracker_exe = _laptopTrackerExe;
                 config.Save();
-                exePath.Text = _laptopTrackerExe;
-                _appsStatus.Text = "Laptop Tracker path saved. Open it here or re-enter Apps to launch it.";
+                _appsStatus.Text = "Laptop Tracker selected. Open it here when you are ready.";
             };
-            windowsActions.Children.Add(browse);
-            windows.Children.Add(windowsActions);
-
-            Border windowsCard = MakeServiceCard(windows);
-            windowsCard.Margin = new Thickness(4, 4, 8, 4);
-            Grid.SetColumn(windowsCard, 0);
-            cards.Children.Add(windowsCard);
-
-            StackPanel android = new StackPanel();
-            android.Children.Add(new TextBlock
-            {
-                Text = "Android",
-                FontSize = 17,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = BrushFg
-            });
-            android.Children.Add(new TextBlock
-            {
-                Text = "Laptop Tracker installer",
-                FontSize = 13,
-                Foreground = BrushGray,
-                Margin = new Thickness(0, 3, 0, 10)
-            });
-            string apkPath = @"C:\Users\Admin\Documents\Default Project\laptop-tracker\android-app\app\build\outputs\apk\debug\app-debug.apk";
-            android.Children.Add(new TextBlock
-            {
-                Text = apkPath,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = BrushGray,
-                Margin = new Thickness(0, 0, 0, 10)
-            });
+            actions.Children.Add(browse);
             Button showApk = MakeButton("Show Android APK");
-            showApk.Click += delegate { OpenLaptopTrackerApkLocation(apkPath); };
-            android.Children.Add(showApk);
-            android.Children.Add(new TextBlock
+            showApk.Margin = new Thickness(8, 0, 0, 0);
+            showApk.Click += delegate { ChooseLaptopTrackerApkLocation(); };
+            actions.Children.Add(showApk);
+            Button launchCalls = MakeStyledButton("Open cross-platform calls", "PrimaryButton");
+            launchCalls.Margin = new Thickness(8, 0, 0, 0);
+            launchCalls.Click += delegate { LaunchCallsCompanion(); };
+            actions.Children.Add(launchCalls);
+            Button chooseCalls = MakeButton("Choose calls app...");
+            chooseCalls.Margin = new Thickness(8, 0, 0, 0);
+            chooseCalls.Click += delegate
             {
-                Text = "Copy the APK to your Android device and install it through Android's package installer. The installer will ask you to confirm.",
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = BrushGray,
-                Margin = new Thickness(0, 10, 0, 0)
-            });
-            Border androidCard = MakeServiceCard(android);
-            androidCard.Margin = new Thickness(8, 4, 4, 4);
-            Grid.SetColumn(androidCard, 1);
-            cards.Children.Add(androidCard);
-
-            Grid.SetRow(cards, 2);
-            g.Children.Add(cards);
+                Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "Choose USSD Manager Calls",
+                    Filter = "USSD Manager Calls (USSDCalls.exe)|USSDCalls.exe|Executable files (*.exe)|*.exe",
+                    CheckFileExists = true,
+                    Multiselect = false
+                };
+                if (dialog.ShowDialog(this) != true) return;
+                _callsCompanionExe = dialog.FileName;
+                AppConfig config = AppConfig.Load();
+                config.calls_companion_exe = _callsCompanionExe;
+                config.Save();
+                _appsStatus.Text = "Cross-platform call companion selected. Open it when you are ready.";
+            };
+            actions.Children.Add(chooseCalls);
+            Grid.SetRow(actions, 3);
+            g.Children.Add(actions);
             return g;
+        }
+
+        private void LaunchCallsCompanion()
+        {
+            try
+            {
+                if (_callsCompanionProcess != null && !_callsCompanionProcess.HasExited)
+                {
+                    _appsStatus.Text = "Cross-platform calls are already open in their companion window.";
+                    return;
+                }
+                if (_callsCompanionProcess != null)
+                {
+                    _callsCompanionProcess.Dispose();
+                    _callsCompanionProcess = null;
+                }
+                if (string.IsNullOrEmpty(_callsCompanionExe))
+                    _callsCompanionExe = AppConfig.Load().calls_companion_exe;
+                if (string.IsNullOrEmpty(_callsCompanionExe))
+                    _callsCompanionExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                        "USSDCalls", "USSDCalls.exe");
+                if (!File.Exists(_callsCompanionExe))
+                {
+                    _appsStatus.Text = "USSD Manager Calls was not found. Install the complete Windows release ZIP or choose its executable.";
+                    Log("Cross-platform calls companion is missing: " + _callsCompanionExe, BrushWarn);
+                    return;
+                }
+                string path = Path.GetFullPath(_callsCompanionExe);
+                _callsCompanionProcess = Process.Start(new ProcessStartInfo
+                {
+                    FileName = path,
+                    WorkingDirectory = Path.GetDirectoryName(path),
+                    UseShellExecute = false
+                });
+                if (_callsCompanionProcess == null)
+                    throw new InvalidOperationException("Windows did not return a process for USSD Manager Calls.");
+                AppConfig config = AppConfig.Load();
+                config.calls_companion_exe = path;
+                config.Save();
+                _appsStatus.Text = "Cross-platform calls opened. Use the same calling service and invitation as your Android contact.";
+                Log("Opened the LiveKit call companion.", BrushSuccess);
+            }
+            catch (Exception ex)
+            {
+                _appsStatus.Text = "Cross-platform calls could not be opened: " + ex.Message;
+                Log("Cross-platform call companion launch failed: " + ex.Message, BrushError);
+            }
         }
 
         private void LaunchLaptopTracker()
@@ -7468,7 +7493,12 @@ namespace UssdApp
             {
                 if (_laptopTrackerProcess != null && !_laptopTrackerProcess.HasExited)
                 {
-                    _appsStatus.Text = "Laptop Tracker is already running.";
+                    IntPtr existingWindow = _laptopTrackerProcess.MainWindowHandle;
+                    if (existingWindow != IntPtr.Zero && _laptopTrackerHost != null &&
+                        _laptopTrackerHost.AttachWindow(existingWindow))
+                        _appsStatus.Text = "Laptop Tracker is open in this panel.";
+                    else
+                        _appsStatus.Text = "Laptop Tracker is already starting. Please try again in a moment.";
                     return;
                 }
                 if (_laptopTrackerProcess != null)
@@ -7491,14 +7521,204 @@ namespace UssdApp
                 });
                 if (_laptopTrackerProcess == null)
                     throw new InvalidOperationException("Windows did not return a process for Laptop Tracker.");
-                _appsStatus.Text = "Laptop Tracker is open. Device access and tracking controls are managed in its window.";
-                Log("Opened Laptop Tracker.", BrushSuccess);
+                _appsStatus.Text = "Starting Laptop Tracker in this panel...";
+                Process tracker = _laptopTrackerProcess;
+                Task.Run(delegate
+                {
+                    IntPtr window = IntPtr.Zero;
+                    string windowError = null;
+                    try
+                    {
+                        for (int attempt = 0; attempt < 150; attempt++)
+                        {
+                            if (tracker.HasExited) break;
+                            tracker.Refresh();
+                            window = tracker.MainWindowHandle;
+                            if (window != IntPtr.Zero) break;
+                            Thread.Sleep(100);
+                        }
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        windowError = ex.Message;
+                    }
+                    Dispatcher.BeginInvoke(new Action(delegate
+                    {
+                        if (!string.IsNullOrEmpty(windowError))
+                        {
+                            _appsStatus.Text = "Could not read the Laptop Tracker window: " + windowError;
+                            Log("Laptop Tracker window lookup failed: " + windowError, BrushError);
+                            return;
+                        }
+                        if (window == IntPtr.Zero)
+                        {
+                            _appsStatus.Text = "Laptop Tracker did not create a window. Check the selected executable and try again.";
+                            Log("Laptop Tracker did not create a window within 15 seconds.", BrushWarn);
+                            return;
+                        }
+                        if (_laptopTrackerHost == null || !_laptopTrackerHost.AttachWindow(window))
+                        {
+                            _appsStatus.Text = "Laptop Tracker started but could not be embedded. Close it and verify you selected the desktop app.";
+                            Log("Laptop Tracker window could not be embedded in the Apps panel.", BrushError);
+                            return;
+                        }
+                        _appsStatus.Text = "Laptop Tracker is open in this panel. Its own sign-in and permission prompts remain active.";
+                        Log("Opened Laptop Tracker in the Apps panel.", BrushSuccess);
+                    }));
+                });
             }
             catch (Exception ex)
             {
                 _appsStatus.Text = "Laptop Tracker could not be opened: " + ex.Message;
                 Log("Laptop Tracker launch failed: " + ex.Message, BrushError);
             }
+        }
+
+        private sealed class TrackerWindowHost : HwndHost
+        {
+            private const int GwlStyle = -16;
+            private const int WsChild = 0x40000000;
+            private const int WsVisible = 0x10000000;
+            private const int WsClipSiblings = 0x04000000;
+            private const int WsClipChildren = 0x02000000;
+            private const int WsPopup = unchecked((int)0x80000000);
+            private const int WsCaption = 0x00C00000;
+            private const int WsThickFrame = 0x00040000;
+            private const int WsSysMenu = 0x00080000;
+            private const int WsMinimizeBox = 0x00020000;
+            private const int WsMaximizeBox = 0x00010000;
+            private const uint SwpNoSize = 0x0001;
+            private const uint SwpNoMove = 0x0002;
+            private const uint SwpNoZOrder = 0x0004;
+            private const uint SwpFrameChanged = 0x0020;
+            private const int ShowNormal = 5;
+
+            private IntPtr _hostHandle;
+            private IntPtr _trackerHandle;
+            private int _originalStyle;
+            private bool _hasOriginalStyle;
+
+            public bool AttachWindow(IntPtr window)
+            {
+                if (window == IntPtr.Zero || _hostHandle == IntPtr.Zero) return false;
+                if (_trackerHandle == window)
+                {
+                    ResizeTrackerWindow();
+                    return true;
+                }
+
+                _originalStyle = GetWindowLong(window, GwlStyle);
+                _hasOriginalStyle = true;
+                SetParent(window, _hostHandle);
+                if (GetParent(window) != _hostHandle)
+                {
+                    _hasOriginalStyle = false;
+                    return false;
+                }
+
+                int childStyle = (_originalStyle & ~(WsPopup | WsCaption | WsThickFrame |
+                    WsSysMenu | WsMinimizeBox | WsMaximizeBox)) |
+                    WsChild | WsVisible | WsClipSiblings | WsClipChildren;
+                SetWindowLong(window, GwlStyle, childStyle);
+                _trackerHandle = window;
+                SetWindowPos(window, IntPtr.Zero, 0, 0, 0, 0,
+                    SwpNoZOrder | SwpFrameChanged | SwpNoMove | SwpNoSize);
+                ShowWindow(window, ShowNormal);
+                ResizeTrackerWindow();
+                return true;
+            }
+
+            protected override HandleRef BuildWindowCore(HandleRef hwndParent)
+            {
+                _hostHandle = CreateWindowEx(0, "static", "",
+                    WsChild | WsVisible | WsClipSiblings | WsClipChildren,
+                    0, 0, 1, 1, hwndParent.Handle, IntPtr.Zero,
+                    GetModuleHandle(null), IntPtr.Zero);
+                if (_hostHandle == IntPtr.Zero)
+                    throw new InvalidOperationException("Could not create the Laptop Tracker panel host (Win32 " +
+                        Marshal.GetLastWin32Error() + ").");
+                return new HandleRef(this, _hostHandle);
+            }
+
+            protected override void DestroyWindowCore(HandleRef hwnd)
+            {
+                DetachTrackerWindow();
+                if (hwnd.Handle != IntPtr.Zero) DestroyWindow(hwnd.Handle);
+                _hostHandle = IntPtr.Zero;
+            }
+
+            protected override void OnWindowPositionChanged(Rect rect)
+            {
+                base.OnWindowPositionChanged(rect);
+                ResizeTrackerWindow();
+            }
+
+            private void ResizeTrackerWindow()
+            {
+                if (_trackerHandle == IntPtr.Zero || _hostHandle == IntPtr.Zero) return;
+                double width = ActualWidth;
+                double height = ActualHeight;
+                PresentationSource source = PresentationSource.FromVisual(this);
+                if (source != null && source.CompositionTarget != null)
+                {
+                    Matrix transform = source.CompositionTarget.TransformToDevice;
+                    Point size = transform.Transform(new Point(width, height));
+                    width = size.X;
+                    height = size.Y;
+                }
+                MoveWindow(_trackerHandle, 0, 0,
+                    Math.Max(1, (int)Math.Round(width)),
+                    Math.Max(1, (int)Math.Round(height)), true);
+            }
+
+            private void DetachTrackerWindow()
+            {
+                if (_trackerHandle == IntPtr.Zero) return;
+                if (_hasOriginalStyle)
+                {
+                    SetParent(_trackerHandle, IntPtr.Zero);
+                    SetWindowLong(_trackerHandle, GwlStyle, _originalStyle);
+                    SetWindowPos(_trackerHandle, IntPtr.Zero, 0, 0, 0, 0,
+                        SwpNoZOrder | SwpFrameChanged | SwpNoMove | SwpNoSize);
+                    ShowWindow(_trackerHandle, ShowNormal);
+                }
+                _trackerHandle = IntPtr.Zero;
+                _hasOriginalStyle = false;
+            }
+
+            [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+            private static extern IntPtr CreateWindowEx(int exStyle, string className, string windowName,
+                int style, int x, int y, int width, int height, IntPtr parent, IntPtr menu,
+                IntPtr instance, IntPtr parameter);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern bool DestroyWindow(IntPtr handle);
+
+            [DllImport("user32.dll")]
+            private static extern IntPtr SetParent(IntPtr child, IntPtr parent);
+
+            [DllImport("user32.dll")]
+            private static extern IntPtr GetParent(IntPtr child);
+
+            [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
+            private static extern int GetWindowLong(IntPtr handle, int index);
+
+            [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+            private static extern int SetWindowLong(IntPtr handle, int index, int value);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern bool SetWindowPos(IntPtr handle, IntPtr insertAfter,
+                int x, int y, int width, int height, uint flags);
+
+            [DllImport("user32.dll", SetLastError = true)]
+            private static extern bool MoveWindow(IntPtr handle, int x, int y,
+                int width, int height, bool repaint);
+
+            [DllImport("user32.dll")]
+            private static extern bool ShowWindow(IntPtr handle, int command);
+
+            [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+            private static extern IntPtr GetModuleHandle(string moduleName);
         }
 
         private void OpenLaptopTrackerApkLocation(string path)
@@ -7524,6 +7744,19 @@ namespace UssdApp
                 _appsStatus.Text = "The APK could not be shown in File Explorer: " + ex.Message;
                 Log("Laptop Tracker APK open failed: " + ex.Message, BrushError);
             }
+        }
+
+        private void ChooseLaptopTrackerApkLocation()
+        {
+            Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Choose Laptop Tracker Android APK",
+                Filter = "Android application package (*.apk)|*.apk",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+            if (dialog.ShowDialog(this) == true)
+                OpenLaptopTrackerApkLocation(dialog.FileName);
         }
 
         private Grid BuildTrackerTab()
@@ -12980,7 +13213,6 @@ namespace UssdApp
             AnimateSlideIn(_pages[_pageIndex]);
             UpdateShellPageHeading();
             HighlightNav();
-            if (index == 6) LaunchLaptopTracker();
         }
 
         private void UpdateShellPageHeading()

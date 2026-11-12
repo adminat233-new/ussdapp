@@ -3,10 +3,42 @@ plugins {
     id "org.jetbrains.kotlin.android"
 }
 
-android { namespace "com.ussdapp.mobile"; compileSdk 34
-    defaultConfig { applicationId "com.ussdapp.mobile"; minSdk 26; targetSdk 34; versionCode 3; versionName "4.0.2" }
+def releaseVersionCode = (project.findProperty("releaseVersionCode") ?: "3").toString().toInteger()
+def releaseVersionName = (project.findProperty("releaseVersionName") ?: "4.0.2").toString()
+
+android {
+    namespace "com.ussdapp.mobile"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.ussdapp.mobile"
+        minSdk 26
+        targetSdk 34
+        versionCode releaseVersionCode
+        versionName releaseVersionName
+    }
+
+    signingConfigs {
+        release {
+            def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            storeFile file(keystorePath ?: "missing-release-key.jks")
+            storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: ""
+            keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: ""
+            keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: ""
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
+
     sourceSets { main.java.srcDirs += ["../src/main/java"] }
-    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
     kotlinOptions { jvmTarget = "1.8" }
 }
 

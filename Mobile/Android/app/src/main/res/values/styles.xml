@@ -1,15 +1,15 @@
 <resources>
-    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:windowBackground">#090F1B</item>
-        <item name="android:statusBarColor">#090F1B</item>
-        <item name="android:navigationBarColor">#090F1B</item>
-        <item name="android:textColorPrimary">#EEF3FB</item>
-        <item name="android:textColorSecondary">#A0AEC3</item>
-        <item name="android:colorAccent">#6D8FFF</item>
-        <item name="android:colorControlNormal">#A0AEC3</item>
-        <item name="android:colorControlActivated">#6D8FFF</item>
-        <item name="android:colorControlHighlight">#334F86</item>
+        <item name="android:windowBackground">#F8FAFC</item>
+        <item name="android:statusBarColor">#F8FAFC</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:textColorPrimary">#17243A</item>
+        <item name="android:textColorSecondary">#5B6B82</item>
+        <item name="android:colorAccent">#315FC5</item>
+        <item name="android:colorControlNormal">#5B6B82</item>
+        <item name="android:colorControlActivated">#315FC5</item>
+        <item name="android:colorControlHighlight">#DCE7FC</item>
         <item name="android:buttonStyle">@style/AppButton</item>
         <item name="android:editTextStyle">@style/AppEditText</item>
         <item name="android:textAllCaps">false</item>
@@ -23,7 +23,7 @@
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
         <item name="android:textAllCaps">false</item>
-        <item name="android:textColor">#EAF0FA</item>
+        <item name="android:textColor">#17243A</item>
     </style>
 
     <style name="AppEditText" parent="android:style/Widget.Material.EditText">
@@ -33,7 +33,7 @@
         <item name="android:paddingEnd">14dp</item>
         <item name="android:paddingTop">10dp</item>
         <item name="android:paddingBottom">10dp</item>
-        <item name="android:textColor">#EEF3FB</item>
-        <item name="android:textColorHint">#91A0B7</item>
+        <item name="android:textColor">#17243A</item>
+        <item name="android:textColorHint">#718096</item>
     </style>
 </resources>

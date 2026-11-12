@@ -6,6 +6,9 @@
 !**/.env.example
 
 CallingServer/node_modules/
+DesktopCalls/node_modules/
+DesktopCalls/dist/
+DesktopCalls/release/
 CallingServer/livekit.yaml
 CallingServer/Caddyfile
 Mobile/Android/.gradle/

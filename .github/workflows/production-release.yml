@@ -1,0 +1,276 @@
+name: Signed production releases
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing stable vMAJOR.MINOR.PATCH tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    if: ${{ !endsWith(github.ref_name, '-preview') }}
+    runs-on: windows-latest
+    environment: production-release
+    steps:
+      - name: Check out stable release
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Validate release tag and Windows signing secrets
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          if ($env:GITHUB_EVENT_NAME -eq "workflow_dispatch" -and $env:GITHUB_REF -ne "refs/heads/main") {
+            throw "Manual production releases must be dispatched from main."
+          }
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Use a stable vMAJOR.MINOR.PATCH tag; preview tags are not production releases."
+          }
+          foreach ($name in @("WINDOWS_SIGNING_PFX_BASE64", "WINDOWS_SIGNING_PFX_PASSWORD")) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Required signing secret is missing: $name"
+            }
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP "ussdapp-windows-signing.pfx"
+          $encoded = $env:WINDOWS_SIGNING_PFX_BASE64 -replace '\s', ''
+          try {
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($encoded))
+          } catch {
+            throw "WINDOWS_SIGNING_PFX_BASE64 must contain a valid base64-encoded PFX."
+          }
+          "WINDOWS_SIGNING_CERTIFICATE_PATH=$certificatePath" >> $env:GITHUB_ENV
+
+      - name: Build Windows desktop app and wake agent
+        shell: cmd
+        run: |
+          set TEMP=%RUNNER_TEMP%
+          set TMP=%RUNNER_TEMP%
+          call Csharp\build.bat
+          if errorlevel 1 exit /b 1
+          call Csharp\build_agent.bat
+          if errorlevel 1 exit /b 1
+
+      - name: Set up Node for Windows calling companion
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: DesktopCalls/package-lock.json
+
+      - name: Build Windows LiveKit companion
+        working-directory: DesktopCalls
+        shell: pwsh
+        run: |
+          npm ci
+          npm test
+          npm run pack:win
+
+      - name: Sign and verify Windows executables
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PFX_PASSWORD }}
+        run: |
+          $sdkRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10\bin"
+          $signTool = Get-ChildItem -Path $sdkRoot -Filter signtool.exe -Recurse |
+            Where-Object { $_.Directory.Name -eq "x64" } |
+            Sort-Object FullName |
+            Select-Object -Last 1
+          if (-not $signTool) { throw "Windows SDK signtool.exe was not found." }
+
+          $binaries = @(
+            "Csharp\UssdApp.exe",
+            "Csharp\UssdAgent.exe"
+          )
+          $companionExe = "DesktopCalls\release\win-unpacked\USSDCalls.exe"
+          if (-not (Test-Path $companionExe)) {
+            throw "The packaged USSD Manager Calls executable is missing."
+          }
+          $companionBinaries = Get-ChildItem DesktopCalls\release\win-unpacked -Filter *.exe -Recurse |
+            Select-Object -ExpandProperty FullName
+          if (-not $companionBinaries -or $companionBinaries.Count -lt 1) {
+            throw "The Electron runtime contains no executables to sign."
+          }
+          $binaries += $companionBinaries
+          foreach ($binary in $binaries) {
+            if (-not (Test-Path $binary)) { throw "Release executable is missing: $binary" }
+            & $signTool.FullName sign /f $env:WINDOWS_SIGNING_CERTIFICATE_PATH /p $env:WINDOWS_SIGNING_PFX_PASSWORD /fd SHA256 /tr https://timestamp.digicert.com /td SHA256 $binary
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed for $binary" }
+            & $signTool.FullName verify /pa /all $binary
+            if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $binary" }
+          }
+
+      - name: Package signed Windows release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path windows-bundle,windows-bundle\USSDCalls,release-assets -Force | Out-Null
+          Copy-Item Csharp\UssdApp.exe,Csharp\UssdAgent.exe,Csharp\UssdApp.ico -Destination windows-bundle
+          Copy-Item DesktopCalls\release\win-unpacked\* -Destination windows-bundle\USSDCalls -Recurse -Force
+          Compress-Archive -Path windows-bundle\* -DestinationPath release-assets\USSDManager-Windows.zip -Force
+
+      - name: Remove Windows signing certificate
+        if: always()
+        shell: pwsh
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP "ussdapp-windows-signing.pfx"
+          if (Test-Path $certificatePath) { Remove-Item -LiteralPath $certificatePath -Force }
+
+      - name: Upload signed Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-production
+          path: release-assets/USSDManager-Windows.zip
+          if-no-files-found: error
+
+  android:
+    if: ${{ !endsWith(github.ref_name, '-preview') }}
+    runs-on: ubuntu-latest
+    environment: production-release
+    steps:
+      - name: Check out stable release
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Validate release tag and Android signing secrets
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+          ANDROID_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Manual production releases must be dispatched from main." >&2
+            exit 1
+          fi
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Use a stable vMAJOR.MINOR.PATCH tag; preview tags are not production releases." >&2
+            exit 1
+          fi
+          for name in ANDROID_SIGNING_KEYSTORE_BASE64 ANDROID_SIGNING_STORE_PASSWORD ANDROID_SIGNING_KEY_ALIAS ANDROID_SIGNING_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Required signing secret is missing: $name" >&2
+              exit 1
+            fi
+          done
+          KEYSTORE_PATH="$RUNNER_TEMP/ussdapp-release.jks"
+          if ! printf '%s' "$ANDROID_SIGNING_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"; then
+            echo "ANDROID_SIGNING_KEYSTORE_BASE64 must contain a valid base64-encoded keystore." >&2
+            exit 1
+          fi
+          chmod 600 "$KEYSTORE_PATH"
+          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build signed Android APK and Play bundle
+        working-directory: Mobile/Android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          VERSION_NAME="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION_NAME="${{ inputs.release_tag }}"
+            VERSION_NAME="${VERSION_NAME#v}"
+          fi
+          ./gradlew --no-daemon --max-workers=2 \
+            -PreleaseVersionCode="$((GITHUB_RUN_NUMBER + 3))" \
+            -PreleaseVersionName="$VERSION_NAME" \
+            :app:assembleRelease :app:bundleRelease
+
+      - name: Verify Android release signature
+        working-directory: Mobile/Android
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$APK"
+          test -s "$AAB"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          AAB_RESULT="$(jarsigner -verify "$AAB" 2>&1)"
+          printf '%s\n' "$AAB_RESULT"
+          if ! grep -qi "jar verified" <<<"$AAB_RESULT"; then
+            echo "The Android App Bundle does not have a verified signature." >&2
+            exit 1
+          fi
+
+      - name: Stage signed Android release
+        run: |
+          mkdir -p release-assets
+          cp Mobile/Android/app/build/outputs/apk/release/app-release.apk release-assets/USSDManager-Android.apk
+          cp Mobile/Android/app/build/outputs/bundle/release/app-release.aab release-assets/USSDManager-Android.aab
+
+      - name: Upload signed Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-production
+          path: |
+            release-assets/USSDManager-Android.apk
+            release-assets/USSDManager-Android.aab
+          if-no-files-found: error
+
+      - name: Remove Android signing keystore
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/ussdapp-release.jks"
+
+  publish:
+    needs:
+      - windows
+      - android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download signed Windows bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-production
+          path: release-assets
+
+      - name: Download signed Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: android-production
+          path: release-assets
+
+      - name: Publish stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            release-assets/USSDManager-Windows.zip \
+            release-assets/USSDManager-Android.apk \
+            release-assets/USSDManager-Android.aab \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "USSD Manager $RELEASE_TAG" \
+            --notes "Signed stable release. Windows download is a ZIP containing USSD Manager, its wake agent, and the LiveKit call companion. Android APK is signed for direct installation; AAB is for Google Play submission. Cross-device calling still requires a deployed calling service and verified device/network interoperability. Tracker, relay, and AI services must be configured separately. Release source: $RELEASE_TAG" \
+            --verify-tag \
+            --latest

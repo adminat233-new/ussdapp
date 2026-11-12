@@ -925,7 +925,7 @@
           </div>
         </div>
         <div class="architecture-grid">
-          <div class="architecture-step"><strong>1. Install a matching preview</strong><p>Use the Windows executable and Android debug APK from the same preview release. iOS builds are coming soon and are not included in these downloads.</p></div>
+          <div class="architecture-step"><strong>1. Install a matching build</strong><p>Use the complete Windows bundle and Android APK from the same release. Preview APKs are debug-signed; stable APKs are signed for distribution. iOS builds are not included in these downloads.</p></div>
           <div class="architecture-step"><strong>2. Configure trusted services</strong><p>Connect compatible clients to a reachable relay and verify its identity. Calls also need the configured calling/media service; tracking and AI each require their own endpoint and credentials.</p></div>
           <div class="architecture-step"><strong>3. Pair and test deliberately</strong><p>Register each app identity, then test a message and call between devices on different networks. Grant location only for an intentional one-time share. Never publish or reuse pairing secrets.</p></div>
         </div>
@@ -936,7 +936,7 @@
           <div>
             <div class="eyebrow">Builds, not promises</div>
             <h2 id="downloads-title">Downloads</h2>
-            <p class="section-intro">Choose a published release to download its Windows EXE or Android APK. The buttons link directly to the attached release files.</p>
+            <p class="section-intro">Choose a published release to download the complete Windows app bundle or Android APK. The buttons link directly to the attached release files.</p>
           </div>
         </div>
         <div class="release-banner" id="release-banner" data-state="checking" role="status" aria-live="polite">
@@ -954,14 +954,14 @@
           <article class="download-card">
             <div class="download-top"><span class="platform-icon" aria-hidden="true">WIN</span><span class="availability" data-availability="windows">Not published</span></div>
             <h3>Windows</h3>
-            <p>Desktop application executable. Only a published .exe is linked.</p>
+            <p>Complete Windows app bundle, including the LiveKit call companion.</p>
             <a class="asset-link" data-download="windows" aria-disabled="true">No build in this release</a>
             <p class="asset-meta" data-meta="windows"></p>
           </article>
           <article class="download-card">
             <div class="download-top"><span class="platform-icon" aria-hidden="true">AND</span><span class="availability" data-availability="android">Not published</span></div>
             <h3>Android</h3>
-            <p>Installable package. A debug APK is identified as a preview, not a production release.</p>
+            <p>Installable package. Debug APKs are identified as previews; stable downloads are signed.</p>
             <a class="asset-link" data-download="android" aria-disabled="true">No APK in this release</a>
             <p class="asset-meta" data-meta="android"></p>
           </article>
@@ -973,7 +973,7 @@
             <p class="asset-meta"></p>
           </article>
         </div>
-        <p class="release-note">Preview builds are for testing, may contain unfinished features, and are not app-store releases. Android APKs are debug-signed. iOS downloads are coming soon. Public download links do not make the required relay, tracker, calling, or AI services public.</p>
+        <p class="release-note">Preview builds are for testing and Android preview APKs are debug-signed. Stable downloads are published only after CI verifies Windows and Android signatures. Public downloads do not make the required relay, calling, tracker, or AI services public.</p>
       </section>
 
       <footer class="site-foot">
@@ -1323,7 +1323,7 @@
       var releaseBanner = document.getElementById("release-banner");
       var releaseSelect = document.getElementById("release-select");
       var platformNames = { windows: "Windows", android: "Android", ios: "iOS" };
-      var extensions = { windows: ".exe", android: ".apk" };
+      var extensions = { windows: ".zip", android: ".apk" };
 
       function formatSize(bytes) {
         if (!Number.isFinite(bytes) || bytes <= 0) return "";
@@ -1331,14 +1331,22 @@
       }
 
       function findAsset(assets, platform) {
-        var expectedName = platform === "windows" ? "UssdApp.exe" : "";
+        var windowsBundles = ["USSDManager-Windows.zip", "USSDManager-Windows-preview.zip"];
         var extension = extensions[platform];
-        return assets.find(function (asset) {
+        function isReleaseAsset(asset) {
           return typeof asset.name === "string" &&
-            (expectedName ? asset.name.toLowerCase() === expectedName.toLowerCase() : asset.name.toLowerCase().endsWith(extension)) &&
             typeof asset.browser_download_url === "string" &&
             /^https:\/\/github\.com\/adminat233-new\/ussdapp\/releases\/download\//.test(asset.browser_download_url) &&
             Number(asset.size) > 0;
+        }
+        if (platform === "windows") {
+          return assets.find(function (asset) {
+            return isReleaseAsset(asset) && windowsBundles.indexOf(asset.name) >= 0;
+          });
+        }
+        return assets.find(function (asset) {
+          return isReleaseAsset(asset) &&
+            asset.name.toLowerCase().endsWith(extension);
         });
       }
 
@@ -1412,7 +1420,7 @@
             releaseSelect.add(new Option("No published builds yet", ""));
             releaseSelect.disabled = true;
             releaseBanner.dataset.state = "unavailable";
-            releaseMessage.textContent = "No Windows or Android release assets are published yet. Tag a preview build to publish the EXE and APK downloads.";
+            releaseMessage.textContent = "No Windows or Android release assets are published yet. Publish a preview or signed stable release to enable downloads.";
             return;
           }
 
@@ -1427,7 +1435,11 @@
             var selected = releases[Number(releaseSelect.value)];
             if (selected) renderRelease(selected);
           });
-          renderRelease(releases[0]);
+          var preferredRelease = releases.find(function (release) {
+            return !release.prerelease && findAsset(release.assets || [], "windows") &&
+              findAsset(release.assets || [], "android");
+          });
+          renderRelease(preferredRelease || releases[0]);
         }).catch(function (error) {
           releaseSelect.innerHTML = "";
           releaseSelect.add(new Option("Release status unavailable", ""));

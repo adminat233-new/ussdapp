@@ -30,15 +30,34 @@ jobs:
       - name: Build Windows app and wake agent
         shell: cmd
         run: |
+          set TEMP=%RUNNER_TEMP%
+          set TMP=%RUNNER_TEMP%
           call Csharp\build.bat
           if errorlevel 1 exit /b 1
           call Csharp\build_agent.bat
           if errorlevel 1 exit /b 1
 
-      - name: Package Windows preview
+      - name: Set up Node for Windows calling companion
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: DesktopCalls/package-lock.json
+
+      - name: Build Windows LiveKit calling companion
+        working-directory: DesktopCalls
+        run: |
+          npm ci
+          npm test
+          npm run pack:win
+
+      - name: Package Windows preview bundle
         shell: pwsh
         run: |
-          Compress-Archive -Path Csharp\UssdApp.exe,Csharp\UssdAgent.exe,Csharp\UssdApp.ico -DestinationPath USSDManager-Windows-preview.zip -Force
+          New-Item -ItemType Directory -Path windows-bundle,windows-bundle\USSDCalls,preview-assets -Force | Out-Null
+          Copy-Item Csharp\UssdApp.exe,Csharp\UssdAgent.exe,Csharp\UssdApp.ico -Destination windows-bundle
+          Copy-Item DesktopCalls\release\win-unpacked\* -Destination windows-bundle\USSDCalls -Recurse -Force
+          Compress-Archive -Path windows-bundle\* -DestinationPath USSDManager-Windows-preview.zip -Force
           New-Item -ItemType Directory -Path preview-assets -Force | Out-Null
           Copy-Item Csharp\UssdApp.exe,Csharp\UssdAgent.exe,Csharp\UssdApp.ico,USSDManager-Windows-preview.zip -Destination preview-assets
 

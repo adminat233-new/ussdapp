@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' https: wss: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <title>USSD Manager Calls</title>
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand-mark" aria-hidden="true">U</div>
+        <div class="brand-copy">
+          <strong>USSD Manager</strong>
+          <span>Cross-platform calls</span>
+        </div>
+        <div class="connection-pill" id="connection-pill">
+          <span class="connection-dot"></span>
+          <span id="connection-label">Ready when you are</span>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <div class="call-panel">
+          <div class="section-heading">
+            <p class="eyebrow">LIVEKIT CALLING</p>
+            <h1>Stay close, wherever you are.</h1>
+            <p class="intro">Join the same private voice or video room as Android. Both devices need an internet connection and access to the configured calling service.</p>
+          </div>
+
+          <div class="call-form">
+            <label for="api-url">Calling service URL</label>
+            <input id="api-url" type="url" autocomplete="url" placeholder="https://api.calls.example.com">
+
+            <label for="display-name">Your name</label>
+            <input id="display-name" type="text" maxlength="32" autocomplete="name" placeholder="Display name">
+
+            <button class="button button-primary" id="create-voice" type="button">Start voice call</button>
+            <button class="button button-outline" id="create-video" type="button">Start video call</button>
+
+            <div class="divider"><span>or join a friend</span></div>
+            <label for="invitation">Private invitation</label>
+            <textarea id="invitation" rows="3" spellcheck="false" placeholder="Paste the complete invitation shared by your friend"></textarea>
+            <button class="button button-outline" id="join-call" type="button">Join call</button>
+            <p class="privacy-note">Microphone and camera are used only after you start or join a call. Calls use encrypted transport; audio and video are not end-to-end encrypted by the app.</p>
+          </div>
+        </div>
+
+        <section class="stage" aria-label="Call controls and participants">
+          <div class="stage-header">
+            <div>
+              <p class="eyebrow">YOUR CALL</p>
+              <h2 id="call-status">Not in a call</h2>
+            </div>
+            <button class="button button-danger" id="leave-call" type="button" disabled>Leave</button>
+          </div>
+          <div class="video-grid" id="video-grid">
+            <div class="video-placeholder" id="local-tile">
+              <video id="local-video" autoplay playsinline muted></video>
+              <span class="tile-label">You</span>
+            </div>
+          </div>
+          <div class="audio-layer" id="audio-layer" aria-hidden="true"></div>
+          <div class="stage-footer">
+            <button class="control-button" id="mute-mic" type="button" disabled>Mute mic</button>
+            <button class="control-button" id="toggle-camera" type="button" disabled>Turn camera on</button>
+            <p id="call-message" role="status" aria-live="polite">Start a call or paste an invitation to join.</p>
+          </div>
+          <div class="invitation-card" id="invitation-card" hidden>
+            <div>
+              <strong>Share this private invitation</strong>
+              <span>Anyone with this complete code can join until it expires.</span>
+            </div>
+            <button class="button button-outline" id="copy-invitation" type="button">Copy invite</button>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

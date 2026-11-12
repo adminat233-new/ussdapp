@@ -58,10 +58,14 @@ npm ci
 npm test
 ```
 
-The Android client has an initial LiveKit room screen with voice/video controls,
+The Android client has a LiveKit room screen with voice/video controls,
 roster/tile layout, invitation-backed encrypted chat, and chunked encrypted file
-transfer. A debug APK builds, but still needs testing on real devices against a
-deployed call service before it is suitable for friend testing or release. The
-iOS and Windows clients still need LiveKit interoperability; iOS release signing
-requires Xcode on macOS. No cross-platform calling should be advertised until
-those clients, the deployed service, and end-to-end tests are complete.
+transfer. The Windows LiveKit companion is built in `DesktopCalls/` and joins
+the same invitation/token service; the production Windows ZIP must include its
+complete `USSDCalls` runtime folder. Neither desktop/mobile interoperability nor
+a deployed calling service has yet been verified on real devices and public
+networks, so do not claim production-ready calling until that test passes.
+iOS release signing requires Xcode on macOS.
+
+Signed production release secrets and the artifact contents are documented in
+`docs/PRODUCTION_RELEASES.md`.

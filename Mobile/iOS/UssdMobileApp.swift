@@ -19,91 +19,204 @@ struct ContentView: View {
     @State private var prompt = ""
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("USSD Manager").font(.title)
-                    NavigationLink("Open secure relay chat") {
-                        MobileMessagingView()
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .font(.title2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 48, height: 48)
+                                .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 14))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("USSD Manager")
+                                    .font(.title2.weight(.bold))
+                                Text("Communication, made simple")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.white.opacity(0.82))
+                            }
+                        }
+                        Text("Your tools, calls and trusted connections in one place.")
+                            .font(.footnote)
+                            .foregroundStyle(.white.opacity(0.86))
+                            .padding(.top, 4)
                     }
-                    NavigationLink("Start voice/video calls") {
-                        NativeCallView()
-                    }
-                    NavigationLink("Open Device Tracking panel") {
-                        DeviceTrackingView()
-                    }
-                    Text("Agent panel")
-                        .font(.headline)
-                    Text("Voice starts only when you tap Listen. Speech recognition is limited to " +
-                         "on-device processing when the current language supports it. The assistant does not execute remote shell commands.")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
+                    .foregroundStyle(.white)
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(red: 0.19, green: 0.35, blue: 0.78),
+                                     Color(red: 0.20, green: 0.23, blue: 0.52)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 22)
+                    )
 
-                    TextField("Voice wake name", text: $assistant.wakeName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .onChange(of: assistant.wakeName) { value in
-                            UserDefaults.standard.set(value, forKey: "assistant.wakeName")
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Your apps").font(.headline)
+                        NavigationLink {
+                            NativeCallView()
+                        } label: {
+                            HomeDestinationCard(
+                                icon: "video.fill",
+                                title: "Calls & video",
+                                detail: "Start or join a voice or video room",
+                                tint: .blue
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        NavigationLink {
+                            MobileMessagingView()
+                        } label: {
+                            HomeDestinationCard(
+                                icon: "lock.fill",
+                                title: "Secure messages",
+                                detail: "Chat through your trusted relay",
+                                tint: .green
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        NavigationLink {
+                            DeviceTrackingView()
+                        } label: {
+                            HomeDestinationCard(
+                                icon: "laptopcomputer.and.iphone",
+                                title: "Device tracking",
+                                detail: "Manage paired devices and sharing",
+                                tint: .orange
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Assistant", systemImage: "sparkles")
+                            .font(.headline)
+                        Text("Voice starts only when you tap Listen. The assistant does not execute remote shell commands.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+
+                        TextField("Voice wake name", text: $assistant.wakeName)
+                            .textFieldStyle(.roundedBorder)
+                            .onChange(of: assistant.wakeName) { value in
+                                UserDefaults.standard.set(value, forKey: "assistant.wakeName")
+                            }
+
+                        TextField("Type /agent help", text: $command)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { runTypedCommand() }
+                        Button("Run assistant command", action: runTypedCommand)
+                            .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Text("AI model: \(GeminiAssistant.defaultModel)")
+                            .font(.subheadline.weight(.medium))
+                        Text("Prompts are sent to Google only when you ask. An API key is required; any free quota is controlled by the provider.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        SecureField("Gemini API key", text: $apiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        HStack {
+                            Button("Save API key") {
+                                assistant.saveAPIKey(apiKey)
+                                apiKey = ""
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Remove key") {
+                                assistant.removeAPIKey()
+                                apiKey = ""
+                            }
+                            .buttonStyle(.bordered)
                         }
 
-                    TextField("Type /agent help", text: $command)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .onSubmit { runTypedCommand() }
-                    Button("Run /agent command", action: runTypedCommand)
+                        TextField("Ask the AI a question", text: $prompt, axis: .vertical)
+                            .lineLimit(2...5)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Ask AI") {
+                            assistant.askAI(prompt)
+                            prompt = ""
+                        }
+                        .buttonStyle(.borderedProminent)
 
-                    Text("AI model: \(GeminiAssistant.defaultModel)")
-                        .font(.subheadline)
-                    Text("Prompts are sent to Google only when you ask. An API key is required; any free quota is controlled by the provider.")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
-                    SecureField("Gemini API key", text: $apiKey)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    HStack {
-                        Button("Save API key securely") {
-                            assistant.saveAPIKey(apiKey)
-                            apiKey = ""
+                        HStack {
+                            Button(assistant.isListening ? "Stop listening" : "Listen") {
+                                assistant.isListening ? assistant.stopListening() : assistant.startListening()
+                            }
+                            .buttonStyle(.bordered)
+                            Button("Speak response") {
+                                assistant.speak(assistant.response)
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        Button("Remove API key") {
-                            assistant.removeAPIKey()
-                            apiKey = ""
-                        }
+                        Text(assistant.response)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(Color(uiColor: .tertiarySystemGroupedBackground),
+                                        in: RoundedRectangle(cornerRadius: 12))
                     }
+                    .padding(16)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: 18))
 
-                    TextField("Ask the AI a question", text: $prompt, axis: .vertical)
-                        .lineLimit(2...5)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    Button("Ask AI") {
-                        assistant.askAI(prompt)
-                        prompt = ""
-                    }
-
-                    HStack {
-                        Button(assistant.isListening ? "Stop listening" : "Listen") {
-                            assistant.isListening ? assistant.stopListening() : assistant.startListening()
-                        }
-                        Button("Speak response") {
-                            assistant.speak(assistant.response)
-                        }
-                    }
-                    Text(assistant.response)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Spacer(minLength: 12)
                     Text("No background listening, relay control, or arbitrary device commands.")
                         .font(.footnote)
-                        .foregroundColor(.secondary)
-                    }
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
                 .padding()
+                .frame(maxWidth: 680)
+                .frame(maxWidth: .infinity)
             }
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Home")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
     private func runTypedCommand() {
         assistant.runTextCommand(command)
         command = ""
+    }
+}
+
+private struct HomeDestinationCard: View {
+    let icon: String
+    let title: String
+    let detail: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.headline)
+                .foregroundStyle(tint)
+                .frame(width: 42, height: 42)
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 15))
+        .contentShape(RoundedRectangle(cornerRadius: 15))
+        .accessibilityElement(children: .combine)
     }
 }
 

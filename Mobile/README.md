@@ -41,14 +41,15 @@ only when the user explicitly submits them. Local commands remain available
 without an API key. The model cannot invoke tracker actions, shell commands,
 or remote device control.
 
-The Windows **Apps** panel opens the configured Laptop Tracker desktop
-executable. The Android **Apps** destination opens the installed
-`com.find.tracker` app, or offers the bundled Laptop Tracker APK through
-Android's package installer if it is not installed. Android requires the user
-to allow installs from USSD Manager in system settings when that source is not
-already allowed, then confirm the installation in the package installer.
-Neither platform replaces Laptop Tracker's own sign-in, pairing, consent, or
-permission checks.
+The Windows **Apps** panel can host the configured Laptop Tracker desktop
+executable inside the page. The tracker starts only after the user taps its
+button; its own sign-in and permission prompts remain in effect. Android opens
+the installed `com.find.tracker` app, or offers the bundled Laptop Tracker APK
+through Android's package installer, only after the user taps **Open Laptop
+Tracker**. Android requires the user to allow installs from USSD Manager in
+system settings when that source is not already allowed, then confirm the
+installation in the package installer. Neither platform replaces Laptop
+Tracker's own sign-in, pairing, consent, or permission checks.
 
 The iOS app includes an explicit Device Tracking session for the external
 `laptop-tracker` service's authenticated `/api/v2/*` routes. Pairing returns a
@@ -75,6 +76,13 @@ to USSD Manager. Lost mode is a server-side status flag only; it does not lock o
 device. The tracker service's v2 schema migration must be applied and the Prisma client
 regenerated before these routes can work in a deployment; no live migration
 was applied as part of this change.
+
+No remote paired-device action is implemented in these clients. The tracker
+service and target-side companion source are not part of this repository, and
+the current tracker API has no request/approval protocol. Do not treat a
+pairing token or AI response as permission to act on a target device. Status,
+one-time location, and alert/ring requests must wait for an explicit,
+per-session approval control on the target itself.
 
 The registration signature must be an identity proof over:
 
@@ -144,13 +152,13 @@ current development environment. The protocol envelope also has a JVM test for
 round-trip, wrong-recipient, invalid signature, and authenticated-ciphertext
 tampering cases.
 
-The public preview workflow attaches the Windows EXE and Android debug APK to
-GitHub releases created from `v*-preview` tags; the static website enables
-download buttons from those assets. A published release is required before
-downloads are available. These builds are not production app-store packages.
-Actual relay and Windows-app interoperability has not been run; emulator and
-device validation is outstanding. iOS requires Xcode on macOS, so Swift
-compilation, signing, permission prompts, and device tests remain outstanding.
-Mobile voice/video calling is not interoperable: Windows uses authenticated
-custom signaling and encrypted UDP media, for which mobile has no compatible
-call/media engine. Push notifications and carrier SMS are also not implemented.
+The public preview workflow attaches a Windows ZIP containing the WPF app,
+wake agent, and LiveKit call companion, plus an Android debug APK, to GitHub
+releases created from `v*-preview` tags. The static website reads published
+release assets. These preview builds are not production app-store packages.
+Windows/Android LiveKit interoperability still needs a deployed-service test
+with real devices and networks. Production release workflows require privately
+configured Windows and Android signing secrets before any signed artifacts can
+be published. iOS requires Xcode on macOS, so Swift compilation, signing,
+permission prompts, and device tests remain outstanding. Push notifications and
+carrier SMS are also not implemented.

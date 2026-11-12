@@ -92,31 +92,43 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         ai = GeminiAssistant(this)
         speech = TextToSpeech(this, this)
 
-        window.statusBarColor = Color.rgb(9, 15, 27)
-        window.navigationBarColor = Color.rgb(9, 15, 27)
+        window.statusBarColor = Color.rgb(248, 250, 252)
+        window.navigationBarColor = Color.rgb(255, 255, 255)
 
         val appRoot = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(9, 15, 27))
+            setBackgroundColor(Color.rgb(248, 250, 252))
         }
         val appBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(14), dp(14), dp(14))
-            setBackgroundColor(Color.rgb(16, 25, 41))
+            setPadding(dp(18), dp(12), dp(14), dp(12))
+            setBackgroundColor(Color.WHITE)
         }
-        val brand = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val brand = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
         brand.addView(TextView(this).apply {
+            text = "\u25C9"
+            textSize = 23f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = roundedSurface(Color.rgb(49, 95, 197), dp(13))
+        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(12) })
+        val brandTitle = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        brandTitle.addView(TextView(this).apply {
             text = "USSD Manager"
-            textSize = 18f
-            setTextColor(Color.rgb(238, 243, 251))
+            textSize = 16f
+            setTextColor(Color.rgb(23, 36, 58))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
-        brand.addView(TextView(this).apply {
-            text = "Communication  ·  Device care"
+        brandTitle.addView(TextView(this).apply {
+            text = "Communication, made simple"
             textSize = 12f
-            setTextColor(Color.rgb(160, 174, 195))
+            setTextColor(Color.rgb(91, 107, 130))
         })
+        brand.addView(brandTitle)
         appBar.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
         appBar.addView(Button(this).apply {
             text = "Calls"
@@ -133,9 +145,35 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val content = createPageContent()
         val chatContent = createPageContent()
         val trackerContent = createPageContent()
-        addPageHeading(content, "Assistant", "Ask a question, use a local command, or manage your assistant settings.")
+        val callsContent = createPageContent()
+        val moreContent = createPageContent()
+        addPageHeading(content, "Your workspace", "Calls, secure conversations, and your assistant in one place.")
         addPageHeading(chatContent, "Secure messages", "Connect to your trusted relay before sending an encrypted message.")
         addPageHeading(trackerContent, "Apps", "Open Laptop Tracker for device management. Its own authentication, pairing, permissions, and privacy controls remain in effect.")
+        addPageHeading(callsContent, "Calls", "Start a voice or video room with a friend. Calls use your configured LiveKit calling service.")
+        addPageHeading(moreContent, "More", "Assistant provider settings and privacy information.")
+
+        var navigateToPage: (Int) -> Unit = {}
+        val quickActions = addSectionCard(content, "Stay connected",
+            "Start a voice or video room, or continue an encrypted conversation.")
+        val quickActionRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        quickActionRow.addView(Button(this).apply {
+            text = "Start a call"
+            isAllCaps = false
+            primaryAction()
+            contentDescription = "Open voice and video call options"
+            setOnClickListener { navigateToPage(3) }
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
+        quickActionRow.addView(Button(this).apply {
+            text = "Messages"
+            isAllCaps = false
+            contentDescription = "Open secure messages"
+            setOnClickListener { navigateToPage(1) }
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        quickActions.addView(quickActionRow)
 
         val agentPanel = addSectionCard(content, "Agent workspace",
             "Ask a question or run a local assistant command. Requests are sent only when you submit them; this assistant cannot control devices.")
@@ -198,13 +236,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         responseView = TextView(this).apply {
             text = "Ready. Try /agent help."
             textSize = 15f
-            setTextColor(Color.rgb(229, 236, 247))
+            setTextColor(Color.rgb(23, 36, 58))
             setPadding(0, dp(10), 0, dp(8))
             setTextIsSelectable(true)
             background = GradientDrawable().apply {
-                setColor(Color.rgb(10, 17, 29))
+                setColor(Color.WHITE)
                 cornerRadius = dp(10).toFloat()
-                setStroke(dp(1), Color.rgb(42, 57, 78))
+                setStroke(dp(1), Color.rgb(220, 228, 239))
             }
         }
         agentPanel.addView(responseView)
@@ -216,20 +254,20 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val speakReplies = CheckBox(this).apply {
             text = "Read AI responses aloud"
             isChecked = preferences.getBoolean("speak_replies", false)
-            setTextColor(Color.rgb(160, 174, 195))
+            setTextColor(Color.rgb(91, 107, 130))
             setOnCheckedChangeListener { _, checked ->
                 preferences.edit().putBoolean("speak_replies", checked).apply()
             }
         }
         speakRepliesToggle = speakReplies
         agentPanel.addView(speakReplies)
-        val providerPanel = addSectionCard(content, "AI provider",
+        val providerPanel = addSectionCard(moreContent, "AI provider",
             "Use your own API key. It is stored on this device and sent only when you submit an AI prompt.")
         providerPanel.addView(TextView(this).apply {
             text = "AI model: ${GeminiAssistant.DEFAULT_MODEL}\nPrompts are sent to Google only when you ask. " +
                 "A provider API key is required; any free quota is controlled by the provider."
             textSize = 12f
-            setTextColor(Color.rgb(160, 174, 195))
+            setTextColor(Color.rgb(91, 107, 130))
             setPadding(0, dp(12), 0, dp(4))
         })
         apiKeyInput = EditText(this).apply {
@@ -251,6 +289,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     showReply(AgentReply("Could not save API key: ${error.message ?: "storage error"}"))
                 }
             }
+        })
+        moreContent.addView(TextView(this).apply {
+            text = "Privacy: relay connections and calls start only when you choose them. Device tracking continues in the dedicated Laptop Tracker app, with its own sign-in and permission controls."
+            textSize = 12f
+            setTextColor(Color.rgb(91, 107, 130))
+            setPadding(dp(4), dp(12), dp(4), dp(8))
         })
         providerPanel.addView(Button(this).apply {
             text = "Remove saved API key"
@@ -346,7 +390,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         appsStatusView = TextView(this).apply {
             text = "Open Apps to launch Laptop Tracker. If it is not installed, Android will ask you to confirm installation."
             textSize = 13f
-            setTextColor(Color.rgb(160, 174, 195))
+            setTextColor(Color.rgb(91, 107, 130))
             setPadding(0, dp(4), 0, dp(12))
         }
         trackerApps.addView(appsStatusView)
@@ -359,19 +403,34 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         trackerApps.addView(TextView(this).apply {
             text = "The included installer is handled by Android's package installer and requires your confirmation."
             textSize = 12f
-            setTextColor(Color.rgb(160, 174, 195))
+            setTextColor(Color.rgb(91, 107, 130))
             setPadding(0, dp(12), 0, 0)
         })
-        val pages = listOf(content, chatContent, trackerContent).map { page ->
+        val callPanel = addSectionCard(callsContent, "Voice and video",
+            "Create an invitation and share it with a friend, or join their invitation. Microphone and camera are requested only when you start or join.")
+        callPanel.addView(Button(this).apply {
+            text = "Open call center"
+            isAllCaps = false
+            primaryAction()
+            setOnClickListener { startActivity(Intent(this@MainActivity, CallActivity::class.java)) }
+        })
+        callPanel.addView(TextView(this).apply {
+            text = "The Windows companion uses this same LiveKit invitation format. Real-device cross-platform calling still needs a deployed-service test."
+            textSize = 12f
+            setTextColor(Color.rgb(91, 107, 130))
+            setPadding(0, dp(12), 0, 0)
+        })
+
+        val pages = listOf(content, chatContent, trackerContent, callsContent, moreContent).map { page ->
             ScrollView(this).apply {
                 isFillViewport = true
-                setBackgroundColor(Color.rgb(9, 15, 27))
+                setBackgroundColor(Color.rgb(248, 250, 252))
                 addView(page)
             }
         }
         val pageHost = FrameLayout(this)
         pages.forEachIndexed { index, page ->
-            if (index != (state?.getInt("selected_page", 0) ?: 0)) page.visibility = View.GONE
+            if (index != restoredPage(state)) page.visibility = View.GONE
             pageHost.addView(page, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -385,11 +444,11 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(Color.rgb(16, 25, 41))
+            setBackgroundColor(Color.WHITE)
         }
-        val navLabels = listOf("⌂\nAssistant", "✉\nMessages", "▦\nApps")
+        val navLabels = listOf("⌂\nHome", "✉\nMessages", "▦\nApps", "◉\nCalls", "⋯\nMore")
         val navButtons = navLabels.mapIndexed { index, label ->
-            val destination = listOf("Assistant", "Messages", "Apps")[index]
+            val destination = listOf("Home", "Messages", "Apps", "Calls", "More")[index]
             Button(this).apply {
                 text = label
                 isAllCaps = false
@@ -422,27 +481,38 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
             navButtons.forEachIndexed { buttonIndex, button ->
                 val active = buttonIndex == selected
-                button.setTextColor(if (active) Color.WHITE else Color.rgb(177, 190, 208))
+                button.setTextColor(if (active) Color.WHITE else Color.rgb(91, 107, 130))
                 button.background = roundedSurface(
-                    if (active) Color.rgb(49, 91, 206) else Color.rgb(22, 34, 52),
+                    if (active) Color.rgb(49, 95, 197) else Color.rgb(241, 245, 250),
                     dp(12)
                 )
                 button.isSelected = active
             }
             selectedPage = selected
-            if (selected == 2 && changed) openLaptopTrackerApp()
         }
+        navigateToPage = { index -> selectPage(index) }
         navButtons.forEachIndexed { index, button -> button.setOnClickListener { selectPage(index) } }
         setContentView(appRoot)
-        selectPage(state?.getInt("selected_page", 0) ?: 0)
+        selectPage(restoredPage(state))
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt("selected_page", selectedPage)
+        outState.putInt("selected_page_v2", selectedPage)
         super.onSaveInstanceState(outState)
     }
 
     private var selectedPage = 0
+
+    private fun restoredPage(state: Bundle?): Int {
+        if (state == null) return 0
+        if (state.containsKey("selected_page_v2"))
+            return state.getInt("selected_page_v2", 0)
+        return when (state.getInt("selected_page", 0)) {
+            2 -> 2
+            else -> state.getInt("selected_page", 0).coerceIn(0, 4)
+        }
+    }
 
     private fun createPageContent(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
@@ -453,13 +523,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         parent.addView(TextView(this).apply {
             text = title
             textSize = 24f
-            setTextColor(Color.rgb(238, 243, 251))
+            setTextColor(Color.rgb(23, 36, 58))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         parent.addView(TextView(this).apply {
             text = description
             textSize = 13f
-            setTextColor(Color.rgb(160, 174, 195))
+            setTextColor(Color.rgb(91, 107, 130))
             setPadding(0, dp(4), 0, dp(16))
         })
     }
@@ -532,9 +602,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(16), dp(18), dp(14))
             background = GradientDrawable().apply {
-                setColor(Color.rgb(17, 27, 43))
+                setColor(Color.WHITE)
                 cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), Color.rgb(42, 57, 78))
+                setStroke(dp(1), Color.rgb(220, 228, 239))
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -546,13 +616,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         card.addView(TextView(this).apply {
             text = title
             textSize = 18f
-            setTextColor(Color.rgb(238, 243, 251))
+            setTextColor(Color.rgb(23, 36, 58))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         card.addView(TextView(this).apply {
             text = description
             textSize = 13f
-            setTextColor(Color.rgb(160, 174, 195))
+            setTextColor(Color.rgb(91, 107, 130))
             setPadding(0, dp(5), 0, dp(8))
         })
         parent.addView(card)
@@ -690,7 +760,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     } else ""
                     trackerMapLinks.addView(TextView(this).apply {
                         text = "$deviceId · $status$lost$timestamp\n${"%.6f".format(java.util.Locale.US, lat)}, ${"%.6f".format(java.util.Locale.US, lng)}"
-                        setTextColor(Color.rgb(160, 174, 195))
+                        setTextColor(Color.rgb(91, 107, 130))
                         setPadding(0, dp(8), 0, dp(4))
                     })
                     points.add(Triple(deviceId, lat, lng))
@@ -734,7 +804,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (found == 0) {
                 trackerMapLinks.addView(TextView(this).apply {
                     text = "No paired-device location has been reported. The device must share a location while it is available."
-                    setTextColor(Color.rgb(160, 174, 195))
+                    setTextColor(Color.rgb(91, 107, 130))
                     setPadding(0, dp(8), 0, dp(4))
                 })
             }
