@@ -64,8 +64,13 @@ public final class RelayClient {
         do {
             let proof = try identity.signOwnsClaim()
             guard !proof.isEmpty else { throw RelayClientError.invalidMessage }
-            let line = "REG|\(field(identity.number))|\(field(token))|" +
-                "\(field(machineName))|\(field(identity.publicKey))|\(field(proof))"
+            let numberField = try field(identity.number)
+            let tokenField = try field(token)
+            let machineNameField = try field(machineName)
+            let publicKeyField = try field(identity.publicKey)
+            let proofField = try field(proof)
+            let line = "REG|\(numberField)|\(tokenField)|" +
+                "\(machineNameField)|\(publicKeyField)|\(proofField)"
             send(line, expectResponse: true) { result in
                 switch result {
                 case .success(let line):

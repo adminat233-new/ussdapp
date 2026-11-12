@@ -365,7 +365,7 @@ private final class NativeCallModel: ObservableObject, RoomDelegate {
         guard data.count < 14000 else { throw CallClientError.packetTooLarge }
         try await room.localParticipant.publish(
             data: data,
-            options: DataPublishOptions(reliable: true, topic: callDataTopic)
+            options: DataPublishOptions(topic: callDataTopic, reliable: true)
         )
     }
 
