@@ -313,10 +313,11 @@ public final class WindowsSealedMessage: RelayIdentity {
         guard create == kCCSuccess, let cryptor = cryptor else { throw WindowsSealedMessageError.crypto }
         defer { CCCryptorRelease(cryptor) }
         var output = Data(count: data.count)
+        let outputCapacity = output.count
         var moved = 0
         let status = output.withUnsafeMutableBytes { out in
             data.withUnsafeBytes { input in
-                CCCryptorUpdate(cryptor, input.baseAddress, data.count, out.baseAddress, output.count, &moved)
+                CCCryptorUpdate(cryptor, input.baseAddress, data.count, out.baseAddress, outputCapacity, &moved)
             }
         }
         guard status == kCCSuccess else { throw WindowsSealedMessageError.crypto }
