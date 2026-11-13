@@ -1,10 +1,19 @@
 # Production releases
 
 `.github/workflows/production-release.yml` builds and verifies the signed
-Windows bundle, Android APK, and Android App Bundle. It runs only for stable
-`vMAJOR.MINOR.PATCH` tags, or when manually dispatched from `main` with an
-existing stable tag. Preview tags continue to use
+Windows bundle, Android APK, and Android App Bundle. It can only be manually
+dispatched from `main` with a stable `vMAJOR.MINOR.PATCH` tag that points to
+the exact current `main` commit. The workflow builds from that validated
+commit; pushing a tag alone never starts a production build. Preview tags
+continue to use
 `.github/workflows/public-test-builds.yml`.
+
+Configure the `production-release` GitHub environment to allow deployments
+only from `main` and require an independent reviewer before either signing job
+can access production secrets. Protect `main` with required reviews and status
+checks, and restrict who can dispatch workflows or create release tags. These
+repository controls must be configured in GitHub Settings; YAML cannot enforce
+them by itself.
 
 The user approved replacing the Windows zero-install-only call path with a
 bundled Electron LiveKit companion; the complete runtime must ship in the
@@ -13,8 +22,8 @@ existing C#/.NET Framework app itself dependency-free.
 
 Before creating a stable tag, configure these repository or protected
 `production-release` environment secrets. Never commit signing material or
-paste it into chat. Configure required reviewers on that environment if a
-second-person release approval is desired.
+paste it into chat. Keep the environment approval enabled; do not make production signing secrets
+repository-wide.
 
 | Secret | Purpose |
 | --- | --- |
@@ -37,6 +46,11 @@ an AAB for Play submission. The Windows stable release publishes a ZIP
 containing `UssdApp.exe`, `UssdAgent.exe`, and the complete Electron LiveKit
 companion under `USSDCalls/`. The WPF executable alone does not provide
 cross-platform LiveKit calling.
+
+Build jobs produce unsigned artifacts without signing credentials. Separate
+environment-protected signing jobs receive only the platform-specific secret
+values. Android signing runs outside Gradle, so build scripts and dependencies
+never receive the release keystore or passwords.
 
 These workflows sign and publish binaries; they do not prove a service is
 deployed or that two real devices can call. Before claiming production-ready
