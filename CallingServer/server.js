@@ -55,14 +55,24 @@ function createCallingApp(options) {
     return String(req.ip || req.socket.remoteAddress || "unknown");
   }
 
+  function deleteRoomIfPresent(room, context) {
+    const roomApi = liveKitApi && liveKitApi.room;
+    if (!roomApi || typeof roomApi.deleteRoom !== "function") return;
+    try {
+      roomApi.deleteRoom(room.name).catch(function (error) {
+        console.error("Could not remove " + context + " call room:", error && error.message ? error.message : error);
+      });
+    } catch (error) {
+      console.error("Could not remove " + context + " call room:", error && error.message ? error.message : error);
+    }
+  }
+
   function expireRooms() {
     const time = now();
     rooms.forEach(function (room, code) {
       if (room.expiresAt <= time) {
         rooms.delete(code);
-        liveKitApi.room.deleteRoom(room.name).catch(function (error) {
-          console.error("Could not remove expired call room:", error.message);
-        });
+        deleteRoomIfPresent(room, "expired");
       }
     });
     requests.forEach(function (bucket, key) {
@@ -120,9 +130,7 @@ function createCallingApp(options) {
     if (!room || room.expiresAt <= now()) {
       if (room) {
         rooms.delete(body.invitationCode);
-        liveKitApi.room.deleteRoom(room.name).catch(function (error) {
-          console.error("Could not remove expired call room:", error.message);
-        });
+        deleteRoomIfPresent(room, "expired");
       }
       return res.status(404).json({ error: "invitation_expired_or_unknown" });
     }

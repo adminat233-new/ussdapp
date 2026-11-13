@@ -110,6 +110,38 @@ test("expires invitations after four hours", async function () {
   }
 });
 
+test("ignores missing LiveKit delete-room support during cleanup", async function () {
+  const app = createCallingApp({
+    config: baseConfig,
+    now: function () { return 1000; },
+    randomBytes: function () { return Buffer.from("00".repeat(24), "hex"); },
+    liveKitApi: { room: { createRoom: async function () {} } },
+    accessTokenFactory: function () {
+      return {
+        addGrant: function () {},
+        toJwt: async function () { return "token"; }
+      };
+    }
+  });
+
+  try {
+    const room = await request(app).post("/api/rooms").send({});
+    assert.equal(room.status, 201);
+
+    const stale = app.locals.rooms.get(room.body.invitationCode);
+    stale.expiresAt = 0;
+
+    const expired = await request(app).post("/api/token").send({
+      invitationCode: room.body.invitationCode,
+      displayName: "Friend"
+    });
+    assert.equal(expired.status, 404);
+    assert.equal(app.locals.rooms.has(room.body.invitationCode), false);
+  } finally {
+    app.locals.close();
+  }
+});
+
 test("rate limits call creation after five invitations per minute", async function () {
   const instance = makeApp();
   try {
