@@ -254,7 +254,7 @@ private struct MobileContactsView: View {
                     .keyboardType(.numberPad)
                 Button("Save contact", action: saveContact)
             }
-            Section("Saved on this device") {
+            Section {
                 if contacts.isEmpty {
                     Text(status.isEmpty ? "No app contacts saved yet." : status)
                         .font(.footnote)
@@ -289,6 +289,8 @@ private struct MobileContactsView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+            } header: {
+                Text("Saved on this device")
             } footer: {
                 Text("These app contacts are stored locally. USSD Manager does not read your iPhone address book.")
             }
