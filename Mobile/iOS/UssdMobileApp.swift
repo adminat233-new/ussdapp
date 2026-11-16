@@ -417,12 +417,14 @@ private struct HomeDestinationCard: View {
 }
 
 private struct DeviceTrackingView: View {
-    @AppStorage("tracker.server") private var server = ""
+    @AppStorage("tracker.server") private var server = "https://laptop-tracker-1.onrender.com"
     @State private var pairCode = ""
     @AppStorage("tracker.deviceId") private var deviceId = ""
     @State private var status = "Not connected."
     @State private var response = ""
     @State private var isBusy = false
+    @State private var revokeTargetID = ""
+    @State private var showRevokeConfirmation = false
     @StateObject private var locationProvider = OneShotLocationProvider()
     @State private var trackedLocations: [TrackerLocation] = []
 
@@ -433,6 +435,7 @@ private struct DeviceTrackingView: View {
         case heartbeat = "Send status-only check-in"
         case lostOn = "Enable lost mode"
         case lostOff = "Disable lost mode"
+        case revoke = "Disconnect paired device"
     }
 
     var body: some View {
@@ -460,6 +463,13 @@ private struct DeviceTrackingView: View {
                 Button("Share current location once") { shareCurrentLocationOnce() }
                 trackerButton(.lostOn)
                 trackerButton(.lostOff)
+                TextField("Paired device ID to disconnect", text: $revokeTargetID)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Disconnect paired device", role: .destructive) {
+                    showRevokeConfirmation = true
+                }
+                .disabled(revokeTargetID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             Section("Last reported locations") {
                 if trackedLocations.isEmpty {
@@ -504,6 +514,16 @@ private struct DeviceTrackingView: View {
         }
         .navigationTitle("Device Tracking")
         .disabled(isBusy)
+        .confirmationDialog(
+            "Disconnect paired device?",
+            isPresented: $showRevokeConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect", role: .destructive) { run(.revoke) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This revokes that device's tracker credential for this pairing.")
+        }
     }
 
     private func trackerButton(_ action: Action) -> some View {
@@ -540,8 +560,20 @@ private struct DeviceTrackingView: View {
             response = ""
             return
         }
-        if (action == .heartbeat || action == .status || action == .lostOn || action == .lostOff) && device.isEmpty {
+        if (action == .heartbeat || action == .status || action == .lostOn ||
+            action == .lostOff || action == .revoke) && device.isEmpty {
             status = "Enter the device ID first."
+            response = ""
+            return
+        }
+        let revokeTarget = revokeTargetID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if action == .revoke && revokeTarget.isEmpty {
+            status = "Enter the paired device ID to disconnect."
+            response = ""
+            return
+        }
+        if action == .revoke && revokeTarget == device {
+            status = "Choose the other paired device. This action cannot revoke this device from itself."
             response = ""
             return
         }
@@ -599,6 +631,8 @@ private struct DeviceTrackingView: View {
             client.lostMode(deviceId: device, active: true, completion: completion)
         case .lostOff:
             client.lostMode(deviceId: device, active: false, completion: completion)
+        case .revoke:
+            client.revokeDevice(deviceId: device, targetDeviceId: revokeTarget, completion: completion)
         }
     }
 

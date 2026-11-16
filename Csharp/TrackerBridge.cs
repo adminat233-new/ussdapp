@@ -14,6 +14,8 @@ namespace UssdApp
     // supplies server + identifiers.
     public sealed class TrackerBridge
     {
+        public const string DefaultServiceUrl = "https://laptop-tracker-1.onrender.com";
+
         public sealed class Reply
         {
             public bool Ok;
@@ -72,6 +74,12 @@ namespace UssdApp
         {
             return PostJson("/api/v2/lost-mode",
                 "{ \"deviceId\": " + Q(deviceId) + ", \"active\": " + (active ? "true" : "false") + " }");
+        }
+
+        public Reply RevokeDevice(string deviceId, string targetDeviceId)
+        {
+            return PostJson("/api/v2/revoke-device",
+                "{ \"deviceId\": " + Q(deviceId) + ", \"targetDeviceId\": " + Q(targetDeviceId) + " }");
         }
 
         public static string ProtectDeviceToken(string token)

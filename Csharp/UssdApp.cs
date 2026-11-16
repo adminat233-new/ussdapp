@@ -321,7 +321,8 @@ namespace UssdApp
                 bool tr2 = TrackerBridge.IsSafeServerUrl("file://c:/tmp");
                 bool tr3 = TrackerBridge.IsSafeServerUrl("javascript:alert(1)");
                 bool tr4 = TrackerBridge.IsSafeServerUrl("https://user@example.com");
-                if (tr0 || !tr1 || tr2 || tr3 || tr4)
+                bool trDefault = TrackerBridge.IsSafeServerUrl(TrackerBridge.DefaultServiceUrl);
+                if (tr0 || !tr1 || tr2 || tr3 || tr4 || !trDefault)
                 { sb.AppendLine("Tracker bridge endpoint policy: FAIL"); secOk = false; }
                 else sb.AppendLine("Tracker bridge endpoint policy: OK");
 
@@ -3666,7 +3667,7 @@ namespace UssdApp
         private Button _agentAskButton;
         private StackPanel _agentTranscript;
         private ScrollViewer _agentChatScroll;
-        private TextBox _trackerServerBox, _trackerPairBox, _trackerDeviceBox, _trackerOutput;
+        private TextBox _trackerServerBox, _trackerPairBox, _trackerDeviceBox, _trackerRevokeTargetBox, _trackerOutput;
         private TextBlock _trackerStatus;
         private StackPanel _trackerMapLinks;
         private Canvas _trackerMapCanvas;
@@ -7855,6 +7856,10 @@ namespace UssdApp
             _trackerDeviceBox = MakeTextBox(0);
             _trackerDeviceBox.HorizontalAlignment = HorizontalAlignment.Stretch;
             AddTrackerInput(connection, "Device ID", _trackerDeviceBox);
+
+            _trackerRevokeTargetBox = MakeTextBox(0);
+            _trackerRevokeTargetBox.HorizontalAlignment = HorizontalAlignment.Stretch;
+            AddTrackerInput(connection, "Paired device ID to disconnect", _trackerRevokeTargetBox);
             controls.Children.Add(MakeServiceCard(connection));
 
             StackPanel actionCard = new StackPanel();
@@ -7885,6 +7890,34 @@ namespace UssdApp
                 delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, true); }, "DangerQuietButton");
             AddTrackerAction(actions, "Disable lost mode", "Disable lost mode", false, true,
                 delegate(TrackerBridge bridge, string pair, string device) { return bridge.LostMode(device, false); }, "GhostButton");
+            Button revokeDevice = MakeStyledButton("Disconnect paired device", "DangerQuietButton");
+            revokeDevice.Margin = new Thickness(3);
+            revokeDevice.Click += delegate
+            {
+                string target = _trackerRevokeTargetBox == null ? "" : (_trackerRevokeTargetBox.Text ?? "").Trim();
+                string ownDevice = _trackerDeviceBox == null ? "" : (_trackerDeviceBox.Text ?? "").Trim();
+                if (target.Length == 0)
+                {
+                    SetTrackerResult("Enter the paired device ID to disconnect.", "");
+                    return;
+                }
+                if (string.Equals(target, ownDevice, StringComparison.Ordinal))
+                {
+                    SetTrackerResult("Choose the other paired device. This action cannot revoke this device from itself.", "");
+                    return;
+                }
+                if (System.Windows.MessageBox.Show(this,
+                    "This revokes the selected device's tracker credential for this pairing. Continue?",
+                    "Disconnect paired device", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    return;
+                RunTrackerRequest("Disconnect paired device", false, true,
+                    delegate(TrackerBridge bridge, string pair, string device)
+                    {
+                        return bridge.RevokeDevice(device, target);
+                    });
+            };
+            actions.Children.Add(revokeDevice);
+            _trackerActionButtons.Add(revokeDevice);
             actionCard.Children.Add(actions);
             actionCard.Children.Add(new TextBlock
             {
@@ -17667,7 +17700,9 @@ namespace UssdApp
             if (c.use_serial) _radioSerial.IsChecked = true;
             _chkAuto.IsChecked = c.auto_connect;
             if (_txtRelay != null) _txtRelay.Text = c.relay_server;
-            if (_trackerServerBox != null) _trackerServerBox.Text = c.tracker_server;
+            if (_trackerServerBox != null)
+                _trackerServerBox.Text = string.IsNullOrWhiteSpace(c.tracker_server)
+                    ? TrackerBridge.DefaultServiceUrl : c.tracker_server;
             if (_trackerPairBox != null) _trackerPairBox.Text = "";
             if (_trackerDeviceBox != null) _trackerDeviceBox.Text = c.tracker_device_id;
             if (_chkHostCalls != null) _chkHostCalls.IsChecked = c.host_calls;

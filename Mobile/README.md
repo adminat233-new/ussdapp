@@ -58,29 +58,38 @@ system settings when that source is not already allowed, then confirm the
 installation in the package installer. Neither platform replaces Laptop
 Tracker's own sign-in, pairing, consent, or permission checks.
 
-The iOS app includes an explicit Device Tracking session for the external
+Android and iOS include a native Device Tracking session for the external
 `laptop-tracker` service's authenticated `/api/v2/*` routes. Pairing returns a
-per-device bearer token stored in the device-only Keychain. Authenticated status,
+per-device bearer token stored in Android Keystore or iOS Keychain. Authenticated status,
 heartbeat, and lost-mode actions require the paired device's token. Pairing
 codes are shown for device pairing; device tokens are stored securely and
 redacted from tracker response output. Authenticated requests send the saved
-token as a Bearer authorization credential. Android USSD Manager routes device management to the dedicated Laptop Tracker
-app instead of calling tracker service APIs directly. The legacy `/api/*`
-routes remain available to existing tracker clients.
+token as a Bearer authorization credential. On Android the panel is under
+**More**; on iOS it is under **Device Tracking**. Both require the HTTPS base
+URL of a deployed tracker service; the supplied live service URL is prefilled
+so users can start without entering it. This repository does not contain or
+host that service. Both native panels support manually disconnecting a paired
+device by revoking its credential after confirmation. Android also retains a
+user-triggered installer/launcher
+for the dedicated Laptop Tracker APK; Android does not support embedding an
+arbitrary APK's interface inside another app. The legacy `/api/*` routes remain
+available to existing tracker clients.
 
-In the iOS tracking session, actions run only when the user taps them and
-require HTTPS. Status check-in
+In both USSD Manager native tracking sessions, actions run only when the user
+taps them and require HTTPS. Status check-in
 sends no coordinates. Paired-device reports show their last-known status and
 timestamps; when two locations are available, the app can open both in a
 user-selected map app. This is not a live map. A separate **Share current location once** action
 requires foreground location permission and requests a single location fix
 only after the user taps it; that fix is then sent to the configured tracker
 using the authenticated heartbeat route. Denying permission, turning off
-location, or failing to obtain a fix sends no coordinates. The iOS app does
-not request background location permission or start background tracking. No
-hidden capture, background autostart, or remote-shell execution path is added
-to USSD Manager. Lost mode is a server-side status flag only; it does not lock or command a
-device. The tracker service's v2 schema migration must be applied and the Prisma client
+location, or failing to obtain a fix sends no coordinates. USSD Manager itself
+does not request background-location permission or start background tracking.
+The separately launched Laptop Tracker app is independent and has its own
+location lifecycle and permission prompts; review those before enabling it.
+No hidden capture, background autostart, or remote-shell execution path is
+added to USSD Manager. Lost mode is a server-side status flag only; it does not
+lock or command a device. The tracker service's v2 schema migration must be applied and the Prisma client
 regenerated before these routes can work in a deployment; no live migration
 was applied as part of this change.
 

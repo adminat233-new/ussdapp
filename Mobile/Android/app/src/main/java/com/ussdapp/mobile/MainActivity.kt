@@ -1,6 +1,7 @@
 package com.ussdapp.mobile
 
 import android.Manifest
+import android.app.AlertDialog
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.os.Bundle
@@ -67,6 +68,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private lateinit var trackerUrlInput: EditText
     private lateinit var trackerPairInput: EditText
     private lateinit var trackerDeviceInput: EditText
+    private lateinit var trackerRevokeTargetInput: EditText
     private lateinit var trackerStatusView: TextView
     private lateinit var trackerOutputView: TextView
     private lateinit var trackerMapLinks: LinearLayout
@@ -274,7 +276,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
         })
         moreContent.addView(TextView(this).apply {
-            text = "Privacy: relay connections and calls start only when you choose them. Device tracking continues in the dedicated Laptop Tracker app, with its own sign-in and permission controls."
+            text = "Privacy: relay connections, calls, and tracking actions start only when you choose them. Location is shared only after a one-time request and Android permission."
             textSize = 12f
             setTextColor(Color.rgb(91, 107, 130))
             setPadding(dp(4), dp(12), dp(4), dp(8))
@@ -367,6 +369,121 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setTextIsSelectable(true)
         }
         relayPanel.addView(relayEventsView)
+
+        val trackerPanel = addSectionCard(moreContent, "Device tracking",
+            "Pair devices you control with your HTTPS tracker service. Status and lost-mode actions run only when tapped. Location sharing is a separate one-time action and requires Android permission.")
+        trackerUrlInput = EditText(this).apply {
+            hint = "Tracker service URL (https://...)"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_URI
+            setText(
+                preferences.getString("tracker_url", DEFAULT_TRACKER_SERVICE_URL)
+                    ?.takeIf { it.isNotBlank() } ?: DEFAULT_TRACKER_SERVICE_URL
+            )
+            isSingleLine = true
+        }
+        trackerPanel.addView(trackerUrlInput)
+        trackerPairInput = EditText(this).apply {
+            hint = "Pairing code"
+            isSingleLine = true
+        }
+        trackerPanel.addView(trackerPairInput)
+        trackerDeviceInput = EditText(this).apply {
+            hint = "Device ID"
+            isSingleLine = true
+            setText(preferences.getString("tracker_device_id", "") ?: "")
+        }
+        trackerPanel.addView(trackerDeviceInput)
+        trackerRevokeTargetInput = EditText(this).apply {
+            hint = "Paired device ID to disconnect"
+            isSingleLine = true
+        }
+        trackerPanel.addView(trackerRevokeTargetInput)
+        trackerPanel.addView(TextView(this).apply {
+            text = "Copy the other device ID from the status response. Disconnecting revokes that device's tracker credential."
+            textSize = 12f
+            setTextColor(Color.rgb(91, 107, 130))
+        })
+        trackerStatusView = TextView(this).apply {
+            text = "Not connected. Enter the HTTPS tracker service URL to begin."
+            textSize = 13f
+            setTextColor(Color.rgb(91, 107, 130))
+            setPadding(0, dp(8), 0, dp(4))
+        }
+        trackerPanel.addView(trackerStatusView)
+        addTrackerButton(trackerPanel, "Generate pairing code") { client, _, _ ->
+            client.generatePair("phone")
+        }
+        addTrackerButton(trackerPanel, "Verify pairing") { client, pair, _ ->
+            client.verifyPair(pair)
+        }
+        addTrackerButton(trackerPanel, "Refresh status") { client, _, device ->
+            client.pairInfo(device)
+        }
+        addTrackerButton(trackerPanel, "Send status-only check-in") { client, _, device ->
+            client.heartbeat(device, null, null, "ussd-app-status")
+        }
+        locationButton = Button(this).apply {
+            text = "Share current location once"
+            isAllCaps = false
+            primaryAction()
+            setOnClickListener { requestLocationCheckin() }
+        }
+        trackerPanel.addView(locationButton)
+        addTrackerButton(trackerPanel, "Enable lost mode") { client, _, device ->
+            client.lostMode(device, true)
+        }
+        addTrackerButton(trackerPanel, "Disable lost mode") { client, _, device ->
+            client.lostMode(device, false)
+        }
+        trackerPanel.addView(Button(this).apply {
+            text = "Disconnect paired device"
+            isAllCaps = false
+            setOnClickListener {
+                val target = trackerRevokeTargetInput.text.toString().trim()
+                val ownDevice = trackerDeviceInput.text.toString().trim()
+                if (target.isBlank()) {
+                    showTrackerResult("Enter the paired device ID to disconnect.", "")
+                } else if (target == ownDevice) {
+                    showTrackerResult("Choose the other paired device. This action cannot revoke this device from itself.", "")
+                } else {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Disconnect paired device?")
+                        .setMessage("This revokes the selected device's tracker credential. It will stop sharing through this pairing.")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Disconnect") { _, _ ->
+                            runTrackerAction(
+                                "Disconnect paired device",
+                                trackerUrlInput.text.toString().trim(),
+                                trackerPairInput.text.toString().trim(),
+                                ownDevice
+                            ) { client, _, device -> client.revokeDevice(device, target) }
+                        }
+                        .show()
+                }
+            }
+        }.also { trackerButtons.add(it) })
+        trackerOutputView = TextView(this).apply {
+            text = "Tracker responses will appear here. Device credentials are stored securely and hidden from responses."
+            textSize = 12f
+            setTextColor(Color.rgb(91, 107, 130))
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setTextIsSelectable(true)
+            background = roundedSurface(Color.WHITE, dp(10))
+        }
+        trackerPanel.addView(trackerOutputView)
+        trackerMapLinks = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        trackerPanel.addView(trackerMapLinks)
+        if (trackerDeviceInput.text.isNullOrBlank()) {
+            try {
+                trackerDeviceInput.setText(trackerCredentials.load()?.deviceId ?: "")
+            } catch (error: Exception) {
+                trackerStatusView.text =
+                    "Could not read the saved device credential. Pair this device again: ${error.message ?: "secure storage error"}"
+            }
+        }
 
         val trackerApps = addSectionCard(moreContent, "Laptop Tracker",
             "The dedicated Laptop Tracker app manages device pairing, account access, permissions, and tracking. This launcher does not add remote shell or hidden device controls.")
@@ -717,6 +834,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     companion object {
         private const val LAPTOP_TRACKER_PACKAGE = "com.find.tracker"
         private const val LAPTOP_TRACKER_APK_ASSET = "laptop-tracker.apk"
+        private const val DEFAULT_TRACKER_SERVICE_URL = "https://laptop-tracker-1.onrender.com"
     }
 
     private fun addSectionCard(parent: LinearLayout, title: String, description: String): LinearLayout {
@@ -793,7 +911,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val needsDevice = action == "Send status-only check-in" ||
             action == "Refresh status" ||
             action == "Share current location once" ||
-            action == "Enable lost mode" || action == "Disable lost mode"
+            action == "Enable lost mode" || action == "Disable lost mode" ||
+            action == "Disconnect paired device"
         val uri = try { URI(server) } catch (_: Exception) { null }
         if (uri == null || uri.scheme != "https" || uri.host.isNullOrBlank() ||
             !uri.userInfo.isNullOrEmpty()) {
@@ -838,6 +957,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                         trackerCredentials.save(savedId, savedToken)
                         runOnUiThread {
                             trackerDeviceInput.setText(savedId)
+                            getSharedPreferences("assistant", MODE_PRIVATE).edit()
+                                .putString("tracker_device_id", savedId)
+                                .apply()
                             if (action == "Generate pairing code") {
                                 trackerPairInput.setText(payload.getString("pairCode"))
                             }

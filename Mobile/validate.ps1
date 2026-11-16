@@ -98,6 +98,7 @@ $bearerPrefix = -join @([char]66, [char]101, [char]97, [char]114, [char]101, [ch
 $androidAuth = 'conn.setRequestProperty("Authorization", "' + $bearerPrefix + '$token")'
 $iosAuth = 'req.setValue("' + $bearerPrefix + [char]92 + '(token)", forHTTPHeaderField: "Authorization")'
 if ($atr -notmatch "/api/v2/pair/generate" -or $atr -notmatch "/api/v2/heartbeat" -or
+    $atr -notmatch "/api/v2/revoke-device" -or $atr -notmatch "revokeDevice" -or
     $atr -notmatch "Authorization" -or $atr -notmatch "AndroidKeyStore" -or
     -not $atr.Contains($androidAuth) -or
     -not $atr.Contains('conn.setRequestProperty("Authorization", "Bearer $token")') -or
@@ -105,6 +106,7 @@ if ($atr -notmatch "/api/v2/pair/generate" -or $atr -notmatch "/api/v2/heartbeat
     $atr -match '"/api/(generate|verify|heartbeat|lost-mode)' -or
     $atr -notmatch "instanceFollowRedirects\s*=\s*false" -or
     $itr -notmatch "/api/v2/pair/generate" -or $itr -notmatch "/api/v2/heartbeat" -or
+    $itr -notmatch "/api/v2/revoke-device" -or $itr -notmatch "revokeDevice" -or
     $itr -notmatch "Authorization" -or $itr -notmatch "SecItemAdd" -or
     -not $itr.Contains($iosAuth) -or
     -not $itr.Contains('req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")') -or
@@ -139,6 +141,20 @@ if ($androidActivity -notmatch "Device pairing" -or
     $plist -notmatch "NSLocationWhenInUseUsageDescription" -or
     $plist -match "NSLocationAlways") {
     throw "One-time consent-based location sharing is incomplete or requests background access"
+}
+if ($androidActivity -notmatch 'trackerUrlInput = EditText' -or
+    $androidActivity -notmatch 'DEFAULT_TRACKER_SERVICE_URL = "https://laptop-tracker-1\.onrender\.com"' -or
+    $androidActivity -notmatch 'addTrackerButton\(trackerPanel, "Generate pairing code"\)' -or
+    $androidActivity -notmatch 'addTrackerButton\(trackerPanel, "Verify pairing"\)' -or
+    $androidActivity -notmatch 'trackerRevokeTargetInput = EditText' -or
+    $androidActivity -notmatch 'client\.revokeDevice\(device, target\)' -or
+    $androidActivity -notmatch 'Disconnect paired device\?' -or
+    $androidActivity -notmatch 'locationButton = Button' -or
+    $androidActivity -notmatch 'setOnClickListener \{ requestLocationCheckin\(\) \}' -or
+    $iosApp -notmatch 'tracker\.server.*https://laptop-tracker-1\.onrender\.com' -or
+    $iosApp -notmatch 'case revoke = "Disconnect paired device"' -or
+    $iosApp -notmatch 'run\(\.revoke\)') {
+    throw "Android native tracker actions are not connected to the Device Tracking panel"
 }
 $androidAgent = Get-Content -Raw (Join-Path $PSScriptRoot "Android\src\main\java\com\ussdapp\relay\MobileAgent.kt")
 $androidAi = Get-Content -Raw (Join-Path $PSScriptRoot "Android\src\main\java\com\ussdapp\relay\GeminiAssistant.kt")
