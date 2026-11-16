@@ -2,6 +2,7 @@ package com.ussdapp.mobile
 
 import android.Manifest
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.os.Bundle
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -28,6 +29,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.FileProvider
 import org.json.JSONObject
+import org.json.JSONArray
 import com.ussdapp.relay.AgentReply
 import com.ussdapp.relay.AndroidRelayIdentity
 import com.ussdapp.relay.GeminiAssistant
@@ -80,6 +82,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     private var locationTargetUrl = ""
     private var locationTargetDeviceId = ""
     private var messaging: MobileMessagingSession? = null
+    private val mobileContacts = LinkedHashMap<String, String>()
     @Volatile private var relayConnectGeneration = 0
     private var speech: TextToSpeech? = null
     private var speechReady = false
@@ -88,6 +91,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         val preferences = getSharedPreferences("assistant", MODE_PRIVATE)
+        readMobileContacts(preferences)
         agent = MobileAgent(preferences.getString("wake_name", "Ussd") ?: "Ussd")
         ai = GeminiAssistant(this)
         speech = TextToSpeech(this, this)
@@ -142,40 +146,19 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         })
         appRoot.addView(appBar)
 
-        val content = createPageContent()
+        val contactsContent = createPageContent()
         val chatContent = createPageContent()
-        val trackerContent = createPageContent()
         val callsContent = createPageContent()
+        val ussdContent = createPageContent()
         val moreContent = createPageContent()
-        addPageHeading(content, "Your workspace", "Calls, secure conversations, and your assistant in one place.")
-        addPageHeading(chatContent, "Secure messages", "Connect to your trusted relay before sending an encrypted message.")
-        addPageHeading(trackerContent, "Apps", "Open Laptop Tracker for device management. Its own authentication, pairing, permissions, and privacy controls remain in effect.")
-        addPageHeading(callsContent, "Calls", "Start a voice or video room with a friend. Calls use your configured LiveKit calling service.")
+        addPageHeading(contactsContent, "Contacts", "Save app numbers on this device. No phone contacts are read.")
+        addPageHeading(chatContent, "SMS / secure chat", "Send encrypted in-app messages through your configured relay. This is not carrier SMS.")
+        addPageHeading(callsContent, "Dialer", "Calls use invitation codes and your configured LiveKit service. Cross-platform 700 app-number dialing is not available yet.")
+        addPageHeading(ussdContent, "USSD", "On supported Android phones, open the system dialer with a code for you to review and submit.")
         addPageHeading(moreContent, "More", "Assistant provider settings and privacy information.")
 
         var navigateToPage: (Int) -> Unit = {}
-        val quickActions = addSectionCard(content, "Stay connected",
-            "Start a voice or video room, or continue an encrypted conversation.")
-        val quickActionRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        quickActionRow.addView(Button(this).apply {
-            text = "Start a call"
-            isAllCaps = false
-            primaryAction()
-            contentDescription = "Open voice and video call options"
-            setOnClickListener { navigateToPage(3) }
-        }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
-        quickActionRow.addView(Button(this).apply {
-            text = "Messages"
-            isAllCaps = false
-            contentDescription = "Open secure messages"
-            setOnClickListener { navigateToPage(1) }
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-        quickActions.addView(quickActionRow)
-
-        val agentPanel = addSectionCard(content, "Agent workspace",
+        val agentPanel = addSectionCard(moreContent, "Agent workspace",
             "Ask a question or run a local assistant command. Requests are sent only when you submit them; this assistant cannot control devices.")
         wakeNameInput = EditText(this).apply {
             hint = "Voice wake name"
@@ -385,10 +368,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         }
         relayPanel.addView(relayEventsView)
 
-        val trackerApps = addSectionCard(trackerContent, "Laptop Tracker",
+        val trackerApps = addSectionCard(moreContent, "Laptop Tracker",
             "The dedicated Laptop Tracker app manages device pairing, account access, permissions, and tracking. This launcher does not add remote shell or hidden device controls.")
         appsStatusView = TextView(this).apply {
-            text = "Open Apps to launch Laptop Tracker. If it is not installed, Android will ask you to confirm installation."
+            text = "Open More to launch Laptop Tracker. If it is not installed, Android will ask you to confirm installation."
             textSize = 13f
             setTextColor(Color.rgb(91, 107, 130))
             setPadding(0, dp(4), 0, dp(12))
@@ -406,8 +389,8 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setTextColor(Color.rgb(91, 107, 130))
             setPadding(0, dp(12), 0, 0)
         })
-        val callPanel = addSectionCard(callsContent, "Voice and video",
-            "Create an invitation and share it with a friend, or join their invitation. Microphone and camera are requested only when you start or join.")
+        val callPanel = addSectionCard(callsContent, "Start or join a call",
+            "Create an invitation and share it with a friend, or join their invitation. Mobile calls do not dial Windows 700 app numbers.")
         callPanel.addView(Button(this).apply {
             text = "Open call center"
             isAllCaps = false
@@ -415,13 +398,118 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setOnClickListener { startActivity(Intent(this@MainActivity, CallActivity::class.java)) }
         })
         callPanel.addView(TextView(this).apply {
-            text = "The Windows companion uses this same LiveKit invitation format. Real-device cross-platform calling still needs a deployed-service test."
+            text = "A reachable LiveKit service is required. Windows/mobile calling has not yet been verified on real devices and independent networks."
             textSize = 12f
             setTextColor(Color.rgb(91, 107, 130))
             setPadding(0, dp(12), 0, 0)
         })
 
-        val pages = listOf(content, chatContent, trackerContent, callsContent, moreContent).map { page ->
+        val contactPanel = addSectionCard(contactsContent, "Your app contacts",
+            "Save app numbers locally and tap one to address a secure message. This does not read your phone contacts.")
+        val contactNameInput = EditText(this).apply {
+            hint = "Contact name"
+            isSingleLine = true
+        }
+        contactPanel.addView(contactNameInput)
+        val contactNumberInput = EditText(this).apply {
+            hint = "App number"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            isSingleLine = true
+        }
+        contactPanel.addView(contactNumberInput)
+        val contactsStatus = TextView(this).apply {
+            text = mobileContactsLoadError
+                ?: if (mobileContacts.isEmpty()) "No app contacts saved yet." else ""
+            textSize = 12f
+            setTextColor(Color.rgb(91, 107, 130))
+            setPadding(0, dp(8), 0, dp(6))
+        }
+        contactPanel.addView(contactsStatus)
+        val contactsList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        contactPanel.addView(contactsList)
+        fun renderContacts() {
+            contactsList.removeAllViews()
+            mobileContacts.forEach { (number, name) ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+                row.addView(Button(this).apply {
+                    text = "$name\n$number"
+                    isAllCaps = false
+                    setOnClickListener {
+                        recipientInput.setText(number)
+                        navigateToPage(2)
+                    }
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(Button(this).apply {
+                    text = "Remove"
+                    isAllCaps = false
+                    setOnClickListener {
+                        mobileContacts.remove(number)
+                        saveMobileContacts(preferences)
+                        renderContacts()
+                        contactsStatus.text = if (mobileContacts.isEmpty()) "No app contacts saved yet." else ""
+                    }
+                })
+                contactsList.addView(row)
+            }
+        }
+        contactPanel.addView(Button(this).apply {
+            text = "Save contact"
+            isAllCaps = false
+            primaryAction()
+            setOnClickListener {
+                val name = contactNameInput.text.toString().trim()
+                val number = contactNumberInput.text.toString().trim()
+                if (name.isEmpty() || !number.matches(Regex("[0-9]{4,20}"))) {
+                    contactsStatus.text = "Enter a name and a 4-20 digit app number."
+                    return@setOnClickListener
+                }
+                mobileContacts[number] = name
+                saveMobileContacts(preferences)
+                contactNameInput.text.clear()
+                contactNumberInput.text.clear()
+                contactsStatus.text = ""
+                renderContacts()
+            }
+        })
+        renderContacts()
+
+        val ussdPanel = addSectionCard(ussdContent, "Open a carrier code",
+            "USSD support depends on your phone, SIM, carrier, and dialer. The code is not sent by this app: review it and tap Call in the system dialer.")
+        val ussdInput = EditText(this).apply {
+            hint = "Example: *124#"
+            isSingleLine = true
+        }
+        ussdPanel.addView(ussdInput)
+        val ussdStatus = TextView(this).apply {
+            text = "Nothing has been sent."
+            textSize = 12f
+            setTextColor(Color.rgb(91, 107, 130))
+            setPadding(0, dp(8), 0, dp(6))
+        }
+        ussdPanel.addView(ussdStatus)
+        ussdPanel.addView(Button(this).apply {
+            text = "Review in system dialer"
+            isAllCaps = false
+            primaryAction()
+            setOnClickListener {
+                val code = ussdInput.text.toString().trim()
+                if (!code.matches(Regex("\\*[0-9*#]+#"))) {
+                    ussdStatus.text = "Enter a code such as *124#. Nothing was opened."
+                    return@setOnClickListener
+                }
+                try {
+                    startActivity(Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", code, null)))
+                    ussdStatus.text = "Review the code in your phone dialer. It will run only if you tap Call there."
+                } catch (error: ActivityNotFoundException) {
+                    ussdStatus.text = "No system dialer is available: ${error.message ?: "operation unavailable"}"
+                }
+            }
+        })
+
+        val pages = listOf(callsContent, contactsContent, chatContent, ussdContent, moreContent).map { page ->
             ScrollView(this).apply {
                 isFillViewport = true
                 setBackgroundColor(Color.rgb(248, 250, 252))
@@ -446,9 +534,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             setPadding(dp(8), dp(8), dp(8), dp(8))
             setBackgroundColor(Color.WHITE)
         }
-        val navLabels = listOf("⌂\nHome", "✉\nMessages", "▦\nApps", "◉\nCalls", "⋯\nMore")
+        val destinations = listOf("Dialer", "Contacts", "SMS", "USSD", "More")
+        val navLabels = listOf("◉\nDialer", "◎\nContacts", "✉\nSMS", "✳\nUSSD", "⋯\nMore")
         val navButtons = navLabels.mapIndexed { index, label ->
-            val destination = listOf("Home", "Messages", "Apps", "Calls", "More")[index]
+            val destination = destinations[index]
             Button(this).apply {
                 text = label
                 isAllCaps = false
@@ -498,7 +587,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt("selected_page", selectedPage)
-        outState.putInt("selected_page_v2", selectedPage)
+        outState.putInt("selected_page_v3", selectedPage)
         super.onSaveInstanceState(outState)
     }
 
@@ -506,12 +595,45 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
 
     private fun restoredPage(state: Bundle?): Int {
         if (state == null) return 0
-        if (state.containsKey("selected_page_v2"))
-            return state.getInt("selected_page_v2", 0)
-        return when (state.getInt("selected_page", 0)) {
-            2 -> 2
-            else -> state.getInt("selected_page", 0).coerceIn(0, 4)
+        if (state.containsKey("selected_page_v3"))
+            return state.getInt("selected_page_v3", 0).coerceIn(0, 4)
+        val oldPage = if (state.containsKey("selected_page_v2"))
+            state.getInt("selected_page_v2", 0)
+        else
+            state.getInt("selected_page", 0)
+        return when (oldPage) {
+            1 -> 2
+            3 -> 0
+            2, 4 -> 4
+            else -> 0
         }
+    }
+
+    private var mobileContactsLoadError: String? = null
+
+    private fun readMobileContacts(preferences: android.content.SharedPreferences) {
+        val saved = preferences.getString("mobile_contacts", "[]") ?: "[]"
+        try {
+            val entries = JSONArray(saved)
+            for (index in 0 until entries.length()) {
+                val entry = entries.getJSONObject(index)
+                val name = entry.optString("name").trim()
+                val number = entry.optString("number").trim()
+                if (name.isNotEmpty() && number.matches(Regex("[0-9]{4,20}")))
+                    mobileContacts[number] = name
+            }
+        } catch (error: org.json.JSONException) {
+            mobileContactsLoadError = "Saved contacts could not be read: ${error.message ?: "invalid data"}"
+        }
+    }
+
+    private fun saveMobileContacts(preferences: android.content.SharedPreferences) {
+        val entries = JSONArray()
+        mobileContacts.forEach { (number, name) ->
+            entries.put(JSONObject().put("name", name).put("number", number))
+        }
+        preferences.edit().putString("mobile_contacts", entries.toString()).apply()
+        mobileContactsLoadError = null
     }
 
     private fun createPageContent(): LinearLayout = LinearLayout(this).apply {

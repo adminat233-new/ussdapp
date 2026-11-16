@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import Speech
 import AVFoundation
 import CoreLocation
@@ -19,8 +20,29 @@ struct ContentView: View {
     @State private var prompt = ""
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        TabView {
+            NavigationStack {
+                MobileDialerView()
+            }
+            .tabItem { Label("Dialer", systemImage: "phone") }
+
+            NavigationStack {
+                MobileContactsView()
+            }
+            .tabItem { Label("Contacts", systemImage: "person.crop.circle") }
+
+            NavigationStack {
+                MobileMessagingView()
+            }
+            .tabItem { Label("SMS", systemImage: "message") }
+
+            NavigationStack {
+                MobileUSSDView()
+            }
+            .tabItem { Label("USSD", systemImage: "asterisk") }
+
+            NavigationStack {
+                ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 12) {
@@ -173,15 +195,185 @@ struct ContentView: View {
                 .frame(maxWidth: 680)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Home")
-            .navigationBarTitleDisplayMode(.inline)
+                .background(Color(uiColor: .systemGroupedBackground))
+                .navigationTitle("More")
+                .navigationBarTitleDisplayMode(.inline)
+            }
+            .tabItem { Label("More", systemImage: "ellipsis") }
         }
     }
 
     private func runTypedCommand() {
         assistant.runTextCommand(command)
         command = ""
+    }
+}
+
+private struct MobileDialerView: View {
+    var body: some View {
+        Form {
+            Section("App number") {
+                Text("Dialing Windows 700 app numbers is not available in this mobile build. Mobile calls use LiveKit invitations and require a configured, reachable calling service.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Voice and video") {
+                NavigationLink {
+                    NativeCallView()
+                } label: {
+                    Label("Open call center", systemImage: "video")
+                }
+                Text("Create and share an invitation, or join a friend's invitation. Network reachability and service configuration are required.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("Dialer")
+    }
+}
+
+private struct MobileAppContact: Codable, Identifiable {
+    var id: String { number }
+    let name: String
+    let number: String
+}
+
+private struct MobileContactsView: View {
+    @AppStorage("mobile.contacts") private var savedContacts = "[]"
+    @State private var contacts: [MobileAppContact] = []
+    @State private var name = ""
+    @State private var number = ""
+    @State private var status = ""
+
+    var body: some View {
+        Form {
+            Section("Add app contact") {
+                TextField("Name", text: $name)
+                    .textContentType(.name)
+                TextField("App number", text: $number)
+                    .keyboardType(.numberPad)
+                Button("Save contact", action: saveContact)
+            }
+            Section("Saved on this device") {
+                if contacts.isEmpty {
+                    Text(status.isEmpty ? "No app contacts saved yet." : status)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(contacts) { contact in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(contact.name)
+                                    .font(.body.weight(.medium))
+                                Text(contact.number)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Copy") {
+                                UIPasteboard.general.string = contact.number
+                                status = "Copied \(contact.number)."
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .swipeActions {
+                            Button("Delete", role: .destructive) {
+                                contacts.removeAll { $0.id == contact.id }
+                                persistContacts()
+                            }
+                        }
+                    }
+                }
+                if !status.isEmpty && !contacts.isEmpty {
+                    Text(status)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } footer: {
+                Text("These app contacts are stored locally. USSD Manager does not read your iPhone address book.")
+            }
+        }
+        .navigationTitle("Contacts")
+        .onAppear(perform: loadContacts)
+    }
+
+    private func loadContacts() {
+        guard let data = savedContacts.data(using: .utf8) else {
+            status = "Saved contacts could not be decoded."
+            return
+        }
+        do {
+            contacts = try JSONDecoder().decode([MobileAppContact].self, from: data)
+        } catch {
+            status = "Saved contacts could not be loaded: \(error.localizedDescription)"
+        }
+    }
+
+    private func saveContact() {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanNumber = number.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty,
+              cleanNumber.range(of: "^[0-9]{4,20}$", options: .regularExpression) != nil else {
+            status = "Enter a name and a 4-20 digit app number."
+            return
+        }
+        contacts.removeAll { $0.number == cleanNumber }
+        contacts.append(MobileAppContact(name: cleanName, number: cleanNumber))
+        persistContacts()
+        name = ""
+        number = ""
+        status = "Contact saved on this device."
+    }
+
+    private func persistContacts() {
+        do {
+            let data = try JSONEncoder().encode(contacts)
+            guard let value = String(data: data, encoding: .utf8) else {
+                status = "Contacts could not be saved as text."
+                return
+            }
+            savedContacts = value
+        } catch {
+            status = "Contacts could not be saved: \(error.localizedDescription)"
+        }
+    }
+}
+
+private struct MobileUSSDView: View {
+    @State private var code = ""
+    @State private var status = "Nothing has been opened."
+
+    var body: some View {
+        Form {
+            Section("Carrier USSD") {
+                TextField("Example: *124#", text: $code)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Review in phone app", action: openDialer)
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } footer: {
+                Text("Carrier, SIM, and iOS support vary. This app only opens the system phone app; check the code there and confirm any action yourself.")
+            }
+        }
+        .navigationTitle("USSD")
+    }
+
+    private func openDialer() {
+        let cleanCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleanCode.range(of: "^\\*[0-9*#]+#$", options: .regularExpression) != nil,
+              let encodedCode = cleanCode.addingPercentEncoding(
+                withAllowedCharacters: CharacterSet(charactersIn: "0123456789*+")),
+              let url = URL(string: "tel:\(encodedCode)") else {
+            status = "Enter a code such as *124#. Nothing was opened."
+            return
+        }
+        UIApplication.shared.open(url, options: [:]) { opened in
+            status = opened
+                ? "Review the code in the system phone app. It runs only if you confirm it there."
+                : "The system phone app could not open this code."
+        }
     }
 }
 

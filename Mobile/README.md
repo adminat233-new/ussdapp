@@ -4,6 +4,13 @@ This folder contains platform-isolated Android and iOS app projects. It does
 not change the Windows build: the Windows project continues to compile the
 explicit source list in `Csharp\build.bat`.
 
+The mobile navigation uses five bottom tabs: Dialer, Contacts, SMS, USSD, and
+More. Contacts are app-number entries stored locally; neither client reads the
+phone address book. The USSD tab only hands a validated code to the system
+phone/dialer UI for the user to review and submit. Carrier SMS is not
+implemented. The Dialer tab opens the LiveKit invitation call center; it does
+not dial the Windows `700-XXXXXXX` app-number system.
+
 ## Wire contract
 
 The clients use the existing UTF-8, newline-terminated relay protocol:

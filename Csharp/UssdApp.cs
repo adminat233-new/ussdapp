@@ -7105,6 +7105,21 @@ namespace UssdApp
             };
             _agentSpeakReplies = readReplies;
             heading.Children.Add(readReplies);
+            TextBlock quickCommandsLabel = new TextBlock
+            {
+                Text = "Quick commands:",
+                Foreground = BrushGray,
+                FontSize = 11,
+                Margin = new Thickness(4, 8, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            WrapPanel quickCommands = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
+            quickCommands.Children.Add(quickCommandsLabel);
+            quickCommands.Children.Add(MakeAgentQuickAction("Check SIM status", "/agent open sim"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Prepare USSD *124#", "/agent ussd *124#"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Open SMS / codes", "/agent open messages"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Open Laptop Tracker", "/agent open tracking"));
+            heading.Children.Add(quickCommands);
             Grid.SetRow(heading, 0);
             g.Children.Add(heading);
 
@@ -7122,7 +7137,7 @@ namespace UssdApp
             _agentChatScroll.Content = _agentTranscript;
             _agentStatus = new TextBlock
             {
-                Text = "Ready. Configure the assistant in Settings > AI.",
+                Text = "Ready. Try a local command or ask AI. AI setup is optional.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
                 Margin = new Thickness(8, 8, 8, 8)
@@ -7182,6 +7197,19 @@ namespace UssdApp
             return g;
         }
 
+        private Button MakeAgentQuickAction(string label, string command)
+        {
+            Button button = MakeButton(label);
+            button.Margin = new Thickness(4, 2, 4, 2);
+            button.Click += async delegate
+            {
+                if (_agentPrompt == null) return;
+                _agentPrompt.Text = command;
+                await RunAgentPromptAsync();
+            };
+            return button;
+        }
+
         private void AgentPromptKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Enter) return;
@@ -7238,8 +7266,8 @@ namespace UssdApp
             }
             if (!_aiEnabled || string.IsNullOrEmpty(_aiApiKey))
             {
-                _agentStatus.Text = "Configure and enable the AI assistant in Settings > AI first.";
-                ShowSettingsDialog();
+                _agentStatus.Text = "AI is not configured. Your prompt is still here; local commands work without AI. Use the Settings gear only if you want to configure an AI provider.";
+                AppendAgentBubble("AI is not configured. Your prompt was not sent. Local commands remain available.", false);
                 return;
             }
 
@@ -7285,6 +7313,15 @@ namespace UssdApp
                 if (argument.Length > 500) return "Speech is limited to 500 characters.";
                 SpeakAgentText(argument);
                 return "Spoke the text locally. No network request was made.";
+            }
+            if (string.Equals(verb, "ussd", StringComparison.OrdinalIgnoreCase))
+            {
+                if (argument.Length == 0) return "Add a USSD code after /agent ussd. Nothing was sent.";
+                if (_txtCode == null) return "The USSD page is not ready. Nothing was sent.";
+                _txtCode.Text = argument;
+                ShowPage(5);
+                _txtCode.Focus();
+                return "Prepared " + argument + ". Review the code and press SEND to contact your carrier.";
             }
             if (string.Equals(verb, "open", StringComparison.OrdinalIgnoreCase))
             {

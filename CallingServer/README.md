@@ -65,6 +65,10 @@ the same invitation/token service; the production Windows ZIP must include its
 complete `USSDCalls` runtime folder. Neither desktop/mobile interoperability nor
 a deployed calling service has yet been verified on real devices and public
 networks, so do not claim production-ready calling until that test passes.
+This invitation flow is separate from the Windows relay's `700-XXXXXXX`
+app-number call path; mobile clients cannot currently place or receive those
+Windows app-number calls. A shared relay message format does not establish
+calling interoperability or public-network reachability.
 iOS release signing requires Xcode on macOS.
 
 Signed production release secrets and the artifact contents are documented in
