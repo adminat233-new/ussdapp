@@ -345,7 +345,7 @@ private struct MobileUSSDView: View {
 
     var body: some View {
         Form {
-            Section("Carrier USSD") {
+            Section {
                 TextField("Example: *124#", text: $code)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -353,6 +353,8 @@ private struct MobileUSSDView: View {
                 Text(status)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+            } header: {
+                Text("Carrier USSD")
             } footer: {
                 Text("Carrier, SIM, and iOS support vary. This app only opens the system phone app; check the code there and confirm any action yourself.")
             }
