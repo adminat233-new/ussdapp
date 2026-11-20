@@ -30,7 +30,7 @@ echo Compiling C# wake agent with %CSC% ...
   /resource:"%~dp0Themes\Light.xaml",ussd.Themes.Light.xaml ^
   /resource:"%~dp0Themes\Dark.xaml",ussd.Themes.Dark.xaml ^
   /resource:"%~dp0Themes\Controls.xaml",ussd.Themes.Controls.xaml ^
-  "%~dp0UssdApp.cs" "%~dp0VoipService.cs" "%~dp0Tnsrl.cs" "%~dp0CallServer.cs" "%~dp0NumberLease.cs" "%~dp0Security.cs" "%~dp0TrackerBridge.cs" "%~dp0RemoteControl.cs" "%~dp0Transport.cs" "%~dp0StickerSync.cs" "%~dp0Transcribe.cs" "%~dp0Radio.cs" "%~dp0CallRouter.cs" "%~dp0Theme.cs" "%~dp0ConnectionHelper.cs"
+  "%~dp0UssdApp.cs" "%~dp0VoipService.cs" "%~dp0Tnsrl.cs" "%~dp0CallServer.cs" "%~dp0NumberLease.cs" "%~dp0Security.cs" "%~dp0TrackerBridge.cs" "%~dp0RemoteControl.cs" "%~dp0Transport.cs" "%~dp0StickerSync.cs" "%~dp0Transcribe.cs" "%~dp0Radio.cs" "%~dp0CallRouter.cs" "%~dp0Theme.cs" "%~dp0ConnectionHelper.cs" "%~dp0McpEngine.cs" "%~dp0DerpEngine.cs" "%~dp0PqCrypto.cs"
 if errorlevel 1 (
     echo BUILD FAILED
     exit /b 1
