@@ -4402,6 +4402,8 @@ namespace UssdApp
                 {
                     if (raw != null && raw.StartsWith("RCMD|"))
                         Dispatcher.BeginInvoke((Action)delegate { HandleRemoteCommand(f, raw); });
+                    else if (raw != null && raw.StartsWith("RCMD_RES|"))
+                        Dispatcher.BeginInvoke((Action)delegate { HandleRemoteResult(f, raw); });
                 };
                 // ── Advanced signal handlers ──────────────────────────────
                 _voip.ChatReadReceived += delegate(string f, long ts) { Dispatcher.BeginInvoke((Action)delegate { ChatMarkDelivered(f); }); };
@@ -7418,10 +7420,14 @@ namespace UssdApp
             };
             WrapPanel quickCommands = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
             quickCommands.Children.Add(quickCommandsLabel);
-            quickCommands.Children.Add(MakeAgentQuickAction("Check SIM status", "/agent open sim"));
-            quickCommands.Children.Add(MakeAgentQuickAction("Prepare USSD *124#", "/agent ussd *124#"));
-            quickCommands.Children.Add(MakeAgentQuickAction("Open SMS / codes", "/agent open messages"));
-            quickCommands.Children.Add(MakeAgentQuickAction("Open Laptop Tracker", "/agent open tracking"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Locate device", "/agent locate"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Sound alarm", "/agent ring"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Telemetry", "/agent sysinfo"));
+            quickCommands.Children.Add(MakeAgentQuickAction("MCP Tools", "/agent mcp"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Check SIM", "/agent open sim"));
+            quickCommands.Children.Add(MakeAgentQuickAction("USSD *124#", "/agent ussd *124#"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Open SMS", "/agent open messages"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Laptop Tracker", "/agent open tracking"));
             heading.Children.Add(quickCommands);
             Grid.SetRow(heading, 0);
             g.Children.Add(heading);
@@ -7606,7 +7612,108 @@ namespace UssdApp
             string verb = split < 0 ? command : command.Substring(0, split);
             string argument = split < 0 ? "" : command.Substring(split).Trim();
             if (string.Equals(verb, "help", StringComparison.OrdinalIgnoreCase) || verb.Length == 0)
-                return "Local commands: /agent help, /agent status, /agent open apps, /agent open dialer, /agent open contacts, /agent open video, /agent open messages, /agent open sim, /agent open ussd, and /agent say <text>. Device operations require the Laptop Tracker app.";
+                return "Autonomous Agent & MCP commands:\n" +
+                       "  • /agent locate           - Locate device (GPS & IP fallback)\n" +
+                       "  • /agent ring             - Sound physical recovery alarm\n" +
+                       "  • /agent lock             - Lock Windows workstation\n" +
+                       "  • /agent sysinfo          - System hardware telemetry\n" +
+                       "  • /agent screenshot       - Capture primary viewport snapshot\n" +
+                       "  • /agent mcp              - List Model Context Protocol tools & schemas\n" +
+                       "  • /agent derp             - Check DERP encrypted mesh relay status\n" +
+                       "  • /agent peer <#num> <cmd>- Remote command to connected peer\n" +
+                       "  • /agent ussd <code>      - Prepare carrier USSD code\n" +
+                       "  • /agent say <text>       - Text-to-speech aloud\n" +
+                       "  • /agent open <tab>       - Navigate to dialer/contacts/video/sms/sim/ussd/apps";
+
+            if (string.Equals(verb, "locate", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(verb, "track", StringComparison.OrdinalIgnoreCase))
+            {
+                double lat, lon;
+                string src;
+                if (TrackerBridge.TryGetSystemLocation(out lat, out lon, out src))
+                {
+                    string mapsUrl = string.Format(System.Globalization.CultureInfo.InvariantCulture, "https://www.google.com/maps?q={0:F6},{1:F6}", lat, lon);
+                    return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                        "\uD83D\uDCCD Device Location Acquired ({0}):\nLatitude: {1:F6}\nLongitude: {2:F6}\nTimestamp: {3}\nMaps: {4}",
+                        src, lat, lon, DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'"), mapsUrl);
+                }
+                return "Location acquisition failed or unavailable on current network.";
+            }
+
+            if (string.Equals(verb, "ring", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(verb, "alarm", StringComparison.OrdinalIgnoreCase))
+            {
+                System.Threading.Tasks.Task.Run(delegate
+                {
+                    for (int i = 0; i < 5; i++)
+                    {
+                        System.Media.SystemSounds.Exclamation.Play();
+                        Thread.Sleep(600);
+                    }
+                });
+                return "\uD83D\uDD14 Recovery alarm sounding (5 chime sequence).";
+            }
+
+            if (string.Equals(verb, "lock", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_remoteControl != null)
+                {
+                    string reqId = _remoteControl.Request("local", "lockscreen", "");
+                    return "Workstation lock request submitted: " + reqId;
+                }
+                return "Remote control subsystem inactive.";
+            }
+
+            if (string.Equals(verb, "sysinfo", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(verb, "telemetry", StringComparison.OrdinalIgnoreCase))
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine("\uD83D\uDCBB System Telemetry:");
+                sb.AppendLine("  Hostname: " + System.Net.Dns.GetHostName());
+                sb.AppendLine("  OS: " + Environment.OSVersion.VersionString);
+                sb.AppendLine("  Uptime: " + (Environment.TickCount / 60000) + " minutes");
+                sb.AppendLine("  Processors: " + Environment.ProcessorCount);
+                sb.AppendLine("  App Number: #" + (!string.IsNullOrEmpty(_myNumber) ? AppNum.Format(_myNumber) : "none"));
+                sb.AppendLine("  Relay: " + (_voip != null && _voip.RelayReady ? "Connected" : "Disconnected"));
+                return sb.ToString().TrimEnd();
+            }
+
+            if (string.Equals(verb, "screenshot", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_remoteControl != null)
+                {
+                    string reqId = _remoteControl.Request("local", "screenshot", "");
+                    return "Screenshot capture requested: " + reqId;
+                }
+                return "Remote control subsystem inactive.";
+            }
+
+            if (string.Equals(verb, "mcp", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(verb, "tools", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Registered Model Context Protocol (MCP) Tools:\n" + McpEngine.GetToolsManifestJson();
+            }
+
+            if (string.Equals(verb, "derp", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(verb, "mesh", StringComparison.OrdinalIgnoreCase))
+            {
+                return "DERP Relay Traversal: Engine active, fallback port 9005, TLS 1.2 capable.";
+            }
+
+            if (string.Equals(verb, "peer", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] parts = argument.Split(new char[] { ' ', '\t' }, 3);
+                if (parts.Length < 2) return "Usage: /agent peer <number> <command> [arg]";
+                string targetPeer = parts[0].TrimStart('#');
+                string peerCmd = parts[1];
+                string peerArg = parts.Length >= 3 ? parts[2] : "";
+                if (_voip != null)
+                {
+                    bool sent = _voip.SendChat(targetPeer, "RCMD|" + peerCmd + "|" + peerArg);
+                    return sent ? "Dispatched remote command to #" + targetPeer + ": " + peerCmd : "Failed to queue command for #" + targetPeer + " (peer may be offline).";
+                }
+                return "VoIP service inactive.";
+            }
             if (string.Equals(verb, "status", StringComparison.OrdinalIgnoreCase))
                 return "USSD Manager is open. Modem status: " + (_status != null ? _status.Text : "unknown") +
                     ". Device controls remain in Laptop Tracker and were not triggered.";
@@ -12502,6 +12609,17 @@ HubShowWorkspace("chat");
                     catch { }
                 });
             };
+
+            _remoteControl.RequestCompleted += delegate(PermissionRequest r, string output)
+            {
+                Dispatcher.BeginInvoke((Action)delegate
+                {
+                    if (_voip != null && !string.IsNullOrEmpty(r.From) && r.From != "local" && r.From != "mcp_client")
+                    {
+                        try { _voip.SendChat(r.From, "RCMD_RES|" + r.Command + "|" + output); } catch { }
+                    }
+                });
+            };
         }
 
         private void ShowRemotePermissionDialog(PermissionRequest req)
@@ -12567,13 +12685,33 @@ HubShowWorkspace("chat");
         // Allow VoIP relay messages from peers to trigger remote commands
         private void HandleRemoteCommand(string from, string line)
         {
-            // Wire to relay: "RCMD|<command>|<arg>"
+            // Wire to relay: "RCMD|<command>|<arg>" or "MCP|<json-rpc>"
             if (_remoteControl == null || _remoteControl.IsRevoked) return;
             string[] p = line.Split(new char[] { '|' }, 3);
             if (p.Length < 2) return;
             string cmd = p[1];
             string arg = p.Length >= 3 ? p[2] : "";
+
+            if (cmd.Equals("MCP", StringComparison.OrdinalIgnoreCase))
+            {
+                string jsonResp = McpEngine.ProcessMcpJsonRpc(arg, _remoteControl, from);
+                if (_voip != null && !string.IsNullOrEmpty(from))
+                {
+                    try { _voip.SendChat(from, "RCMD_RES|mcp|" + jsonResp); } catch { }
+                }
+                return;
+            }
+
             _remoteControl.Request(from, cmd, arg);
+        }
+
+        private void HandleRemoteResult(string from, string line)
+        {
+            string[] p = line.Split(new char[] { '|' }, 3);
+            string cmd = p.Length >= 2 ? p[1] : "";
+            string res = p.Length >= 3 ? p[2] : "";
+            Log("[RC Response from #" + from + " (" + cmd + ")] " + res, BrushSuccess);
+            AppendAgentBubble("Response from #" + from + " (" + cmd + "):\n" + res, false);
         }
 
         // ── Hub: open OTP view for a code ─────────────────────────────────

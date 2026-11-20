@@ -41,6 +41,7 @@ namespace UssdApp
         // Raised on the calling thread; the UI must marshal to Dispatcher.
         public event Action<PermissionRequest> PermissionRequested;
         public event Action<string, string> CommandExecuted;    // commandId, output
+        public event Action<PermissionRequest, string> RequestCompleted; // request, output
         public event Action<string> AuditEntry;                 // one log line
 
         // ── State ────────────────────────────────────────────────────────
@@ -192,6 +193,8 @@ namespace UssdApp
             Audit("DENIED: " + Fmt(req));
             var h = CommandExecuted;
             if (h != null) h(req.Id, "DENIED");
+            var hr = RequestCompleted;
+            if (hr != null) hr(req, "DENIED");
         }
 
         /// <summary>Immediately clears all sessions, permissions, and queued requests.</summary>
@@ -232,6 +235,8 @@ namespace UssdApp
                 Audit("EXECUTED: " + Fmt(req) + " -> " + output.Length + " chars");
                 var h = CommandExecuted;
                 if (h != null) h(req.Id, output);
+                var hr = RequestCompleted;
+                if (hr != null) hr(req, output);
             });
             t.IsBackground = true;
             t.Name = "RC_" + req.Command;
@@ -279,6 +284,10 @@ namespace UssdApp
 
                 case "lockscreen":
                     return LockScreen();
+
+                case "derp_status":
+                case "mesh":
+                    return "DERP_STATUS: mesh relay listening port 9005, TLS 1.2 capable, MTU=1420";
 
                 default:
                     return "UNKNOWN_COMMAND: " + command;

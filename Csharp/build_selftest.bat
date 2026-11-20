@@ -1,3 +1,5 @@
+
+
 @echo off
 setlocal
 set CSC=C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe
@@ -30,4 +32,3 @@ if errorlevel 1 (
     exit /b 1
 )
 echo SELFTEST BUILD OK: %~dp0UssdSecTest.exe
-
