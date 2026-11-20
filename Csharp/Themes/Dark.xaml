@@ -1,37 +1,65 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <!-- ===== Design tokens - DARK SLATE ===== -->
-  <SolidColorBrush x:Key="AppBg"        Color="#0B1120"/>
-  <SolidColorBrush x:Key="PanelBrush"   Color="#111B2E"/>
-  <SolidColorBrush x:Key="CardBrush"    Color="#141F33"/>
-  <SolidColorBrush x:Key="CardBorder"   Color="#283750"/>
-  <SolidColorBrush x:Key="ChromeBrush"  Color="#0E1828"/>
+  <!-- ===== Design tokens — DARK (Slate 900/800 palette) ===== -->
+  <SolidColorBrush x:Key="AppBg"        Color="#0F172A"/>
+  <SolidColorBrush x:Key="PanelBrush"   Color="#1E293B"/>
+  <SolidColorBrush x:Key="CardBrush"    Color="#1E293B"/>
+  <SolidColorBrush x:Key="CardBorder"   Color="#334155"/>
+  <SolidColorBrush x:Key="ChromeBrush"  Color="#0F172A"/>
+  <SolidColorBrush x:Key="SidebarBg"    Color="#1E293B"/>
+  <SolidColorBrush x:Key="HeaderBg"     Color="#1E293B"/>
 
-  <SolidColorBrush x:Key="TextBrush"    Color="#F1F5FB"/>
-  <SolidColorBrush x:Key="SubtextBrush" Color="#A5B2C5"/>
-  <SolidColorBrush x:Key="GrayBrush"    Color="#A5B2C5"/>
+  <SolidColorBrush x:Key="TextBrush"    Color="#F1F5F9"/>
+  <SolidColorBrush x:Key="SubtextBrush" Color="#94A3B8"/>
+  <SolidColorBrush x:Key="GrayBrush"    Color="#64748B"/>
+  <SolidColorBrush x:Key="MutedBrush"   Color="#475569"/>
 
-  <SolidColorBrush x:Key="AccentBrush"    Color="#5B8DEF"/>
-  <SolidColorBrush x:Key="AccentHover"    Color="#78A4FF"/>
-  <SolidColorBrush x:Key="AccentSoft"     Color="#1D3156"/>
-  <SolidColorBrush x:Key="CallBrush"      Color="#1685E8"/>
-  <SolidColorBrush x:Key="CallHover"      Color="#3C9CF3"/>
+  <SolidColorBrush x:Key="AccentBrush"    Color="#3B82F6"/>
+  <SolidColorBrush x:Key="AccentHover"    Color="#2563EB"/>
+  <SolidColorBrush x:Key="AccentSoft"     Color="#1E3A5F"/>
+  <SolidColorBrush x:Key="AccentText"     Color="#93C5FD"/>
+  <SolidColorBrush x:Key="AccentBorder"   Color="#1D4ED8"/>
+
+  <SolidColorBrush x:Key="IndigoBrush"    Color="#6366F1"/>
+  <SolidColorBrush x:Key="IndigoSoft"     Color="#1E1B4B"/>
+
+  <SolidColorBrush x:Key="CallBrush"      Color="#059669"/>
+  <SolidColorBrush x:Key="CallHover"      Color="#047857"/>
+  <SolidColorBrush x:Key="CallSoft"       Color="#064E3B"/>
 
   <SolidColorBrush x:Key="DangerBrush"    Color="#EF4444"/>
-  <SolidColorBrush x:Key="DangerHover"    Color="#F87171"/>
-  <SolidColorBrush x:Key="DangerSoft"     Color="#4C1D1D"/>
-  <SolidColorBrush x:Key="ErrorBrush"     Color="#FF5252"/>
+  <SolidColorBrush x:Key="DangerHover"    Color="#DC2626"/>
+  <SolidColorBrush x:Key="DangerSoft"     Color="#450A0A"/>
+  <SolidColorBrush x:Key="ErrorBrush"     Color="#F87171"/>
+  <SolidColorBrush x:Key="EndCallBrush"   Color="#DC2626"/>
+
   <SolidColorBrush x:Key="SuccessBrush"   Color="#22C55E"/>
   <SolidColorBrush x:Key="WarnBrush"      Color="#F59E0B"/>
-  <SolidColorBrush x:Key="GreenBrush"     Color="#16A34A"/>
-  <SolidColorBrush x:Key="RedBrush"       Color="#DC2626"/>
-
-  <!-- Keypad must stay visible on CardBrush (#1E293B): lighter ladder -->
-  <SolidColorBrush x:Key="KeypadBrush"    Color="#1B2A40"/>
-  <SolidColorBrush x:Key="KeypadHover"    Color="#263A56"/>
-  <SolidColorBrush x:Key="KeypadPress"    Color="#314967"/>
-  <SolidColorBrush x:Key="PillBrush"      Color="#0E1828"/>
+  <SolidColorBrush x:Key="GreenBrush"     Color="#22C55E"/>
+  <SolidColorBrush x:Key="RedBrush"       Color="#EF4444"/>
   <SolidColorBrush x:Key="OnlineBrush"    Color="#22C55E"/>
+
+  <SolidColorBrush x:Key="KeypadBrush"    Color="#1E293B"/>
+  <SolidColorBrush x:Key="KeypadHover"    Color="#1E3A5F"/>
+  <SolidColorBrush x:Key="KeypadPress"    Color="#1D4ED8"/>
+  <SolidColorBrush x:Key="KeypadBorder"   Color="#334155"/>
+
+  <SolidColorBrush x:Key="PillBrush"      Color="#0F172A"/>
+  <SolidColorBrush x:Key="NavActiveBg"    Color="#1E3A5F"/>
+  <SolidColorBrush x:Key="NavActiveText"  Color="#93C5FD"/>
+
+  <!-- Chat panel colours same as light — always dark -->
+  <SolidColorBrush x:Key="ChatPanelBg"    Color="#0F172A"/>
+  <SolidColorBrush x:Key="ChatPanelCard"  Color="#1E293B"/>
+  <SolidColorBrush x:Key="ChatPanelBorder" Color="#334155"/>
+  <SolidColorBrush x:Key="ChatMsgBg"      Color="#1E293B"/>
+  <SolidColorBrush x:Key="ChatMsgText"    Color="#F1F5F9"/>
+  <SolidColorBrush x:Key="ChatInputBg"    Color="#1A243D"/>
+  <SolidColorBrush x:Key="ChatHeaderBg"   Color="#172038"/>
+
+  <SolidColorBrush x:Key="VideoBg"        Color="#0B0F19"/>
+  <SolidColorBrush x:Key="VideoHeaderBg"  Color="#0F1524"/>
+  <SolidColorBrush x:Key="VideoDockBg"    Color="#1E293B"/>
 
 </ResourceDictionary>

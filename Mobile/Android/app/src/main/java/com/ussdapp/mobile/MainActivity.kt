@@ -98,18 +98,18 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         ai = GeminiAssistant(this)
         speech = TextToSpeech(this, this)
 
-        window.statusBarColor = Color.rgb(248, 250, 252)
-        window.navigationBarColor = Color.rgb(255, 255, 255)
+        window.statusBarColor = Color.rgb(15, 23, 42)
+        window.navigationBarColor = Color.rgb(15, 23, 42)
 
         val appRoot = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(248, 250, 252))
+            setBackgroundColor(Color.rgb(15, 23, 42))
         }
         val appBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(18), dp(12), dp(14), dp(12))
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(30, 41, 59))
         }
         val brand = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -120,19 +120,19 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             textSize = 23f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            background = roundedSurface(Color.rgb(49, 95, 197), dp(13))
+            background = roundedSurface(Color.rgb(59, 130, 246), dp(13))
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(12) })
         val brandTitle = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         brandTitle.addView(TextView(this).apply {
             text = "USSD Manager"
             textSize = 16f
-            setTextColor(Color.rgb(23, 36, 58))
+            setTextColor(Color.rgb(226, 232, 240))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         brandTitle.addView(TextView(this).apply {
             text = "Communication, made simple"
             textSize = 12f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
         })
         brand.addView(brandTitle)
         appBar.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
@@ -221,13 +221,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         responseView = TextView(this).apply {
             text = "Ready. Try /agent help."
             textSize = 15f
-            setTextColor(Color.rgb(23, 36, 58))
+            setTextColor(Color.rgb(226, 232, 240))
             setPadding(0, dp(10), 0, dp(8))
             setTextIsSelectable(true)
             background = GradientDrawable().apply {
-                setColor(Color.WHITE)
+                setColor(Color.rgb(15, 23, 42))
                 cornerRadius = dp(10).toFloat()
-                setStroke(dp(1), Color.rgb(220, 228, 239))
+                setStroke(dp(1), Color.rgb(51, 65, 85))
             }
         }
         agentPanel.addView(responseView)
@@ -239,7 +239,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val speakReplies = CheckBox(this).apply {
             text = "Read AI responses aloud"
             isChecked = preferences.getBoolean("speak_replies", false)
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setOnCheckedChangeListener { _, checked ->
                 preferences.edit().putBoolean("speak_replies", checked).apply()
             }
@@ -252,7 +252,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text = "AI model: ${GeminiAssistant.DEFAULT_MODEL}\nPrompts are sent to Google only when you ask. " +
                 "A provider API key is required; any free quota is controlled by the provider."
             textSize = 12f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(0, dp(12), 0, dp(4))
         })
         apiKeyInput = EditText(this).apply {
@@ -278,7 +278,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         moreContent.addView(TextView(this).apply {
             text = "Privacy: relay connections, calls, and tracking actions start only when you choose them. Location is shared only after a one-time request and Android permission."
             textSize = 12f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(dp(4), dp(12), dp(4), dp(8))
         })
         providerPanel.addView(Button(this).apply {
@@ -402,12 +402,12 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         trackerPanel.addView(TextView(this).apply {
             text = "Copy the other device ID from the status response. Disconnecting revokes that device's tracker credential."
             textSize = 12f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
         })
         trackerStatusView = TextView(this).apply {
             text = "Not connected. Enter the HTTPS tracker service URL to begin."
             textSize = 13f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(0, dp(8), 0, dp(4))
         }
         trackerPanel.addView(trackerStatusView)
@@ -466,10 +466,10 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         trackerOutputView = TextView(this).apply {
             text = "Tracker responses will appear here. Device credentials are stored securely and hidden from responses."
             textSize = 12f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(dp(12), dp(10), dp(12), dp(10))
             setTextIsSelectable(true)
-            background = roundedSurface(Color.WHITE, dp(10))
+            background = roundedSurface(Color.rgb(30, 41, 59), dp(10))
         }
         trackerPanel.addView(trackerOutputView)
         trackerMapLinks = LinearLayout(this).apply {
@@ -490,7 +490,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         appsStatusView = TextView(this).apply {
             text = "Open More to launch Laptop Tracker. If it is not installed, Android will ask you to confirm installation."
             textSize = 13f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(0, dp(4), 0, dp(12))
         }
         trackerApps.addView(appsStatusView)
@@ -503,7 +503,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         trackerApps.addView(TextView(this).apply {
             text = "The included installer is handled by Android's package installer and requires your confirmation."
             textSize = 12f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(0, dp(12), 0, 0)
         })
         val callPanel = addSectionCard(callsContent, "Start or join a call",
@@ -517,7 +517,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         callPanel.addView(TextView(this).apply {
             text = "A reachable LiveKit service is required. Windows/mobile calling has not yet been verified on real devices and independent networks."
             textSize = 12f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(0, dp(12), 0, 0)
         })
 
@@ -538,7 +538,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             text = mobileContactsLoadError
                 ?: if (mobileContacts.isEmpty()) "No app contacts saved yet." else ""
             textSize = 12f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(0, dp(8), 0, dp(6))
         }
         contactPanel.addView(contactsStatus)
@@ -603,7 +603,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val ussdStatus = TextView(this).apply {
             text = "Nothing has been sent."
             textSize = 12f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(0, dp(8), 0, dp(6))
         }
         ussdPanel.addView(ussdStatus)
@@ -629,7 +629,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         val pages = listOf(callsContent, contactsContent, chatContent, ussdContent, moreContent).map { page ->
             ScrollView(this).apply {
                 isFillViewport = true
-                setBackgroundColor(Color.rgb(248, 250, 252))
+                setBackgroundColor(Color.rgb(15, 23, 42))
                 addView(page)
             }
         }
@@ -649,7 +649,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(30, 41, 59))
         }
         val destinations = listOf("Dialer", "Contacts", "SMS", "USSD", "More")
         val navLabels = listOf("◉\nDialer", "◎\nContacts", "✉\nSMS", "✳\nUSSD", "⋯\nMore")
@@ -687,9 +687,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             }
             navButtons.forEachIndexed { buttonIndex, button ->
                 val active = buttonIndex == selected
-                button.setTextColor(if (active) Color.WHITE else Color.rgb(91, 107, 130))
+                button.setTextColor(if (active) Color.WHITE else Color.rgb(148, 163, 184))
                 button.background = roundedSurface(
-                    if (active) Color.rgb(49, 95, 197) else Color.rgb(241, 245, 250),
+                    if (active) Color.rgb(59, 130, 246) else Color.rgb(15, 23, 42),
                     dp(12)
                 )
                 button.isSelected = active
@@ -762,13 +762,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         parent.addView(TextView(this).apply {
             text = title
             textSize = 24f
-            setTextColor(Color.rgb(23, 36, 58))
+            setTextColor(Color.rgb(226, 232, 240))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         parent.addView(TextView(this).apply {
             text = description
             textSize = 13f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(0, dp(4), 0, dp(16))
         })
     }
@@ -842,9 +842,9 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(16), dp(18), dp(14))
             background = GradientDrawable().apply {
-                setColor(Color.WHITE)
+                setColor(Color.rgb(30, 41, 59))
                 cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), Color.rgb(220, 228, 239))
+                setStroke(dp(1), Color.rgb(51, 65, 85))
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -856,13 +856,13 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
         card.addView(TextView(this).apply {
             text = title
             textSize = 18f
-            setTextColor(Color.rgb(23, 36, 58))
+            setTextColor(Color.rgb(226, 232, 240))
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         card.addView(TextView(this).apply {
             text = description
             textSize = 13f
-            setTextColor(Color.rgb(91, 107, 130))
+            setTextColor(Color.rgb(148, 163, 184))
             setPadding(0, dp(5), 0, dp(8))
         })
         parent.addView(card)
@@ -1004,7 +1004,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
                     } else ""
                     trackerMapLinks.addView(TextView(this).apply {
                         text = "$deviceId · $status$lost$timestamp\n${"%.6f".format(java.util.Locale.US, lat)}, ${"%.6f".format(java.util.Locale.US, lng)}"
-                        setTextColor(Color.rgb(91, 107, 130))
+                        setTextColor(Color.rgb(148, 163, 184))
                         setPadding(0, dp(8), 0, dp(4))
                     })
                     points.add(Triple(deviceId, lat, lng))
@@ -1048,7 +1048,7 @@ class MainActivity : Activity(), TextToSpeech.OnInitListener {
             if (found == 0) {
                 trackerMapLinks.addView(TextView(this).apply {
                     text = "No paired-device location has been reported. The device must share a location while it is available."
-                    setTextColor(Color.rgb(91, 107, 130))
+                    setTextColor(Color.rgb(148, 163, 184))
                     setPadding(0, dp(8), 0, dp(4))
                 })
             }

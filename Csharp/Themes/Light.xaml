@@ -1,36 +1,80 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-  <!-- ===== Design tokens - LIGHT (Fluent / Material inspired) ===== -->
-  <SolidColorBrush x:Key="AppBg"        Color="#F4F7FB"/>
-  <SolidColorBrush x:Key="PanelBrush"   Color="#FFFFFF"/>
-  <SolidColorBrush x:Key="CardBrush"    Color="#FFFFFF"/>
-  <SolidColorBrush x:Key="CardBorder"   Color="#DCE4EF"/>
-  <SolidColorBrush x:Key="ChromeBrush"  Color="#F6F8FC"/>
+  <!-- ===================================================================
+       Design tokens — LIGHT
+       Exact match to website (Tailwind slate/blue palette)
+       bg-[#F8FAFC]  slate-900=#0F172A  blue-600=#2563EB
+       =================================================================== -->
 
-  <SolidColorBrush x:Key="TextBrush"    Color="#17243A"/>
-  <SolidColorBrush x:Key="SubtextBrush" Color="#5B6B82"/>
-  <SolidColorBrush x:Key="GrayBrush"    Color="#5B6B82"/>
+  <!-- App shell -->
+  <SolidColorBrush x:Key="AppBg"        Color="#F8FAFC"/>  <!-- bg-[#F8FAFC] -->
+  <SolidColorBrush x:Key="PanelBrush"   Color="#FFFFFF"/>  <!-- bg-white -->
+  <SolidColorBrush x:Key="CardBrush"    Color="#FFFFFF"/>  <!-- bg-white -->
+  <SolidColorBrush x:Key="CardBorder"   Color="#E2E8F0"/>  <!-- border-slate-200 -->
+  <SolidColorBrush x:Key="ChromeBrush"  Color="#F1F5F9"/>  <!-- bg-slate-100 -->
+  <SolidColorBrush x:Key="SidebarBg"    Color="#FFFFFF"/>  <!-- sidebar bg-white -->
+  <SolidColorBrush x:Key="HeaderBg"     Color="#FFFFFF"/>  <!-- header bg-white -->
 
-  <SolidColorBrush x:Key="AccentBrush"    Color="#315FC5"/>
-  <SolidColorBrush x:Key="AccentHover"    Color="#254FAF"/>
-  <SolidColorBrush x:Key="AccentSoft"     Color="#E8EFFD"/>
-  <SolidColorBrush x:Key="CallBrush"      Color="#0875D1"/>
-  <SolidColorBrush x:Key="CallHover"      Color="#0665B6"/>
+  <!-- Text hierarchy -->
+  <SolidColorBrush x:Key="TextBrush"    Color="#0F172A"/>  <!-- slate-900 -->
+  <SolidColorBrush x:Key="SubtextBrush" Color="#64748B"/>  <!-- slate-500 -->
+  <SolidColorBrush x:Key="GrayBrush"    Color="#94A3B8"/>  <!-- slate-400 -->
+  <SolidColorBrush x:Key="MutedBrush"   Color="#CBD5E1"/>  <!-- slate-300 -->
 
-  <SolidColorBrush x:Key="DangerBrush"    Color="#EF4444"/>
-  <SolidColorBrush x:Key="DangerHover"    Color="#DC2626"/>
-  <SolidColorBrush x:Key="DangerSoft"     Color="#FEF2F2"/>
+  <!-- Brand blue — #2563EB blue-600 -->
+  <SolidColorBrush x:Key="AccentBrush"    Color="#2563EB"/>  <!-- blue-600 -->
+  <SolidColorBrush x:Key="AccentHover"    Color="#1D4ED8"/>  <!-- blue-700 -->
+  <SolidColorBrush x:Key="AccentSoft"     Color="#EFF6FF"/>  <!-- blue-50 -->
+  <SolidColorBrush x:Key="AccentText"     Color="#1E40AF"/>  <!-- blue-800 -->
+  <SolidColorBrush x:Key="AccentBorder"   Color="#BFDBFE"/>  <!-- blue-200 -->
+
+  <!-- Indigo — secondary brand -->
+  <SolidColorBrush x:Key="IndigoBrush"    Color="#4F46E5"/>  <!-- indigo-600 -->
+  <SolidColorBrush x:Key="IndigoSoft"     Color="#EEF2FF"/>  <!-- indigo-50 -->
+
+  <!-- Call / success = emerald -->
+  <SolidColorBrush x:Key="CallBrush"      Color="#059669"/>  <!-- emerald-600 -->
+  <SolidColorBrush x:Key="CallHover"      Color="#047857"/>  <!-- emerald-700 -->
+  <SolidColorBrush x:Key="CallSoft"       Color="#ECFDF5"/>  <!-- emerald-50 -->
+
+  <!-- Danger = rose/red -->
+  <SolidColorBrush x:Key="DangerBrush"    Color="#DC2626"/>  <!-- red-600 -->
+  <SolidColorBrush x:Key="DangerHover"    Color="#B91C1C"/>  <!-- red-700 -->
+  <SolidColorBrush x:Key="DangerSoft"     Color="#FEF2F2"/>  <!-- red-50 -->
   <SolidColorBrush x:Key="ErrorBrush"     Color="#DC2626"/>
-  <SolidColorBrush x:Key="SuccessBrush"   Color="#16A34A"/>
-  <SolidColorBrush x:Key="WarnBrush"      Color="#F59E0B"/>
-  <SolidColorBrush x:Key="GreenBrush"     Color="#16A34A"/>
-  <SolidColorBrush x:Key="RedBrush"       Color="#DC2626"/>
+  <SolidColorBrush x:Key="EndCallBrush"   Color="#DC2626"/>  <!-- hang-up button -->
 
-  <SolidColorBrush x:Key="KeypadBrush"    Color="#EDF2F8"/>
-  <SolidColorBrush x:Key="KeypadHover"    Color="#E1E9F3"/>
-  <SolidColorBrush x:Key="KeypadPress"    Color="#D4DFEC"/>
-  <SolidColorBrush x:Key="PillBrush"      Color="#F1F5FA"/>
-  <SolidColorBrush x:Key="OnlineBrush"    Color="#22C55E"/>
+  <!-- Status -->
+  <SolidColorBrush x:Key="SuccessBrush"   Color="#16A34A"/>  <!-- green-600 -->
+  <SolidColorBrush x:Key="WarnBrush"      Color="#D97706"/>  <!-- amber-600 -->
+  <SolidColorBrush x:Key="GreenBrush"     Color="#22C55E"/>  <!-- green-500 -->
+  <SolidColorBrush x:Key="RedBrush"       Color="#EF4444"/>  <!-- red-500 -->
+  <SolidColorBrush x:Key="OnlineBrush"    Color="#22C55E"/>  <!-- green-500 -->
+
+  <!-- Keypad -->
+  <SolidColorBrush x:Key="KeypadBrush"    Color="#F8FAFC"/>  <!-- slate-50 -->
+  <SolidColorBrush x:Key="KeypadHover"    Color="#EFF6FF"/>  <!-- blue-50 -->
+  <SolidColorBrush x:Key="KeypadPress"    Color="#DBEAFE"/>  <!-- blue-100 -->
+  <SolidColorBrush x:Key="KeypadBorder"   Color="#E2E8F0"/>  <!-- slate-200 -->
+
+  <!-- Misc -->
+  <SolidColorBrush x:Key="PillBrush"      Color="#F1F5F9"/>  <!-- slate-100 -->
+  <SolidColorBrush x:Key="NavActiveBg"    Color="#EFF6FF"/>  <!-- blue-50 nav active -->
+  <SolidColorBrush x:Key="NavActiveText"  Color="#1D4ED8"/>  <!-- blue-700 -->
+
+  <!-- SMS/Chat dark panel colours (used for the dark 3-pane hub) -->
+  <SolidColorBrush x:Key="ChatPanelBg"    Color="#0F172A"/>  <!-- slate-900 -->
+  <SolidColorBrush x:Key="ChatPanelCard"  Color="#1E293B"/>  <!-- slate-800 -->
+  <SolidColorBrush x:Key="ChatPanelBorder" Color="#334155"/> <!-- slate-700 -->
+  <SolidColorBrush x:Key="ChatMsgBg"      Color="#1E293B"/>  <!-- incoming bubble -->
+  <SolidColorBrush x:Key="ChatMsgText"    Color="#F1F5F9"/>
+  <SolidColorBrush x:Key="ChatInputBg"    Color="#1A243D"/>
+  <SolidColorBrush x:Key="ChatHeaderBg"   Color="#172038"/>
+
+  <!-- Video panel dark colours -->
+  <SolidColorBrush x:Key="VideoBg"        Color="#0B0F19"/>
+  <SolidColorBrush x:Key="VideoHeaderBg"  Color="#0F1524"/>
+  <SolidColorBrush x:Key="VideoDockBg"    Color="#1E293B"/>
 
 </ResourceDictionary>

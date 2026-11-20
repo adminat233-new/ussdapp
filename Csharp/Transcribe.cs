@@ -189,7 +189,7 @@ namespace UssdApp
         // One remote-audio frame (20 ms, 640 bytes). Called from the audio path.
         public void AddFrame(byte[] pcm)
         {
-            if (!_run || pcm == null || pcm.Length == 0) return;
+            if (_disposed || !_run || pcm == null || pcm.Length == 0) return;
             bool fire = false;
             lock (_lock)
             {

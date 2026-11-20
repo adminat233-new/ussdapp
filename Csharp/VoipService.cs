@@ -1357,6 +1357,9 @@ namespace UssdApp
         private readonly Dictionary<string, VoipPeer> _peers = new Dictionary<string, VoipPeer>();
         private readonly object _peerLock = new object();
         public readonly TnsrlRouteFlow TnsrlRoutes = new TnsrlRouteFlow();
+        // Mesh relay: each device can forward for peers it can reach, so group
+        // calls do not need a single central relay. Initialised after Start().
+        public TnsrlMeshRelay MeshRelay;
 
         public VoipCrypto _crypto;
         public VoipMedia Media = new VoipMedia();
@@ -1489,11 +1492,12 @@ namespace UssdApp
             Media.VideoFrame -= OnVideoFrame;
             Media.AudioFrame += OnAudioFrame;
             Media.VideoFrame += OnVideoFrame;
-            // The reflexive address turns out after the INVITE has gone out, on a
-            // network that may never answer at all. When it does, use it: add it as a
-            // candidate and tell the peer, whose other option is our LAN address.
             Media.PublicAddressKnown -= OnPublicAddress;
             Media.PublicAddressKnown += OnPublicAddress;
+
+            // Mesh relay initialised here so gossip and forwarding are ready
+            // before the discovery loop starts sending announcements.
+            MeshRelay = new TnsrlMeshRelay(TnsrlRoutes, Emit);
 
             bool sigOk = true;
             try
@@ -1695,6 +1699,28 @@ namespace UssdApp
                 if (r.Connected) r.PublishNow(r.OwnKeyLine);
             }
             catch (Exception ex) { Emit("Security: could not publish our identity key: " + ex.Message); }
+            // TNSRL v2: publish our route announcement to the relay so it can
+            // push it to peers who register. Called from PublishOwnKey so it runs
+            // whenever we register, including on reconnect.
+            PublishTnsrlAnnouncement();
+        }
+
+        // Send our TNSRL v2 route announcement to the relay for forwarding.
+        // The relay stores it on our Conn and pushes it to other clients.
+        public void PublishTnsrlAnnouncement()
+        {
+            RelayClient r = Relay;
+            if (r == null || !r.Connected) return;
+            try
+            {
+                IPAddress pubIp = Media.PublicEp != null ? Media.PublicEp.Address : null;
+                int pubPort = Media.PublicEp != null ? Media.PublicEp.Port : 0;
+                string ann = Tnsrl.BuildLocalAnnouncement(
+                    MyNumber, LocalName, pubIp, pubPort, SecIdentity);
+                if (!string.IsNullOrEmpty(ann))
+                    r.SendRaw("TNSRPUSH|" + ann);
+            }
+            catch { }
         }
 
         // ---- bootstrap: finding a relay when you have never had one ----
@@ -2358,12 +2384,29 @@ namespace UssdApp
                     {
                         byte[] hello = Encoding.UTF8.GetBytes("USSDDISC|1|" + LocalName);
                         _discUdp.Send(hello, hello.Length, new IPEndPoint(IPAddress.Broadcast, DISC_PORT));
-                        string tnsrl = Tnsrl.BuildAnnouncement(
-                            LocalName, GetLocalIp(), Media.LocalPort);
+
+                        // TNSRL v2: include public IP (from STUN), MAC, DNS so
+                        // peers on other networks can reach us directly.
+                        IPAddress publicIp = Media.PublicEp != null ? Media.PublicEp.Address : null;
+                        int publicPort     = Media.PublicEp != null ? Media.PublicEp.Port    : 0;
+                        string tnsrl = Tnsrl.BuildLocalAnnouncement(
+                            MyNumber, LocalName, publicIp, publicPort, SecIdentity);
                         if (!string.IsNullOrEmpty(tnsrl))
                         {
                             byte[] route = Encoding.UTF8.GetBytes(tnsrl);
                             _discUdp.Send(route, route.Length, new IPEndPoint(IPAddress.Broadcast, DISC_PORT));
+                            // Gossip our routes to any peer listening on the same LAN
+                            // so group calls can form even without a central relay.
+                            if (tick % 3 == 0)
+                            {
+                                List<string> gossip = MeshRelay.BuildGossipLines(tnsrl, 0);
+                                foreach (string g in gossip)
+                                {
+                                    byte[] gb = Encoding.UTF8.GetBytes(g);
+                                    try { _discUdp.Send(gb, gb.Length, new IPEndPoint(IPAddress.Broadcast, DISC_PORT)); }
+                                    catch { }
+                                }
+                            }
                         }
 
                         // Ask for a relay only while we have none, and every 5th
@@ -2399,6 +2442,10 @@ namespace UssdApp
                 if (Tnsrl.TryParse(s, rep.Address, out discoveredRoute))
                 {
                     TnsrlRoutes.Observe(discoveredRoute);
+                    // Note mesh source endpoint so we can forward for this peer
+                    if (!string.IsNullOrEmpty(discoveredRoute.Number))
+                        MeshRelay.NoteSourceEndpoint(discoveredRoute.Number,
+                            new IPEndPoint(rep.Address, discoveredRoute.MediaPort));
                     lock (_peerLock)
                     {
                         VoipPeer p;
@@ -2418,6 +2465,21 @@ namespace UssdApp
                     }
                     Action<VoipPeer> hr = PeerListChanged;
                     if (hr != null) hr(null);
+                    continue;
+                }
+
+                // TNSRL v2 gossip: a peer forwarding routes it heard about
+                if (s.StartsWith("TNSRPUSH|", StringComparison.Ordinal))
+                {
+                    TnsrlRoute gossipRoute;
+                    if (Tnsrl.TryParseGossip(s, rep.Address, out gossipRoute))
+                    {
+                        TnsrlRoutes.Observe(gossipRoute);
+                        if (!string.IsNullOrEmpty(gossipRoute.Number))
+                            MeshRelay.NoteSourceEndpoint(gossipRoute.Number,
+                                new IPEndPoint(gossipRoute.Address ?? rep.Address,
+                                               gossipRoute.MediaPort));
+                    }
                     continue;
                 }
 
@@ -2941,6 +3003,11 @@ namespace UssdApp
                 try { peerAddress = IPAddress.Parse(ip); } catch { }
                 foreach (IPEndPoint routeCandidate in TnsrlRoutes.Candidates(peerAddress))
                     Media.AddCandidate(routeCandidate);
+                // TNSRL v2: also try candidates keyed by app number (works when
+                // the two devices discovered each other via gossip, not just LAN IP)
+                if (!string.IsNullOrEmpty(_peerNumber))
+                    foreach (IPEndPoint nc in TnsrlRoutes.CandidatesForNumber(_peerNumber))
+                        Media.AddCandidate(nc);
                 int discoveredPort = 0;
                 lock (_peerLock)
                 {
@@ -3032,6 +3099,9 @@ namespace UssdApp
                 AnnounceMediaPort();
                 Emit("telling the peer our address as it looks from outside: " + ep);
             }
+            // Re-publish our TNSRL announcement now that we know the public IP:
+            // other peers need this to try a direct UDP path across networks.
+            PublishTnsrlAnnouncement();
         }
 
         // Where to aim media at the peer, best first. Kept as a pure function over
@@ -3200,6 +3270,21 @@ namespace UssdApp
             // The peer's real UDP media port. Its own line rather than a field of
             // INVITE, so an older build that has never heard of it just ignores it.
             if (p[0] == "MPORT" && p.Length >= 2) { LearnPeerPort(p); return true; }
+            // Mid-call voice ↔ video switch. The peer signals they want to add or
+            // remove their camera. We update VideoCall and raise VideoSwitched so
+            // the UI can open/close the camera window without ending the call.
+            if (p[0] == "VIDSWITCH" && p.Length >= 2)
+            {
+                bool wantsVideo = p[1] == "1";
+                if (VideoCall != wantsVideo)
+                {
+                    VideoCall = wantsVideo;
+                    Emit("Peer " + (wantsVideo ? "added video" : "switched to voice only"));
+                    Action<bool> vsw = VideoSwitched;
+                    if (vsw != null) vsw(wantsVideo);
+                }
+                return true;
+            }
             if (p[0] == "ACCEPT" && p.Length >= 3)
             {
                 if (p[1] != _callId) return true;
@@ -4229,6 +4314,29 @@ namespace UssdApp
         // Raised when the relay could not get us into a room even after holding the
         // join for a route: the call did not start, and the screen has to say that.
         public event Action<string> ConferenceRefused;        // roomId
+        // Raised when the peer switches between voice and video mid-call.
+        public event Action<bool> VideoSwitched;              // true = video added, false = dropped
+
+        // ── Mid-call voice ↔ video switching ─────────────────────────────
+        // The peer gets a VIDSWITCH signal; both sides update VideoCall so the
+        // camera window opens/closes without ending the call.
+        public void SwitchToVideo()
+        {
+            if (!InCall || VideoCall) return;
+            VideoCall = true;
+            try { SendSig("VIDSWITCH|1"); } catch { }
+            Emit("Switched to video call.");
+            Action<bool> h = VideoSwitched; if (h != null) h(true);
+        }
+
+        public void SwitchToVoice()
+        {
+            if (!InCall || !VideoCall) return;
+            VideoCall = false;
+            try { SendSig("VIDSWITCH|0"); } catch { }
+            Emit("Switched to voice-only call.");
+            Action<bool> h = VideoSwitched; if (h != null) h(false);
+        }
 
         // Rooms are named after whoever opens them, so the id is never a bare
         // counter two hosts could collide on.

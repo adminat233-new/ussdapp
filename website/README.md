@@ -18,8 +18,8 @@ those release assets and enables direct download buttons; without a published
 release, the buttons correctly remain disabled. A release can also be published
 manually from the workflow using an existing preview tag.
 
-The supplied video in `assets/ussd-manager-walkthrough.mp4` is the muted,
-looping background across the full page. Playback starts automatically when
+The supplied video in `assets/gemini_generated_video_b5b7a151.mp4` is the
+muted, looping background across the full page. Playback starts automatically when
 motion is allowed and pauses while the page is hidden; browsers that block
 autoplay retry after the first user interaction. Reduced-motion preferences
 pause the background video and scene autoplay. The "How it works" simulation

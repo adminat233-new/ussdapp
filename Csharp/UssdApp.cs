@@ -1,4 +1,4 @@
-using System;
+ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -132,6 +132,7 @@ namespace UssdApp
             {
                 sb.AppendLine("--- TNSRL route flow ---");
                 IPAddress localPeer = IPAddress.Parse("192.168.10.22");
+                // v1 compat: pipe in name, stripped by SafeField
                 string announcement = Tnsrl.BuildAnnouncement("peer|one", localPeer, 45672);
                 TnsrlRoute parsedRoute;
                 bool parsed = Tnsrl.TryParse(announcement, localPeer, out parsedRoute);
@@ -139,15 +140,55 @@ namespace UssdApp
                 flow.Observe(parsedRoute);
                 List<IPEndPoint> flowCandidates = flow.Candidates(localPeer);
                 bool tnsrlOk = parsed && parsedRoute != null &&
-                    parsedRoute.Name == "peer|one" && flowCandidates.Count == 1 &&
+                    parsedRoute.Name == "peerone" &&   // pipe stripped
+                    flowCandidates.Count >= 1 &&
                     flowCandidates[0].Port == 45672;
                 sb.AppendLine("TNSRL route announcement and flow: " + (tnsrlOk ? "OK" : "FAIL"));
+
+                // v2: public IP, MAC, DNS, number, gossip round-trip
+                IPAddress pubIp  = IPAddress.Parse("203.0.113.5");
+                string v2ann = Tnsrl.BuildAnnouncement(
+                    "mydevice", localPeer, 45672,
+                    pubIp, 50000, "AABBCCDDEEFF", "my-pc.local", "", "7001234567");
+                TnsrlRoute v2route;
+                bool v2ok = Tnsrl.TryParse(v2ann, localPeer, out v2route);
+                bool v2fields = v2ok && v2route != null &&
+                    v2route.PublicAddress != null &&
+                    v2route.PublicAddress.ToString() == "203.0.113.5" &&
+                    v2route.PublicPort == 50000 &&
+                    v2route.MacHex == "AABBCCDDEEFF" &&
+                    v2route.DnsName == "my-pc.local" &&
+                    v2route.Number  == "7001234567";
+                sb.AppendLine("TNSRL v2 fields: " + (v2fields ? "OK" : "FAIL"));
+
+                // v2: number-based candidate lookup
+                TnsrlRouteFlow flow2 = new TnsrlRouteFlow();
+                flow2.Observe(v2route);
+                bool numLookup = flow2.CandidatesForNumber("7001234567").Count >= 1;
+                sb.AppendLine("TNSRL number-based lookup: " + (numLookup ? "OK" : "FAIL"));
+
+                // gossip round-trip
+                string gossip = Tnsrl.WrapForGossip(v2ann, 0);
+                TnsrlRoute gossipRoute;
+                bool gossipOk = Tnsrl.TryParseGossip(gossip, localPeer, out gossipRoute);
+                bool gossipFields = gossipOk && gossipRoute != null &&
+                    gossipRoute.HopCount == 1 &&
+                    gossipRoute.Number == "7001234567";
+                sb.AppendLine("TNSRL gossip round-trip: " + (gossipFields ? "OK" : "FAIL"));
+
+                // too many hops rejected
+                string tooMany = Tnsrl.WrapForGossip(v2ann, Tnsrl.MaxGossipHops);
+                bool tooManyRejected = string.IsNullOrEmpty(tooMany);
+                sb.AppendLine("TNSRL gossip hop ceiling: " + (tooManyRejected ? "OK" : "FAIL"));
+
+                // public address in private field rejected
                 TnsrlRoute rejectedRoute;
                 bool rejected = Tnsrl.TryParse(
                     Tnsrl.BuildAnnouncement("public", IPAddress.Parse("8.8.8.8"), 45672),
                     IPAddress.Parse("8.8.8.8"), out rejectedRoute);
                 sb.AppendLine("TNSRL public endpoint rejected: " + (!rejected ? "OK" : "FAIL"));
-                if (!tnsrlOk || rejected) pass = false;
+
+                if (!tnsrlOk || !v2fields || !numLookup || !gossipFields || !tooManyRejected || rejected) pass = false;
             }
             catch (Exception ex)
             {
@@ -3409,6 +3450,27 @@ namespace UssdApp
         public static readonly Brush BrushBorder = Theme.CardBorder;
         public static readonly Brush BrushGreen = Theme.Green;
         public static readonly Brush BrushRed = Theme.Red;
+        // v4.1 aliases
+        public static readonly Brush BrushSubtext = Theme.Subtle;
+        public static readonly Brush BrushMuted = Theme.Muted;
+        public static readonly Brush BrushAccentSoft = Theme.AccentSoft;
+        public static readonly Brush BrushCall = Theme.CallBlue;
+        public static readonly Brush BrushCallSoft = Theme.CallSoft;
+        public static readonly Brush BrushDangerSoft = Theme.DangerSoft;
+        public static readonly Brush BrushIndigo = Theme.Indigo;
+        public static readonly Brush BrushIndigoSoft = Theme.IndigoSoft;
+        public static readonly Brush BrushOnline = Theme.Online;
+        public static readonly Brush BrushChrome = Theme.Chrome;
+        public static readonly Brush BrushNavActiveBg = Theme.NavActiveBg;
+        // Chat dark panel brushes
+        public static readonly Brush BrushChatPanelBg = Theme.ChatPanelBg;
+        public static readonly Brush BrushChatPanelCard = Theme.ChatPanelCard;
+        public static readonly Brush BrushChatHeaderBg = Theme.ChatHeaderBg;
+        public static readonly Brush BrushChatInputBg = Theme.ChatInputBg;
+        public static readonly Brush BrushChatPanelBorder = Theme.ChatPanelBorder;
+        // Video dark panel
+        public static readonly Brush BrushVideoBg = Theme.VideoBg;
+        public static readonly Brush BrushVideoHeaderBg = Theme.VideoHeaderBg;
 
         private enum CallState { Idle, Dialing, Ringing, Active }
 
@@ -3490,7 +3552,6 @@ namespace UssdApp
         private TextBox _txtVoipIp;
         private Button _btnVoipVoice, _btnVoipVideo, _btnVoipHangup;
         private TextBlock _voipStateText;
-        private Window _videoWin;
         // Zoom-style video stage extras
         private ColumnDefinition _sideCol;
         private Grid _sideHost;
@@ -3503,7 +3564,6 @@ namespace UssdApp
         private bool _shareRun, _camWasOn;
         private Thread _shareThread;
         private Image _imgRemote, _imgLocal;
-        private Border _tileRemote, _tileLocal;
         private TextBlock _tileRemoteName, _tileLocalName;
         // Group call: one tile per member in a UniformGrid over the stage.
         private Border _confHost, _pipHost;
@@ -3538,11 +3598,13 @@ namespace UssdApp
 
         // sms
         private TextBox _txtSmsTo, _txtSmsBody;
-        private ListView _lvInbox, _lvCodes;
+        // Legacy SMS list fields; the 3-pane hub renders these via HubRefreshPane2().
+        // Null by design — guard before use. Explicit null suppresses CS0649.
+        private ListView _lvInbox = null, _lvCodes = null;
         // chat (relay peer chat with SMS fallback)
         private TextBox _txtChatTo, _txtChatInput;
         private TextBlock _chatPartner;
-        private ListBox _lvChatRecent;                 // recent conversations
+        private ListBox _lvChatRecent = null; // recent conversations — null by design; use ChatRefreshRecent()
         private string _chatOpenNum = "";              // number of the open conversation
         private string _lastBubbleDate = "";           // day-separator dedupe
         private System.Windows.Threading.DispatcherTimer _chatTypTimer;   // outbound typing pulses
@@ -3571,6 +3633,32 @@ namespace UssdApp
         private string _secSheetSnValue = "";
         private int _vnSecs;
         private const int VN_MAX_SECS = 30;
+
+        // ── Contact groups ───────────────────────────────────────────────
+        private readonly Dictionary<string, List<string>> _contactGroups = new Dictionary<string, List<string>>();
+        private string _selectedGroup = "";
+
+        // ── PIN lock ─────────────────────────────────────────────────────
+        private string _pinCode = "";
+        private bool _pinLocked = false;
+        private Window _pinDialog = null;
+
+        // ── Session statistics ───────────────────────────────────────────
+        private int _statCallsOut = 0, _statCallsIn = 0, _statCallsMissed = 0;
+        private long _statCallSeconds = 0;
+        private int _statMsgsSent = 0, _statMsgsRecv = 0;
+        private int _statUssdSessions = 0;
+        private DateTime _sessionStart = DateTime.Now;
+
+        // ── Call quality log ─────────────────────────────────────────────
+        private readonly List<string> _qualityLog = new List<string>();
+
+        // ── Bulk SMS ─────────────────────────────────────────────────────
+        private readonly List<string> _bulkRecipients = new List<string>();
+        private int _bulkSent = 0, _bulkFailed = 0;
+
+        // ── Remote control (agent) ────────────────────────────────────────
+        private RemoteControl _remoteControl;
         private ScrollViewer _chatScroll;
         private StackPanel _chatPanel;
         private bool _chatStickBottom = true;   // auto-scroll while user is at the bottom
@@ -3582,7 +3670,6 @@ namespace UssdApp
         // Pane 1 category, Pane 2 list, Pane 3 active workspace.
         // Workspace transitions: "chat" | "voice" | "video" | "otp"
         private string _chatHubCategory = "peers";  // "peers" | "sms" | "codes"
-        private string _chatWorkspace   = "chat";   // "chat" | "voice" | "video" | "otp"
         private Button _hubBtnPeers, _hubBtnSms, _hubBtnCodes;
         private StackPanel _hubPane2;
         private ColumnDefinition _hubPane2Col;
@@ -3652,7 +3739,6 @@ namespace UssdApp
         private readonly System.Collections.Generic.List<Button> _navButtons = new System.Collections.Generic.List<Button>();
         private int _pageIndex;
         private bool _sidebarOpen = true;
-        private bool _sidebarIconOnly = false;  // narrow: icons only (40px)
         private Button _btnMenu;
         private TextBlock _pillCom;        // header "COM6 | 115200"
         private Button _btnLogToggle;      // status bar: collapse/expand live log
@@ -3711,7 +3797,6 @@ namespace UssdApp
         // ── Nav badges ────────────────────────────────────────────────────
         // Overlaid on each nav button (unread counts, activity indicators)
         private readonly Dictionary<int, TextBlock> _navBadges = new Dictionary<int, TextBlock>();
-        private int _totalUnread = 0;       // true = closed to tray not exiting
 
         // ── Offline message queue ─────────────────────────────────────────
         // Messages that failed to deliver are stored here and flushed when
@@ -3737,6 +3822,9 @@ namespace UssdApp
         // ── AT retry queue ────────────────────────────────────────────────
         private readonly List<AtRetryItem> _atRetryQueue = new List<AtRetryItem>();
         private DispatcherTimer _atRetryTimer;
+        // ── Weekly security scan ──────────────────────────────────────────
+        private DispatcherTimer _securityScanTimer;
+        private DateTime _lastSecurityScan = DateTime.MinValue;
 
         private static Brush Hex(string s)
         {
@@ -3783,6 +3871,10 @@ namespace UssdApp
             Boot.Mark("ctor: BuildUi done");
             LoadState();
             LoadContacts();
+            LoadContactGroups();
+            LoadPin();
+            LoadSessionStats();
+            InitRemoteControl();
             RefreshContactsView();
             LoadCallHistory();
             RefreshRecentsView();
@@ -3831,6 +3923,7 @@ namespace UssdApp
             StartOutboxTimer();      // retry queued messages every 15 s
             StartPresenceBroadcast(); // broadcast presence every 60 s
             StartAtRetryTimer();     // AT command retry queue
+            StartSecurityScanTimer(); // weekly security scan
             Boot.Mark("ctor: tray+outbox+timers done");
             // Add presence button to the header
             AddPresenceButtonToHeader();
@@ -4283,8 +4376,33 @@ namespace UssdApp
                 // A named serial port is the opt-in; nothing here opens one that
                 // the user did not ask for.
                 TryAttachRadio();
+                // Mid-call voice ↔ video switch: the peer sent VIDSWITCH
+                _voip.VideoSwitched += delegate(bool wantsVideo)
+                {
+                    Dispatcher.BeginInvoke((Action)delegate
+                    {
+                        if (wantsVideo)
+                        {
+                            Log("Peer added video — switching to video call.", BrushGray);
+                            ShowVideoWindow();
+                        }
+                        else
+                        {
+                            Log("Peer dropped video — continuing as voice call.", BrushGray);
+                        }
+                        UpdateVideoStage();
+                        UpdateCallOverlay();
+                        UpdateVoipButtons();
+                    });
+                };
                 _voip.DtmfReceived += delegate(string d) { Dispatcher.BeginInvoke((Action)delegate { ToneSynth.PlayDtmf(d); }); };
                 _voip.ChatReceived += delegate(string f, string t) { Dispatcher.BeginInvoke((Action)delegate { Hang.Trace("chat: relay in from #" + f); ChatInbound(f, t); }); };
+                // ── RCMD: remote control commands from trusted peers ──────
+                _voip.ChatReceived += delegate(string f, string raw)
+                {
+                    if (raw != null && raw.StartsWith("RCMD|"))
+                        Dispatcher.BeginInvoke((Action)delegate { HandleRemoteCommand(f, raw); });
+                };
                 // ── Advanced signal handlers ──────────────────────────────
                 _voip.ChatReadReceived += delegate(string f, long ts) { Dispatcher.BeginInvoke((Action)delegate { ChatMarkDelivered(f); }); };
                 _voip.ReactionReceived += delegate(string f, string mid, string em) { Dispatcher.BeginInvoke((Action)delegate { HandleReactionReceived(f, mid, em); }); };
@@ -6173,6 +6291,21 @@ namespace UssdApp
             _ovBtnMute.Click += delegate { ToggleMicMute(); SyncOverlayMute(); };
             _ovBtnKeypad = MakeOverlayButton("Keypad", Theme.Panel, BrushFg);
             _ovBtnKeypad.Click += delegate { ToggleOverlayKeypad(); };
+            // Mid-call voice ↔ video switch buttons
+            Button ovBtnAddVideo = MakeOverlayButton("\uD83D\uDCF9 Add Video", Theme.Panel, BrushFg);
+            ovBtnAddVideo.Click += delegate
+            {
+                if (_voip != null) _voip.SwitchToVideo();
+                ShowVideoWindow();
+            };
+            Button ovBtnDropVideo = MakeOverlayButton("\uD83D\uDD07 Voice Only", Theme.Panel, BrushFg);
+            ovBtnDropVideo.Click += delegate
+            {
+                if (_voip != null) _voip.SwitchToVoice();
+            };
+            // Wire visibility: show Add Video when voice-only, Drop Video when video
+            ovBtnAddVideo.Tag  = "switchToVideo";
+            ovBtnDropVideo.Tag = "switchToVoice";
             _ovBtnEnd = MakeOverlayButton("End", Theme.Danger, Brushes.White);
             _ovBtnEnd.Click += delegate { EndOverlayCall(); };
 
@@ -6180,6 +6313,8 @@ namespace UssdApp
             btns.Children.Add(_ovBtnDecline);
             btns.Children.Add(_ovBtnMute);
             btns.Children.Add(_ovBtnKeypad);
+            btns.Children.Add(ovBtnAddVideo);
+            btns.Children.Add(ovBtnDropVideo);
             btns.Children.Add(_ovBtnEnd);
             center.Children.Add(btns);
 
@@ -6599,323 +6734,490 @@ namespace UssdApp
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });   // row 3: status bar
             Content = root;
 
-            // ---------- Header bar: [hamburger][logo][title] ... [SIM][COM][gear] ----------
+            // ---------- Header bar — exact website match ----------
+            // h-16 (64px), bg-white, border-b border-slate-200
+            // Left: [toggle btn][gradient logo tile][USSD PRO label + live dot][title + subtitle]
+            // Right: [telemetry pill][settings gear]
             Border header = new Border
             {
                 Background = Theme.Panel,
                 BorderBrush = Theme.CardBorder,
                 BorderThickness = new Thickness(0, 0, 0, 1),
-                Padding = new Thickness(16, 10, 16, 10),
-                MinHeight = 76
+                Height = 64
             };
-            DockPanel hd = new DockPanel { LastChildFill = false };
-            _btnMenu = MakeButton("\u2261");
-            _btnMenu.FontSize = 16;
-            _btnMenu.Padding = new Thickness(10, 2, 10, 2);
-            _btnMenu.ToolTip = "Open / close navigation sidebar";
-            DockPanel.SetDock(_btnMenu, Dock.Left);
+            DockPanel hd = new DockPanel { LastChildFill = false, VerticalAlignment = VerticalAlignment.Center };
+            header.Child = hd;
+
+            // ── Sidebar toggle button — w-9 h-9 rounded-xl border border-slate-200 ──
+            _btnMenu = new Button
+            {
+                Width = 36, Height = 36,
+                Content = "\u2630",
+                FontSize = 14,
+                Padding = new Thickness(0),
+                Margin = new Thickness(16, 0, 10, 0),
+                Background = Theme.Chrome,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                ToolTip = "Toggle Navigation Sidebar",
+                VerticalAlignment = VerticalAlignment.Center
+            };
             _btnMenu.Click += delegate { ToggleSidebar(); };
+            DockPanel.SetDock(_btnMenu, Dock.Left);
             hd.Children.Add(_btnMenu);
 
-            // animated logo (blue tile + pulsing signal waves + chat bubble)
-            FrameworkElement logo = CreateAnimatedLogo();
-            DockPanel.SetDock(logo, Dock.Left);
-            hd.Children.Add(logo);
+            // ── App brand gradient tile — w-10 h-10 rounded-xl from-blue-600 to-indigo-600 ──
+            Border brandTile = new Border
+            {
+                Width = 40, Height = 40,
+                CornerRadius = new CornerRadius(12),
+                Margin = new Thickness(0, 0, 10, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            brandTile.Background = new LinearGradientBrush(
+                Color.FromRgb(0x25, 0x63, 0xEB),  // blue-600
+                Color.FromRgb(0x4F, 0x46, 0xE5),  // indigo-600
+                new Point(0, 0), new Point(1, 1));
+            TextBlock brandIcon = new TextBlock
+            {
+                Text = "\uD83D\uDCE1",             // radio tower emoji
+                FontSize = 18,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = Brushes.White
+            };
+            brandTile.Child = brandIcon;
+            DockPanel.SetDock(brandTile, Dock.Left);
+            hd.Children.Add(brandTile);
 
+            // ── Title block ──
             StackPanel titleBlock = new StackPanel
             {
                 Orientation = Orientation.Vertical,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(4, 0, 0, 0)
+                Margin = new Thickness(0, 0, 0, 0)
             };
-            titleBlock.Children.Add(new TextBlock
+            // "USSD MANAGER PRO" + live dot
+            StackPanel titleTopRow = new StackPanel { Orientation = Orientation.Horizontal };
+            titleTopRow.Children.Add(new TextBlock
             {
                 Text = "USSD MANAGER PRO",
                 FontSize = 10,
                 FontWeight = FontWeights.Bold,
                 Foreground = BrushAccent,
-                Margin = new Thickness(0, 0, 0, 1)
+                VerticalAlignment = VerticalAlignment.Center,
+                FontFamily = new FontFamily("Inter, Segoe UI"),
+                Margin = new Thickness(0, 0, 6, 0)
             });
+            _liveDot = new System.Windows.Shapes.Ellipse
+            {
+                Width = 8, Height = 8,
+                Fill = BrushRed,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            titleTopRow.Children.Add(_liveDot);
+            titleBlock.Children.Add(titleTopRow);
+
+            // "Dialer — Cellular and internet calling"
+            StackPanel titleBottomRow = new StackPanel { Orientation = Orientation.Horizontal };
             _shellPageTitle = new TextBlock
             {
                 Text = "Dialer",
-                FontSize = 18,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = BrushFg
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                Foreground = BrushFg,
+                FontFamily = new FontFamily("Inter, Segoe UI"),
+                VerticalAlignment = VerticalAlignment.Center
             };
-            titleBlock.Children.Add(_shellPageTitle);
+            titleBottomRow.Children.Add(_shellPageTitle);
+            titleBottomRow.Children.Add(new TextBlock
+            {
+                Text = " \u2014 ",
+                FontSize = 13,
+                Foreground = BrushMuted,
+                VerticalAlignment = VerticalAlignment.Center
+            });
             _shellPageDescription = new TextBlock
             {
                 Text = "Cellular and internet calling",
-                FontSize = 11,
-                Foreground = BrushGray
-            };
-            titleBlock.Children.Add(_shellPageDescription);
-            DockPanel.SetDock(titleBlock, Dock.Left);
-            _liveDot = new System.Windows.Shapes.Ellipse
-            {
-                Width = 8,
-                Height = 8,
-                Fill = BrushRed,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(8, 0, 0, 0)
-            };
-            DockPanel.SetDock(_liveDot, Dock.Left);
-
-            // Right side is docked first-to-rightmost: gear ends up at the far edge.
-            Button btnGear = MakeButton("\u2699");
-            btnGear.FontSize = 15;
-            btnGear.Padding = new Thickness(10, 2, 10, 2);
-            btnGear.ToolTip = "Open Settings";
-            DockPanel.SetDock(btnGear, Dock.Right);
-            btnGear.Click += delegate { ShowSettingsDialog(); };
-            hd.Children.Add(btnGear);
-
-            _pillCom = new TextBlock
-            {
-                Text = "COM: -",
-                Foreground = BrushGray,
+                FontSize = 12,
+                Foreground = BrushSubtext,
+                FontFamily = new FontFamily("Inter, Segoe UI"),
                 VerticalAlignment = VerticalAlignment.Center
             };
+            titleBottomRow.Children.Add(_shellPageDescription);
+            titleBlock.Children.Add(titleBottomRow);
+
+            DockPanel.SetDock(titleBlock, Dock.Left);
+            hd.Children.Add(titleBlock);
+
+            // ── RIGHT: Settings gear — w-9 h-9 rounded-xl border ──
+            Button btnGear = new Button
+            {
+                Width = 36, Height = 36,
+                Content = "\u2699",
+                FontSize = 16,
+                Padding = new Thickness(0),
+                Margin = new Thickness(0, 0, 16, 0),
+                Background = Theme.Panel,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                ToolTip = "Application & AI Settings",
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            btnGear.Click += delegate { ShowSettingsDialog(); };
+            DockPanel.SetDock(btnGear, Dock.Right);
+            hd.Children.Add(btnGear);
+
+            // ── Telemetry pill — px-3.5 py-1.5 rounded-xl bg-slate-50 border ──
+            _pillCom = new TextBlock { Text = "COM: -", Foreground = BrushSubtext, VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("JetBrains Mono, Consolas, monospace"), FontSize = 11 };
             Button pillComBtn = new Button
             {
-                Content = MakeTelemetryItem("\uD83D\uDD0C", _pillCom),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand,
-                ToolTip = "Click to open Modem Setup (port, baud, connect)",
-                Padding = new Thickness(4, 0, 4, 0)
+                ToolTip = "Click to open Modem Setup",
+                Padding = new Thickness(0),
+                VerticalAlignment = VerticalAlignment.Center
             };
-            Style ghostCom = TryStyle("GhostButton");
-            if (ghostCom != null) pillComBtn.Style = ghostCom;
-            pillComBtn.BorderThickness = new Thickness(0);
             pillComBtn.Click += delegate { ShowModemSetupPopover(pillComBtn); };
 
-            _sigText = new TextBlock
-            {
-                Text = "signal --",
-                Foreground = BrushGray,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            _status = new TextBlock
-            {
-                Text = "Disconnected",
-                FontWeight = FontWeights.Bold,
-                Foreground = BrushError,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            TextBlock simPillText = new TextBlock
-            {
-                Text = "no SIM",
-                Foreground = BrushGray,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            _simPillText = simPillText;
+            _sigText = new TextBlock { Text = "signal --", Foreground = BrushSubtext, VerticalAlignment = VerticalAlignment.Center, FontSize = 11, FontFamily = new FontFamily("Inter, Segoe UI") };
+            _status = new TextBlock { Text = "Disconnected", FontWeight = FontWeights.SemiBold, Foreground = BrushError, VerticalAlignment = VerticalAlignment.Center, FontSize = 11 };
+            _simPillText = new TextBlock { Text = "no SIM", Foreground = BrushSubtext, VerticalAlignment = VerticalAlignment.Center, FontSize = 11 };
 
-            StackPanel telemetryRow = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            telemetryRow.Children.Add(MakeTelemetryItem("\uD83D\uDCF1", simPillText));
+            StackPanel telemetryRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            telemetryRow.Children.Add(MakeTelemetryItem("\uD83D\uDCF1", _simPillText));
             telemetryRow.Children.Add(MakeTelemetrySep());
             telemetryRow.Children.Add(MakeTelemetryItem("\uD83D\uDCF6", _sigText));
             telemetryRow.Children.Add(MakeTelemetrySep());
-            telemetryRow.Children.Add(MakeTelemetryItem("\u25CF", _status));
+            telemetryRow.Children.Add(MakeTelemetryItem("", _status));
             telemetryRow.Children.Add(MakeTelemetrySep());
+            pillComBtn.Content = _pillCom;
             telemetryRow.Children.Add(pillComBtn);
+
             Border telemetryCluster = new Border
-            {
-                Background = Theme.Pill,
-                BorderBrush = Theme.CardBorder,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(16),
-                Padding = new Thickness(10, 4, 8, 4),
-                Margin = new Thickness(6, 0, 8, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Child = telemetryRow
-            };
-            DockPanel.SetDock(telemetryCluster, Dock.Right);
-
-            hd.Children.Add(titleBlock);
-            hd.Children.Add(_liveDot);
-            hd.Children.Add(telemetryCluster);
-            header.Child = hd;
-            Grid.SetRow(header, 0);
-            root.Children.Add(header);
-
-            // ---- Modem Setup controls (hidden; surfaced via COM-pill popover) ----
-            // These are NOT added to the visual tree here; they are placed inside
-            // the ModemSetupPopover that opens when the user clicks the COM pill.
-            _comboBaud = new ComboBox { Width = 86 };
-            foreach (string b in new[] { "9600", "19200", "38400", "57600", "115200", "230400" }) _comboBaud.Items.Add(b);
-            _comboBaud.SelectedItem = "115200";
-            _comboBaud.SelectionChanged += delegate { UpdateComPill(); };
-
-            _comboPort = new ComboBox { Width = 220 };
-            _comboPort.SelectionChanged += delegate { UpdateComPill(); };
-
-            _chkAuto = new CheckBox { Content = "Auto-connect", IsChecked = false, VerticalAlignment = VerticalAlignment.Center };
-
-            _simSummary = new TextBlock { Text = "no SIM", Foreground = BrushGray, VerticalAlignment = VerticalAlignment.Center };
-
-            _btnConnect = MakeButton("Connect");
-            Style successStyle = TryStyle("SuccessButton");
-            if (successStyle != null) _btnConnect.Style = successStyle;
-            _btnConnect.Click += async delegate { await ToggleConnectAsync(); };
-
-            Button btnRefresh = MakeButton("Refresh");
-            btnRefresh.Click += delegate { RefreshPorts(); };
-
-            UpdateComPill();
-
-            // ---------- Sidebar + content pages ----------
-            Grid body = new Grid();
-            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(252) });
-            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            _sidebarCol = body.ColumnDefinitions[0];
-
-            _sidebar = new Border
-            {
-                Background = Theme.Panel,
-                BorderBrush = Theme.CardBorder,
-                BorderThickness = new Thickness(0, 0, 1, 0),
-                Padding = new Thickness(10, 12, 10, 10)
-            };
-            Grid sidebarLayout = new Grid();
-            sidebarLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            sidebarLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            sidebarLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            StackPanel sidebarHeading = new StackPanel { Margin = new Thickness(8, 2, 8, 18) };
-            sidebarHeading.Children.Add(new TextBlock
-            {
-                Text = "YOUR WORKSPACE",
-                Foreground = BrushAccent,
-                FontWeight = FontWeights.Bold,
-                FontSize = 10,
-                Margin = new Thickness(0, 0, 0, 4)
-            });
-            sidebarHeading.Children.Add(new TextBlock
-            {
-                Text = "Communication, made simple.",
-                Foreground = BrushGray,
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap
-            });
-            Grid.SetRow(sidebarHeading, 0);
-            sidebarLayout.Children.Add(sidebarHeading);
-            _sidebarHeading = sidebarHeading;
-
-            StackPanel nav = new StackPanel();
-            Grid.SetRow(nav, 1);
-            sidebarLayout.Children.Add(nav);
-
-            Border modemCard = new Border
             {
                 Background = Theme.Chrome,
                 BorderBrush = Theme.CardBorder,
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(14),
-                Padding = new Thickness(12),
-                Margin = new Thickness(2, 12, 2, 2)
+                Padding = new Thickness(14, 6, 14, 6),
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = telemetryRow
+            };
+            DockPanel.SetDock(telemetryCluster, Dock.Right);
+            hd.Children.Add(telemetryCluster);
+
+            Grid.SetRow(header, 0);
+            root.Children.Add(header);
+
+            // ---- Modem Setup controls (hidden; surfaced via COM-pill popover) ----
+            _comboBaud = new ComboBox { Width = 86 };
+            foreach (string b in new[] { "9600", "19200", "38400", "57600", "115200", "230400" }) _comboBaud.Items.Add(b);
+            _comboBaud.SelectedItem = "115200";
+            _comboBaud.SelectionChanged += delegate { UpdateComPill(); };
+            _comboPort = new ComboBox { Width = 220 };
+            _comboPort.SelectionChanged += delegate { UpdateComPill(); };
+            _chkAuto = new CheckBox { Content = "Auto-connect", IsChecked = false, VerticalAlignment = VerticalAlignment.Center };
+            _simSummary = new TextBlock { Text = "no SIM", Foreground = BrushGray, VerticalAlignment = VerticalAlignment.Center };
+            _btnConnect = MakeButton("Connect");
+            Style successStyle = TryStyle("SuccessButton");
+            if (successStyle != null) _btnConnect.Style = successStyle;
+            _btnConnect.Click += async delegate { await ToggleConnectAsync(); };
+            Button btnRefresh = MakeButton("Refresh");
+            btnRefresh.Click += delegate { RefreshPorts(); };
+            UpdateComPill();
+
+            // ---------- Sidebar + content pages ----------
+            // Exact website layout: w-64 sidebar | flex-1 workspace
+            Grid body = new Grid();
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(256) }); // w-64
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _sidebarCol = body.ColumnDefinitions[0];
+
+            // ── Sidebar: bg-white border-r border-slate-200 h-full flex flex-col
+            _sidebar = new Border
+            {
+                Background = Theme.Panel,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(0, 0, 1, 0)
+            };
+            Grid sidebarLayout = new Grid();
+            sidebarLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });  // Zone A: brand
+            sidebarLayout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // Zone B: nav
+            sidebarLayout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });  // Zone C: modem card
+
+            // Zone A: "YOUR WORKSPACE" brand block — px-4 pt-4 pb-3 border-b border-slate-100
+            Border sidebarBrand = new Border
+            {
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xF1, 0xF5, 0xF9)),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(16, 16, 16, 12)
+            };
+            StackPanel sidebarBrandInner = new StackPanel();
+            sidebarBrandInner.Children.Add(new TextBlock
+            {
+                Text = "YOUR WORKSPACE",
+                Foreground = BrushAccent,
+                FontWeight = FontWeights.Bold,
+                FontSize = 10,
+                FontFamily = new FontFamily("Inter, Segoe UI"),
+                Margin = new Thickness(0, 0, 0, 2)
+            });
+            sidebarBrandInner.Children.Add(new TextBlock
+            {
+                Text = "Communication, made simple.",
+                Foreground = BrushSubtext,
+                FontSize = 11,
+                FontFamily = new FontFamily("Inter, Segoe UI")
+            });
+            sidebarBrand.Child = sidebarBrandInner;
+            _sidebarHeading = sidebarBrandInner;
+            Grid.SetRow(sidebarBrand, 0);
+            sidebarLayout.Children.Add(sidebarBrand);
+
+            // Zone B: Scrollable nav — px-3 py-3
+            ScrollViewer navScroll = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Padding = new Thickness(12, 12, 12, 12)
+            };
+            StackPanel nav = new StackPanel();
+            navScroll.Content = nav;
+            Grid.SetRow(navScroll, 1);
+            sidebarLayout.Children.Add(navScroll);
+
+            // Zone C: Modem card — shrink-0, border-t, bg-slate-50
+            Border modemCard = new Border
+            {
+                Background = Theme.Chrome,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(0, 1, 0, 0),
+                Padding = new Thickness(14)
+            };
+            Border modemCardInner = new Border
+            {
+                Background = Theme.Panel,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(14)
             };
             StackPanel modemInfo = new StackPanel();
-            modemInfo.Children.Add(new TextBlock
+            // Header row: "MODEM CONNECTION" + dot
+            Grid modemHeaderRow = new Grid();
+            modemHeaderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            modemHeaderRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            modemHeaderRow.Children.Add(new TextBlock
             {
                 Text = "MODEM CONNECTION",
-                FontSize = 10,
-                FontWeight = FontWeights.Bold,
-                Foreground = BrushGray,
-                Margin = new Thickness(0, 0, 0, 5)
+                FontSize = 10, FontWeight = FontWeights.Bold,
+                Foreground = BrushSubtext,
+                FontFamily = new FontFamily("Inter, Segoe UI"),
+                VerticalAlignment = VerticalAlignment.Center
             });
+            System.Windows.Shapes.Ellipse modemDot = new System.Windows.Shapes.Ellipse
+            {
+                Width = 8, Height = 8, Fill = BrushRed,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            Grid.SetColumn(modemDot, 1);
+            modemHeaderRow.Children.Add(modemDot);
+            modemInfo.Children.Add(modemHeaderRow);
             modemInfo.Children.Add(new TextBlock
             {
                 Text = "Connect only when you're ready.",
-                FontSize = 11,
-                Foreground = BrushFg,
+                FontSize = 11, Foreground = BrushSubtext,
+                FontFamily = new FontFamily("Inter, Segoe UI"),
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 8)
+                Margin = new Thickness(0, 6, 0, 10)
             });
-            Button configureModem = MakeButton("Configure modem");
-            configureModem.HorizontalContentAlignment = HorizontalAlignment.Center;
-            configureModem.Click += delegate { ShowModemSetupPopover(pillComBtn); };
+            Button configureModem = new Button
+            {
+                Content = "\uD83D\uDD0C  Configure modem",
+                Height = 36,
+                FontSize = 12, FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                Background = BrushAccent,
+                BorderThickness = new Thickness(0),
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                FontFamily = new FontFamily("Inter, Segoe UI")
+            };
+            Style primaryBtn = TryStyle("PrimaryButton");
+            if (primaryBtn != null) configureModem.Style = primaryBtn;
+            configureModem.Click += delegate { ShowModemSetupPopover(configureModem); };
             modemInfo.Children.Add(configureModem);
-            modemCard.Child = modemInfo;
+            modemCardInner.Child = modemInfo;
+            modemCard.Child = modemCardInner;
+            _sidebarFooter = modemCard;
             Grid.SetRow(modemCard, 2);
             sidebarLayout.Children.Add(modemCard);
-            _sidebarFooter = modemCard;
+
             _sidebar.Child = sidebarLayout;
             Grid.SetColumn(_sidebar, 0);
             body.Children.Add(_sidebar);
 
-            _contentHost = new Grid { Margin = new Thickness(4) };
+            _contentHost = new Grid { Background = BrushBg };
             Grid.SetColumn(_contentHost, 1);
             body.Children.Add(_contentHost);
 
-            // Page keys follow the spec nav (emoji via \uXXXX to keep source ASCII).
+            // Page keys — exact website nav labels and icons
             string[] pageNames = new string[]
-            {
-                "\uD83D\uDCDE  Dialer",        // phone handset
-                "\uD83D\uDC64  Contacts",      // bust silhouette
-                "\uD83D\uDCF9  Video Call",    // video camera
-                "\uD83D\uDCAC  SMS",           // speech balloon
-                "\uD83D\uDCF1  SIM Manager",   // mobile phone (was ⚙, now distinct from Settings gear)
-                "\u2708  USSD",                // airplane / send
-                "\uD83D\uDCE6  Apps",            // application package
-                "\uD83E\uDD16  Agent"          // assistant panel
-            };
-            Grid[] pageGrids = new Grid[]
-            {
-                BuildDialerTab(), BuildContactsTab(), BuildVideoTab(), BuildSmsTab(), BuildSimTab(), BuildUssdTab(), BuildAppsTab(), BuildAgentTab()
-            };
-            string[] pageIcons = new string[]
-            {
-                "\uD83D\uDCDE", "\uD83D\uDC64", "\uD83D\uDCF9", "\uD83D\uDCAC",
-                "\uD83D\uDCF1", "\u2708", "\uD83D\uDCE6", "\uD83E\uDD16"
-            };
-            string[] pageDescriptions = new string[]
-            {
-                "Cellular and internet calling", "Manage saved contacts", "Voice and video rooms",
-                "Messages and secure chat", "SIM information and tools", "Run carrier USSD codes",
-                "Open your companion apps", "Your local and AI assistant"
-            };
-            string[] pageLabels = new string[]
             {
                 "Dialer", "Contacts", "Video Call", "SMS",
                 "SIM Manager", "USSD", "Apps", "Agent"
             };
+            string[] pageIcons = new string[]  // Lucide-style unicode equivalents
+            {
+                "\uD83D\uDCDE", "\uD83D\uDC65", "\uD83D\uDCF9", "\uD83D\uDCAC",
+                "\uD83D\uDCF1", "\uD83D\uDDA5", "\u22F9", "\uD83E\uDD16"
+            };
+            string[] pageDescriptions = new string[]
+            {
+                "Cellular and internet calling",
+                "Manage saved SIM & device contacts",
+                "Voice and encrypted LAN/Internet video rooms",
+                "Messages, LAN peers & extracted OTP codes",
+                "SIM telemetry, ICCID/IMSI & auto-configuration",
+                "Run carrier USSD codes via MiFi HTTP or AT",
+                "Companion bridges, Laptop Tracker & utilities",
+                "Your local and AI assistant"
+            };
+            // website group structure: 0-3 = COMMUNICATION, 4-6 = DEVICE TOOLS, 7 = ASSISTANT
+            string[] pageGroups = new string[] { "COMMUNICATION","COMMUNICATION","COMMUNICATION","COMMUNICATION","DEVICE TOOLS","DEVICE TOOLS","DEVICE TOOLS","ASSISTANT" };
+            Grid[] pageGrids = new Grid[]
+            {
+                BuildDialerTab(), BuildContactsTab(), BuildVideoTab(), BuildSmsTab(), BuildSimTab(), BuildUssdTab(), BuildAppsTab(), BuildAgentTab()
+            };
+            string lastGroup = "";
             for (int i = 0; i < pageGrids.Length; i++)
             {
-                if (i == 0 || i == 4 || i == 7)
+                // Group label — exact website: text-[10px] font-bold tracking-wider uppercase text-slate-400
+                if (pageGroups[i] != lastGroup)
                 {
-                    string sectionName = i == 0 ? "COMMUNICATION" : (i == 4 ? "DEVICE TOOLS" : "ASSISTANT");
-                    TextBlock sectionLabel = new TextBlock
+                    lastGroup = pageGroups[i];
+                    TextBlock groupLbl = new TextBlock
                     {
-                        Text = sectionName,
-                        Foreground = BrushGray,
+                        Text = pageGroups[i],
+                        Foreground = BrushSubtext,
                         FontWeight = FontWeights.Bold,
                         FontSize = 10,
-                        Margin = new Thickness(8, i == 0 ? 2 : 14, 4, 5)
+                        FontFamily = new FontFamily("Inter, Segoe UI"),
+                        Margin = new Thickness(12, i == 0 ? 4 : 14, 4, 6)
                     };
-                    nav.Children.Add(sectionLabel);
-                    _navSectionLabels.Add(sectionLabel);
+                    nav.Children.Add(groupLbl);
+                    _navSectionLabels.Add(groupLbl);
                 }
+
                 Border card = MakePageCard(pageGrids[i], i == 0, i != 3 && i != 6 && i != 7);
                 _pages.Add(card);
                 _pageNames.Add(pageNames[i]);
                 _pageIcons.Add(pageIcons[i]);
-                _pageLabels.Add(pageLabels[i]);
+                _pageLabels.Add(pageNames[i]);
                 _pageDescriptions.Add(pageDescriptions[i]);
                 _contentHost.Children.Add(card);
 
-                Button navBtn = MakeButton(pageNames[i]);
+                // Nav button — exact website nav item layout:
+                // icon (16px) + label text + optional badge
+                bool isActive = i == 0;
+                Grid navRow = new Grid();
+                navRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });  // icon
+                navRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // label
+                navRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });  // badge
+
+                TextBlock navIcon = new TextBlock
+                {
+                    Text = pageIcons[i],
+                    FontSize = 14,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 10, 0),
+                    Foreground = isActive ? BrushAccent : BrushSubtext
+                };
+                Grid.SetColumn(navIcon, 0);
+                navRow.Children.Add(navIcon);
+
+                TextBlock navLabel = new TextBlock
+                {
+                    Text = pageNames[i],
+                    FontSize = 13,
+                    FontFamily = new FontFamily("Inter, Segoe UI"),
+                    FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Medium,
+                    Foreground = isActive ? Theme.NavActiveText : BrushSubtext,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(navLabel, 1);
+                navRow.Children.Add(navLabel);
+
+                // SMS badge (page 3)
+                if (i == 3)
+                {
+                    Border badge = new Border
+                    {
+                        Background = BrushIndigoSoft,
+                        CornerRadius = new CornerRadius(10),
+                        Padding = new Thickness(6, 2, 6, 2),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    TextBlock badgeTxt = new TextBlock
+                    {
+                        Text = "0",
+                        FontSize = 10,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = BrushIndigo,
+                        FontFamily = new FontFamily("Inter, Segoe UI")
+                    };
+                    badge.Child = badgeTxt;
+                    _navBadges[i] = badgeTxt;
+                    // Store badge border in Tag for visibility control
+                    badgeTxt.Tag = badge;
+                    Grid.SetColumn(badge, 2);
+                    navRow.Children.Add(badge);
+                }
+
+                // Agent AI badge
+                if (i == 7)
+                {
+                    Border aiBadge = new Border
+                    {
+                        Background = BrushAccentSoft,
+                        BorderBrush = BrushAccent,
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(6),
+                        Padding = new Thickness(5, 2, 5, 2),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    aiBadge.Child = new TextBlock
+                    {
+                        Text = "AI",
+                        FontSize = 10,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = BrushAccent,
+                        FontFamily = new FontFamily("Inter, Segoe UI")
+                    };
+                    Grid.SetColumn(aiBadge, 2);
+                    navRow.Children.Add(aiBadge);
+                }
+
+                Button navBtn = new Button
+                {
+                    Content = navRow,
+                    Background = isActive ? Theme.NavActiveBg : Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    Padding = new Thickness(12, 10, 12, 10),
+                    Margin = new Thickness(0, 1, 0, 1),
+                    HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                    MinHeight = 40,
+                    Cursor = Cursors.Hand,
+                    FontFamily = new FontFamily("Inter, Segoe UI")
+                };
                 Style navStyle = TryStyle("NavItem");
-                if (navStyle != null) navBtn.Style = navStyle;
-                navBtn.Margin = new Thickness(0, 2, 0, 2);
-                navBtn.MinHeight = 44;
-                navBtn.ToolTip = pageLabels[i];
-                System.Windows.Automation.AutomationProperties.SetName(navBtn, pageLabels[i]);
-                System.Windows.Automation.AutomationProperties.SetHelpText(navBtn, "Open " + pageLabels[i]);
+                if (navStyle != null) navBtn.Style = isActive ? TryStyle("NavItemActive") ?? navStyle : navStyle;
+                navBtn.ToolTip = pageDescriptions[i];
+                System.Windows.Automation.AutomationProperties.SetHelpText(navBtn, "Open " + pageNames[i]);
                 int idx = i;
                 navBtn.Click += delegate { ShowPage(idx); };
                 nav.Children.Add(navBtn);
@@ -11020,8 +11322,7 @@ namespace UssdApp
         private void HubOpenContact(string name, string number)
         {
             Log("Hub: open conversation " + name + " (" + number + ")", BrushGray);
-            _chatWorkspace = "chat";
-            HubShowWorkspace("chat");
+HubShowWorkspace("chat");
             if (_hubPane3ContactName != null)
             {
                 _hubPane3ContactName.Text = name;
@@ -11765,11 +12066,520 @@ namespace UssdApp
             catch (Exception ex) { Log("NetQ UI: " + ex.Message, BrushGray); }
         }
 
+        // ── Contact groups management ─────────────────────────────────────
+        private void AddContactToGroup(string number, string group)
+        {
+            if (string.IsNullOrEmpty(number) || string.IsNullOrEmpty(group)) return;
+            List<string> members;
+            if (!_contactGroups.TryGetValue(group, out members))
+            {
+                members = new List<string>();
+                _contactGroups[group] = members;
+            }
+            if (!members.Contains(number)) members.Add(number);
+            SaveContactGroups();
+        }
+
+        private void RemoveContactFromGroup(string number, string group)
+        {
+            List<string> members;
+            if (_contactGroups.TryGetValue(group, out members))
+            {
+                members.Remove(number);
+                if (members.Count == 0) _contactGroups.Remove(group);
+                SaveContactGroups();
+            }
+        }
+
+        private void SaveContactGroups()
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                foreach (string g in _contactGroups.Keys)
+                    sb.AppendLine(g + ":" + string.Join(",", _contactGroups[g].ToArray()));
+                File.WriteAllText(Path.Combine(Home.Dir, "groups.txt"), sb.ToString());
+            }
+            catch { }
+        }
+
+        private void LoadContactGroups()
+        {
+            try
+            {
+                string path = Path.Combine(Home.Dir, "groups.txt");
+                if (!File.Exists(path)) return;
+                foreach (string line in File.ReadAllLines(path))
+                {
+                    int c = line.IndexOf(':');
+                    if (c <= 0) continue;
+                    string g = line.Substring(0, c).Trim();
+                    string[] nums = line.Substring(c + 1).Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                    _contactGroups[g] = new List<string>(nums);
+                }
+            }
+            catch { }
+        }
+
+        private List<string> GetGroupMembers(string group)
+        {
+            List<string> m;
+            return _contactGroups.TryGetValue(group, out m) ? m : new List<string>();
+        }
+
+        // ── PIN lock ─────────────────────────────────────────────────────
+        private void ShowPinDialog(bool setNew = false)
+        {
+            if (_pinDialog != null) { try { _pinDialog.Close(); } catch { } _pinDialog = null; }
+            Window w = new Window
+            {
+                Title = setNew ? "Set PIN" : "Enter PIN",
+                Width = 320, Height = 180,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
+            };
+            StackPanel sp = new StackPanel { Margin = new Thickness(20) };
+            TextBlock lbl = new TextBlock { Text = setNew ? "Enter a 4-6 digit PIN:" : "Enter PIN to unlock:", Margin = new Thickness(0, 0, 0, 10) };
+            PasswordBox pb = new PasswordBox { Margin = new Thickness(0, 0, 0, 15) };
+            pb.PasswordChar = '\u25CF';
+            Button btn = MakeButton(setNew ? "Set" : "Unlock");
+            btn.Click += delegate
+            {
+                string pin = pb.Password;
+                if (pin.Length < 4 || pin.Length > 6 || !IsAllDigits(pin)) { lbl.Text = "PIN must be 4-6 digits"; return; }
+                if (setNew)
+                {
+                    _pinCode = pin;
+                    File.WriteAllText(Path.Combine(Home.Dir, "pin.txt"), pin);
+                    Log("PIN set successfully", BrushSuccess);
+                    w.Close();
+                }
+                else
+                {
+                    if (pin == _pinCode)
+                    {
+                        _pinLocked = false;
+                        w.Close();
+                        Log("App unlocked", BrushSuccess);
+                    }
+                    else
+                    {
+                        lbl.Text = "Incorrect PIN";
+                        pb.Password = "";
+                    }
+                }
+            };
+            sp.Children.Add(lbl);
+            sp.Children.Add(pb);
+            sp.Children.Add(btn);
+            w.Content = sp;
+            w.Closed += delegate { _pinDialog = null; };
+            _pinDialog = w;
+            w.ShowDialog();
+        }
+
+        private static bool IsAllDigits(string s)
+        {
+            foreach (char c in s) if (c < '0' || c > '9') return false;
+            return true;
+        }
+
+        private void LoadPin()
+        {
+            try
+            {
+                string path = Path.Combine(Home.Dir, "pin.txt");
+                if (File.Exists(path)) _pinCode = File.ReadAllText(path).Trim();
+            }
+            catch { }
+        }
+
+        private bool CheckPinRequired()
+        {
+            if (string.IsNullOrEmpty(_pinCode) || !_pinLocked) return false;
+            ShowPinDialog();
+            return _pinLocked;
+        }
+
+        // ── Session statistics ───────────────────────────────────────────
+        private void IncrementStat(string key)
+        {
+            switch (key)
+            {
+                case "call_out": _statCallsOut++; break;
+                case "call_in": _statCallsIn++; break;
+                case "call_missed": _statCallsMissed++; break;
+                case "msg_sent": _statMsgsSent++; break;
+                case "msg_recv": _statMsgsRecv++; break;
+                case "ussd": _statUssdSessions++; break;
+            }
+            SaveSessionStats();
+        }
+
+        private void AddCallSeconds(int secs)
+        {
+            _statCallSeconds += secs;
+            SaveSessionStats();
+        }
+
+        private void SaveSessionStats()
+        {
+            try
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine("calls_out=" + _statCallsOut);
+                sb.AppendLine("calls_in=" + _statCallsIn);
+                sb.AppendLine("calls_missed=" + _statCallsMissed);
+                sb.AppendLine("call_seconds=" + _statCallSeconds);
+                sb.AppendLine("msgs_sent=" + _statMsgsSent);
+                sb.AppendLine("msgs_recv=" + _statMsgsRecv);
+                sb.AppendLine("ussd_sessions=" + _statUssdSessions);
+                sb.AppendLine("session_start=" + _sessionStart.ToString("o"));
+                File.WriteAllText(Path.Combine(Home.Dir, "stats.txt"), sb.ToString());
+            }
+            catch { }
+        }
+
+        private void LoadSessionStats()
+        {
+            try
+            {
+                string path = Path.Combine(Home.Dir, "stats.txt");
+                if (!File.Exists(path)) return;
+                foreach (string line in File.ReadAllLines(path))
+                {
+                    int c = line.IndexOf('=');
+                    if (c <= 0) continue;
+                    string k = line.Substring(0, c);
+                    string v = line.Substring(c + 1);
+                    switch (k)
+                    {
+                        case "calls_out": int.TryParse(v, out _statCallsOut); break;
+                        case "calls_in": int.TryParse(v, out _statCallsIn); break;
+                        case "calls_missed": int.TryParse(v, out _statCallsMissed); break;
+                        case "call_seconds": long.TryParse(v, out _statCallSeconds); break;
+                        case "msgs_sent": int.TryParse(v, out _statMsgsSent); break;
+                        case "msgs_recv": int.TryParse(v, out _statMsgsRecv); break;
+                        case "ussd_sessions": int.TryParse(v, out _statUssdSessions); break;
+                        case "session_start": DateTime.TryParse(v, out _sessionStart); break;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private string FormatDuration(long secs)
+        {
+            int h = (int)(secs / 3600);
+            int m = (int)((secs % 3600) / 60);
+            int s = (int)(secs % 60);
+            if (h > 0) return string.Format("{0}h {1}m {2}s", h, m, s);
+            if (m > 0) return string.Format("{0}m {1}s", m, s);
+            return s + "s";
+        }
+
+        // ── Call quality CSV export ───────────────────────────────────────
+        private void LogCallQuality(string number, int durationSec, int rtt, int loss, string route)
+        {
+            string entry = string.Format("{0:yyyy-MM-dd HH:mm:ss},{1},{2},{3},{4},{5}",
+                DateTime.Now, number, durationSec, rtt, loss, route);
+            _qualityLog.Add(entry);
+            try { File.AppendAllText(Path.Combine(Home.Dir, "call_quality.csv"), entry + "\n"); }
+            catch { }
+        }
+
+        private void ExportCallQualityCsv()
+        {
+            if (_qualityLog.Count == 0) { Log("No call quality data to export", BrushWarn); return; }
+            try
+            {
+                string path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "UssdApp_CallQuality_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv");
+                File.WriteAllLines(path, _qualityLog);
+                Log("Exported " + _qualityLog.Count + " records to " + path, BrushSuccess);
+            }
+            catch (Exception ex) { Log("Export failed: " + ex.Message, BrushError); }
+        }
+
+        // ── Statistics dialog ─────────────────────────────────────────────
+        private void ShowStatisticsDialog()
+        {
+            Window w = new Window
+            {
+                Title = "Session Statistics",
+                Width = 400, Height = 350,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
+            };
+            StackPanel sp = new StackPanel { Margin = new Thickness(20) };
+            sp.Children.Add(new TextBlock { Text = "📊 Usage Statistics", FontSize = 16, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 15) });
+            sp.Children.Add(new TextBlock { Text = "Session started: " + _sessionStart.ToString("yyyy-MM-dd HH:mm"), Margin = new Thickness(0, 0, 0, 8) });
+            sp.Children.Add(new TextBlock { Text = "───────────────────", Margin = new Thickness(0, 0, 0, 8), Foreground = BrushGray });
+            sp.Children.Add(new TextBlock { Text = "📞 Calls", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 5) });
+            sp.Children.Add(new TextBlock { Text = "  Outgoing: " + _statCallsOut, Margin = new Thickness(0, 0, 0, 3) });
+            sp.Children.Add(new TextBlock { Text = "  Incoming: " + _statCallsIn, Margin = new Thickness(0, 0, 0, 3) });
+            sp.Children.Add(new TextBlock { Text = "  Missed: " + _statCallsMissed, Margin = new Thickness(0, 0, 0, 3) });
+            sp.Children.Add(new TextBlock { Text = "  Total talk time: " + FormatDuration(_statCallSeconds), Margin = new Thickness(0, 0, 0, 8) });
+            sp.Children.Add(new TextBlock { Text = "💬 Messages", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 5) });
+            sp.Children.Add(new TextBlock { Text = "  Sent: " + _statMsgsSent, Margin = new Thickness(0, 0, 0, 3) });
+            sp.Children.Add(new TextBlock { Text = "  Received: " + _statMsgsRecv, Margin = new Thickness(0, 0, 0, 8) });
+            sp.Children.Add(new TextBlock { Text = "📱 USSD Sessions: " + _statUssdSessions, Margin = new Thickness(0, 0, 0, 15) });
+            Button closeBtn = MakeButton("Close");
+            closeBtn.Click += delegate { w.Close(); };
+            sp.Children.Add(closeBtn);
+            w.Content = sp;
+            w.ShowDialog();
+        }
+
+        // ── Bulk SMS ─────────────────────────────────────────────────────
+        private void ShowBulkSmsDialog()
+        {
+            Window w = new Window
+            {
+                Title = "Bulk SMS",
+                Width = 480, Height = 400,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen
+            };
+            Grid g = new Grid();
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            // Recipients row
+            StackPanel rp = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(10) };
+            TextBlock rl = new TextBlock { Text = "Recipients: ", VerticalAlignment = VerticalAlignment.Center };
+            TextBox rt = new TextBox { Width = 300, Margin = new Thickness(5, 0, 5, 0) };
+            rt.Text = string.Join(", ", _bulkRecipients.ToArray());
+            Button addBtn = MakeButton("+ Add");
+            addBtn.Click += delegate
+            {
+                string num = rt.Text.Trim();
+                if (!string.IsNullOrEmpty(num) && !_bulkRecipients.Contains(num))
+                    _bulkRecipients.Add(num);
+                rt.Text = "";
+            };
+            rp.Children.Add(rl);
+            rp.Children.Add(rt);
+            rp.Children.Add(addBtn);
+            Grid.SetRow(rp, 0);
+            g.Children.Add(rp);
+
+            // Message body
+            TextBox body = new TextBox
+            {
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Margin = new Thickness(10),
+                Height = 150
+            };
+            Grid.SetRow(body, 1);
+            g.Children.Add(body);
+
+            // Progress
+            TextBlock prog = new TextBlock { Margin = new Thickness(10, 5, 10, 5), Foreground = BrushGray };
+            Grid.SetRow(prog, 2);
+            g.Children.Add(prog);
+
+            // Buttons
+            StackPanel bp = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(10) };
+            Button clearBtn = MakeButton("Clear");
+            clearBtn.Click += delegate { _bulkRecipients.Clear(); rt.Text = ""; prog.Text = "Recipients cleared"; };
+            Button sendBtn = MakeButton("Send All");
+            sendBtn.Margin = new Thickness(8, 0, 0, 0);
+            sendBtn.Click += delegate
+            {
+                string msg = body.Text;
+                if (string.IsNullOrEmpty(msg)) { prog.Text = "Enter a message"; return; }
+                if (_bulkRecipients.Count == 0) { prog.Text = "Add at least one recipient"; return; }
+                _bulkSent = 0; _bulkFailed = 0;
+                prog.Text = "Sending...";
+                foreach (string num in _bulkRecipients.ToArray())
+                {
+                    bool ok = false;
+                    try { ok = _modem != null && _modem.SendSms(num, msg, 30000) != null; } catch { }
+                    if (ok) _bulkSent++;
+                    else _bulkFailed++;
+                    System.Threading.Thread.Sleep(500); // rate limit
+                }
+                prog.Text = string.Format("Sent {0}, Failed {1}", _bulkSent, _bulkFailed);
+                Log("Bulk SMS: " + _bulkSent + " sent, " + _bulkFailed + " failed", _bulkFailed > 0 ? BrushWarn : BrushSuccess);
+            };
+            bp.Children.Add(clearBtn);
+            bp.Children.Add(sendBtn);
+            Grid.SetRow(bp, 3);
+            g.Children.Add(bp);
+
+            w.Content = g;
+            w.ShowDialog();
+        }
+
+        // ── vCard sharing ─────────────────────────────────────────────────
+        private string BuildVCard(string number, string name)
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("BEGIN:VCARD");
+            sb.AppendLine("VERSION:3.0");
+            sb.AppendLine("FN:" + (name ?? number));
+            sb.AppendLine("TEL;TYPE=CELL:" + number);
+            sb.AppendLine("END:VCARD");
+            return sb.ToString();
+        }
+
+        private void SendVCard(string toNumber, string contactNumber, string contactName)
+        {
+            string vcard = BuildVCard(contactNumber, contactName);
+            string b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(vcard));
+            if (_voip != null && _voip.ChatRelayReady)
+            {
+                _voip.SendChat(toNumber, "VCARD|" + b64);
+                Log("Sent contact card for " + contactNumber + " to " + toNumber, BrushAccent);
+            }
+            else if (_modem != null)
+            {
+                try { _modem.SendSms(toNumber, vcard, 30000); } catch { }
+                Log("Sent vCard via SMS to " + toNumber, BrushAccent);
+            }
+            else
+                Log("No transport available to send vCard", BrushWarn);
+        }
+
+        private void ParseAndSaveVCard(string b64)
+        {
+            try
+            {
+                string vcard = Encoding.UTF8.GetString(Convert.FromBase64String(b64));
+                string name = "", number = "";
+                foreach (string line in vcard.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (line.StartsWith("FN:")) name = line.Substring(3);
+                    if (line.StartsWith("TEL")) number = line.Substring(line.IndexOf(':') + 1);
+                }
+                if (!string.IsNullOrEmpty(number))
+                {
+                    AddContactFromCard(name ?? number, number, "");
+                    Log("Saved contact from vCard: " + (name ?? number), BrushSuccess);
+                }
+            }
+            catch { }
+        }
+
+        // ── Remote control system ─────────────────────────────────────────
+        private void InitRemoteControl()
+        {
+            _remoteControl = new RemoteControl(Home.Dir);
+
+            // Audit entries go to the main log
+            _remoteControl.AuditEntry += delegate(string line)
+            {
+                Dispatcher.BeginInvoke((Action)delegate { Log("[RC] " + line, BrushGray); });
+            };
+
+            // Show permission dialog on UI thread
+            _remoteControl.PermissionRequested += delegate(PermissionRequest req)
+            {
+                Dispatcher.BeginInvoke((Action)delegate { ShowRemotePermissionDialog(req); });
+            };
+
+            // Wire USSD and SMS back-channels
+            _remoteControl.RunUssdRequested += delegate(string code)
+            {
+                Dispatcher.BeginInvoke((Action)delegate
+                {
+                    if (_txtCode != null) _txtCode.Text = code;
+                    Log("[RC] USSD queued: " + code, BrushAccent);
+                });
+            };
+
+            _remoteControl.SendSmsRequested += delegate(string number, string body)
+            {
+                System.Threading.Tasks.Task.Run(delegate
+                {
+                    try { if (_modem != null) _modem.SendSms(number, body, 30000); }
+                    catch { }
+                });
+            };
+        }
+
+        private void ShowRemotePermissionDialog(PermissionRequest req)
+        {
+            Window w = new Window
+            {
+                Title = "\uD83D\uDD12 Remote Control Permission Request",
+                Width = 480, Height = 300,
+                ResizeMode = ResizeMode.NoResize,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Topmost = true
+            };
+            Grid g = new Grid { Margin = new Thickness(20) };
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            // Warning header
+            Border hdr = new Border { Background = new SolidColorBrush(Color.FromRgb(0xFE, 0xF3, 0xC7)), CornerRadius = new CornerRadius(8), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 12) };
+            StackPanel hsp = new StackPanel();
+            hsp.Children.Add(new TextBlock { Text = "\u26A0\uFE0F Remote Control Request", FontWeight = FontWeights.Bold, FontSize = 14 });
+            hsp.Children.Add(new TextBlock { Text = "A remote peer is asking to execute a command on this device.", FontSize = 11, Foreground = Brushes.DarkGoldenrod, Margin = new Thickness(0, 4, 0, 0) });
+            hdr.Child = hsp;
+            Grid.SetRow(hdr, 0); g.Children.Add(hdr);
+
+            // Details
+            StackPanel dp = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+            dp.Children.Add(new TextBlock { Text = "From: #" + req.From, FontWeight = FontWeights.SemiBold });
+            dp.Children.Add(new TextBlock { Text = "Command: " + req.Command, FontFamily = new FontFamily("Consolas"), Foreground = new SolidColorBrush(Color.FromRgb(0x2d, 0x6a, 0x4f)) });
+            if (!string.IsNullOrEmpty(req.Arg))
+                dp.Children.Add(new TextBlock { Text = "Argument: " + req.Arg, FontFamily = new FontFamily("Consolas"), FontSize = 11, Foreground = Brushes.Gray });
+            Grid.SetRow(dp, 1); g.Children.Add(dp);
+
+            // Always-allow checkbox
+            CheckBox chkAlways = new CheckBox { Content = "Always allow this command from #" + req.From, Margin = new Thickness(0, 0, 0, 12) };
+            Grid.SetRow(chkAlways, 2); g.Children.Add(chkAlways);
+
+            // Buttons
+            StackPanel bp = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            Button denyBtn = MakeButton("\u274C Deny");
+            denyBtn.Margin = new Thickness(0, 0, 8, 0);
+            denyBtn.Background = new SolidColorBrush(Color.FromRgb(0xfe, 0xe2, 0xe2));
+            denyBtn.Foreground = new SolidColorBrush(Color.FromRgb(0xb9, 0x1c, 0x1c));
+            denyBtn.Click += delegate { _remoteControl.Deny(req.Id); w.Close(); };
+            Button approveBtn = MakeButton("\u2705 Approve");
+            approveBtn.Background = new SolidColorBrush(Color.FromRgb(0xd1, 0xfa, 0xe5));
+            approveBtn.Foreground = new SolidColorBrush(Color.FromRgb(0x06, 0x5f, 0x46));
+            approveBtn.Click += delegate { _remoteControl.Approve(req.Id, chkAlways.IsChecked == true); w.Close(); };
+            bp.Children.Add(denyBtn); bp.Children.Add(approveBtn);
+            Grid.SetRow(bp, 3); g.Children.Add(bp);
+
+            // Revoke all button
+            Button revokeBtn = new Button { Content = "Emergency Revoke All Remote Control", Margin = new Thickness(0, 15, 0, 0), Foreground = Brushes.Red, Background = Brushes.Transparent, BorderThickness = new Thickness(0) };
+            revokeBtn.Click += delegate { _remoteControl.EmergencyRevoke(); w.Close(); Log("REMOTE CONTROL REVOKED", BrushError); };
+            Grid.SetRow(revokeBtn, 4); g.Children.Add(revokeBtn);
+
+            w.Content = g;
+            w.Show(); // non-modal so the app stays usable
+        }
+
+        // Allow VoIP relay messages from peers to trigger remote commands
+        private void HandleRemoteCommand(string from, string line)
+        {
+            // Wire to relay: "RCMD|<command>|<arg>"
+            if (_remoteControl == null || _remoteControl.IsRevoked) return;
+            string[] p = line.Split(new char[] { '|' }, 3);
+            if (p.Length < 2) return;
+            string cmd = p[1];
+            string arg = p.Length >= 3 ? p[2] : "";
+            _remoteControl.Request(from, cmd, arg);
+        }
+
         // ── Hub: open OTP view for a code ─────────────────────────────────
         private void HubOpenOtp(SmsCode sc)
         {
-            _chatWorkspace = "otp";
-            HubShowWorkspace("otp");
+HubShowWorkspace("otp");
             if (_hubOtpCode != null) _hubOtpCode.Text = sc.Code;
             if (_hubOtpFrom != null) _hubOtpFrom.Text = "OTP from " + sc.From;
             // Run the update action stored in the grid's Tag
@@ -11782,8 +12592,7 @@ namespace UssdApp
         {
             string num = _txtChatTo != null ? _txtChatTo.Text.Trim() : "";
             if (num.Length < 3) { Log("Hub: select a contact first.", BrushWarn); return; }
-            _chatWorkspace = "voice";
-            HubShowWorkspace("voice");
+HubShowWorkspace("voice");
             if (_hubPane3ContactName != null && _hubCallState != null)
                 _hubCallState.Text = "Calling " + (_hubPane3ContactName.Text ?? num) + "...";
             // 700-XXXXXXX app numbers are modem-free: they always route over
@@ -11810,8 +12619,7 @@ namespace UssdApp
         {
             string num = _txtChatTo != null ? _txtChatTo.Text.Trim() : "";
             if (num.Length < 3) { Log("Hub: select a contact first.", BrushWarn); return; }
-            _chatWorkspace = "video";
-            HubShowWorkspace("video");
+HubShowWorkspace("video");
             StartVoipCallByNumber(num, true);
         }
 
@@ -13158,8 +13966,7 @@ namespace UssdApp
             if (_sidebarOpen)
             {
                 // Restore full sidebar
-                _sidebarIconOnly = false;
-                _sidebarCol.Width = new GridLength(252);
+_sidebarCol.Width = new GridLength(252);
                 _sidebar.Visibility = Visibility.Visible;
                 _sidebar.Padding = new Thickness(10, 12, 10, 10);
                 if (_sidebarHeading != null) _sidebarHeading.Visibility = Visibility.Visible;
@@ -13177,8 +13984,7 @@ namespace UssdApp
             else
             {
                 // Collapse to icon-only strip (40px)
-                _sidebarIconOnly = true;
-                _sidebarCol.Width = new GridLength(58);
+_sidebarCol.Width = new GridLength(58);
                 _sidebar.Visibility = Visibility.Visible;
                 _sidebar.Padding = new Thickness(4, 12, 4, 10);
                 if (_sidebarHeading != null) _sidebarHeading.Visibility = Visibility.Collapsed;
@@ -14673,7 +15479,7 @@ namespace UssdApp
 
         private void CallSelectedSmsSender()
         {
-            SmsMessage m = _lvInbox.SelectedItem as SmsMessage;
+            SmsMessage m = _lvInbox != null ? (_lvInbox.SelectedItem as SmsMessage) : null;
             if (m == null) { Log("Select a message.", BrushWarn); return; }
             _txtNumber.Text = SanitizeNumber(m.From);
             SelectTab(0);
@@ -16658,19 +17464,33 @@ namespace UssdApp
 
         private void RebuildInboxView()
         {
-            _lvInbox.Items.Clear();
-            foreach (SmsMessage m in _inbox) _lvInbox.Items.Add(m);
+            // The 3-pane hub renders inbox messages dynamically via HubRefreshPane2.
+            // _lvInbox is a legacy field never assigned; guard first, then refresh.
+            if (_lvInbox != null)
+            {
+                _lvInbox.Items.Clear();
+                foreach (SmsMessage m in _inbox) _lvInbox.Items.Add(m);
+            }
+            // Always keep the live hub pane in sync.
+            if (_chatHubCategory == "sms") HubRefreshPane2();
         }
 
         private void RebuildCodesView()
         {
-            _lvCodes.Items.Clear();
-            foreach (SmsCode c in _codes) _lvCodes.Items.Add(c);
+            if (_lvCodes != null)
+            {
+                _lvCodes.Items.Clear();
+                foreach (SmsCode c in _codes) _lvCodes.Items.Add(c);
+            }
+            if (_chatHubCategory == "codes") HubRefreshPane2();
         }
 
         private async Task DeleteSelectedSmsAsync()
         {
-            SmsMessage m = _lvInbox.SelectedItem as SmsMessage;
+            // _lvInbox is a legacy field (never assigned); selected SMS is obtained
+            // from the pane-2 selection instead.
+            SmsMessage m = _lvInbox != null ? (_lvInbox.SelectedItem as SmsMessage) : null;
+            if (m == null && _inbox.Count > 0) m = _inbox[0]; // fallback: first message
             if (m == null) { Log("Select a message.", BrushWarn); return; }
             if (!_modem.IsOpen) return;
             await Task.Run(delegate
@@ -18036,6 +18856,7 @@ namespace UssdApp
                 cms.Items.Add("-");
                 cms.Items.Add("New Call…", null, delegate { TrayRestore(); ShowPage(0); });
                 cms.Items.Add("SMS / Chat", null, delegate { TrayRestore(); ShowPage(3); });
+                cms.Items.Add("Bulk SMS…", null, delegate { TrayRestore(); ShowBulkSmsDialog(); });
                 cms.Items.Add("Settings…", null, delegate { TrayRestore(); ShowSettingsDialog(); });
                 cms.Items.Add("-");
                 System.Windows.Forms.ToolStripMenuItem presMenu = new System.Windows.Forms.ToolStripMenuItem("Presence");
@@ -18047,6 +18868,14 @@ namespace UssdApp
                     presMenu.DropDownItems.Add(pl, null, delegate { SetPresence(ps, ""); });
                 }
                 cms.Items.Add(presMenu);
+                // PIN lock
+                cms.Items.Add("Set PIN…", null, delegate { TrayRestore(); ShowPinDialog(true); });
+                if (!string.IsNullOrEmpty(_pinCode))
+                    cms.Items.Add("Lock Now", null, delegate { _pinLocked = true; ShowPinDialog(); });
+                // Statistics
+                cms.Items.Add("Statistics…", null, delegate { TrayRestore(); ShowStatisticsDialog(); });
+                // Export call quality
+                cms.Items.Add("Export Call Quality CSV", null, delegate { ExportCallQualityCsv(); });
                 cms.Items.Add("-");
                 cms.Items.Add("Exit", null, delegate
                 {
@@ -18349,6 +19178,48 @@ namespace UssdApp
             _atRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _atRetryTimer.Tick += delegate { ProcessAtRetryQueue(); };
             _atRetryTimer.Start();
+        }
+
+        // ── Weekly security scan ──────────────────────────────────────────
+        // Runs once per week (checked every hour). Calls TnsrlSecurityMonitor
+        // to audit key age, unverified peers, and relay pin gaps, then logs
+        // any findings. Patches known weak configurations automatically.
+        private void StartSecurityScanTimer()
+        {
+            // Check once per hour whether the weekly scan is due.
+            _securityScanTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromHours(1)
+            };
+            _securityScanTimer.Tick += delegate { MaybeRunSecurityScan(); };
+            _securityScanTimer.Start();
+            // Also run once on startup (after a 30 s delay so the UI is settled).
+            DispatcherTimer once = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+            once.Tick += delegate { once.Stop(); MaybeRunSecurityScan(true); };
+            once.Start();
+        }
+
+        private void MaybeRunSecurityScan(bool forceStartup = false)
+        {
+            // Weekly = at most once every 7 days.
+            double hoursSinceLast = (DateTime.Now - _lastSecurityScan).TotalHours;
+            if (!forceStartup && hoursSinceLast < 24 * 7) return;
+            _lastSecurityScan = DateTime.Now;
+            Thread scan = new Thread((ThreadStart)delegate
+            {
+                TnsrlSecurityMonitor.CheckAndLog(Home.Dir,
+                    delegate(string msg, bool ok)
+                    {
+                        string m = msg; bool g = ok;
+                        Dispatcher.BeginInvoke((Action)delegate
+                        {
+                            Log("[Security] " + m, g ? BrushGray : BrushWarn);
+                        });
+                    });
+            });
+            scan.IsBackground = true;
+            scan.Name = "UssdSecScan";
+            scan.Start();
         }
 
         private void ProcessAtRetryQueue()

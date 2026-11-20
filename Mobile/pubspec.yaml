@@ -1,0 +1,67 @@
+name: ussd_manager_pro
+description: USSD Manager Pro - Communication Suite for Android & iOS
+publish_to: 'none'
+version: 4.1.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Networking & relay protocol
+  web_socket_channel: ^2.4.0
+  http: ^1.1.0
+  # Audio/Video
+  flutter_webrtc: ^0.10.0
+  record: ^5.0.0
+  audioplayers: ^5.0.0
+  # UI
+  google_fonts: ^6.1.0
+  flutter_animate: ^4.3.0
+  lucide_icons: ^1.0.0
+  # Storage
+  shared_preferences: ^2.2.0
+  sqflite: ^2.3.0
+  path_provider: ^2.1.0
+  # Notifications
+  flutter_local_notifications: ^16.1.0
+  # Security
+  flutter_secure_storage: ^9.0.0
+  crypto: ^3.0.3
+  pointycastle: ^3.7.3
+  # Device / Location (for tracker)
+  device_info_plus: ^9.1.0
+  geolocator: ^10.1.0
+  # Contacts
+  contacts_service: ^0.6.3
+  # SMS (Android only)
+  telephony: ^0.2.0
+  # Background service
+  flutter_background_service: ^5.0.5
+  permission_handler: ^11.0.1
+  # QR (for relay pairing)
+  mobile_scanner: ^3.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon.png
+    - assets/ringtone.wav
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf

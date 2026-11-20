@@ -1,0 +1,2605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>USSD Manager Pro v4.1 — Desktop &amp; Android Communication Suite</title>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#EFF6FF',
+              100: '#DBEAFE',
+              500: '#3B82F6',
+              600: '#2563EB',
+              700: '#1D4ED8',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* Strict Panel View Visibility & Flex Architecture */
+    .panel-view {
+      display: none;
+    }
+    .panel-view.active {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+    }
+    .panel-view.active.full-bleed {
+      overflow: hidden;
+    }
+
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94A3B8;
+    }
+    .dark-scroll::-webkit-scrollbar-thumb {
+      background: #334155;
+    }
+    .dark-scroll::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    /* Subtle Panel Fade-In */
+    @keyframes panelEnter {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .panel-view.active {
+      animation: panelEnter 0.16s ease-out;
+    }
+
+    /* Sidebar Collapsed State */
+    aside.collapsed {
+      width: 76px;
+    }
+    aside.collapsed .sidebar-text,
+    aside.collapsed .sidebar-group-label,
+    aside.collapsed .modem-card-details,
+    aside.collapsed .ai-badge {
+      display: none;
+    }
+    aside.collapsed .nav-btn {
+      justify-content: center;
+      padding-left: 0;
+      padding-right: 0;
+    }
+    aside.collapsed .modem-compact-btn {
+      display: flex;
+    }
+
+    /* Android Mobile Preview Frame Mode */
+    body.android-mode #app-shell {
+      max-width: 418px;
+      height: calc(100vh - 24px);
+      margin: 12px auto;
+      border-radius: 36px;
+      border: 8px solid #0F172A;
+      box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.35);
+      overflow: hidden;
+    }
+    body.android-mode #desktop-sidebar,
+    body.android-mode #desktop-footer,
+    body.android-mode #desktop-telemetry-pill,
+    body.android-mode #sidebar-toggle-btn {
+      display: none !important;
+    }
+    body.android-mode #android-status-bar,
+    body.android-mode #android-bottom-nav {
+      display: flex !important;
+    }
+    body.android-mode .panel-view.active {
+      padding: 12px !important;
+    }
+    body.android-mode #panel-sms,
+    body.android-mode #panel-videocall {
+      margin: 8px !important;
+      border-radius: 16px !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-200/70 text-slate-800 font-sans h-screen w-screen overflow-hidden antialiased select-none">
+
+  <!-- Main Application Shell (Adapts seamlessly between Windows .exe Desktop & Android .apk Preview) -->
+  <div id="app-shell" class="bg-[#F8FAFC] h-full w-full flex flex-col overflow-hidden transition-all duration-200">
+
+    <!-- Android Simulated Status Bar (Hidden in Windows .exe mode) -->
+    <div id="android-status-bar" class="hidden h-7 bg-slate-900 text-white px-5 items-center justify-between text-[11px] font-mono shrink-0">
+      <span>13:13</span>
+      <div class="w-16 h-3.5 bg-black rounded-full"></div>
+      <div class="flex items-center gap-1.5">
+        <span>5G</span>
+        <i data-lucide="wifi" class="w-3 h-3"></i>
+        <i data-lucide="battery-charging" class="w-3.5 h-3.5 text-emerald-400"></i>
+      </div>
+    </div>
+
+    <!-- Top Global Header Bar -->
+    <header class="h-16 shrink-0 bg-white border-b border-slate-200 px-4 lg:px-5 flex items-center justify-between gap-3 z-20">
+      <!-- Left: Collapse Toggle, App Brand Icon, Dynamic Title & Subtitle -->
+      <div class="flex items-center gap-3 min-w-0">
+        <button id="sidebar-toggle-btn" title="Toggle Navigation Sidebar" class="w-9 h-9 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center transition-colors shrink-0">
+          <i data-lucide="panel-left" class="w-4 h-4"></i>
+        </button>
+
+        <!-- App Icon -->
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-sm shadow-blue-600/20 shrink-0">
+          <i data-lucide="radio-tower" class="w-5 h-5"></i>
+        </div>
+
+        <!-- Dynamic Panel Context -->
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-bold tracking-wider uppercase text-blue-600 hidden sm:inline">USSD MANAGER PRO</span>
+            <span id="header-live-dot" class="w-2 h-2 rounded-full bg-rose-500 shrink-0" title="Modem Disconnected"></span>
+          </div>
+          <div class="flex items-baseline gap-2 truncate">
+            <h1 id="header-title" class="text-base lg:text-lg font-bold text-slate-900 tracking-tight truncate">Dialer</h1>
+            <span class="text-slate-300 hidden md:inline">—</span>
+            <p id="header-subtitle" class="text-xs text-slate-500 truncate hidden md:inline">Cellular and internet calling</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Platform Switcher (.exe / .apk), Hardware Telemetry Pill & Settings -->
+      <div class="flex items-center gap-2.5 shrink-0">
+        <!-- Platform Preview Switcher: Windows .exe vs Android .apk -->
+        <div class="bg-slate-100 p-1 rounded-xl border border-slate-200/80 flex items-center text-xs font-medium">
+          <button id="mode-win-btn" onclick="setPlatformMode('windows')" class="px-2.5 py-1 rounded-lg bg-white text-slate-900 shadow-sm flex items-center gap-1.5 transition-all">
+            <i data-lucide="monitor" class="w-3.5 h-3.5 text-blue-600"></i>
+            <span class="hidden sm:inline">Win .exe</span>
+          </button>
+          <button id="mode-and-btn" onclick="setPlatformMode('android')" class="px-2.5 py-1 rounded-lg text-slate-500 hover:text-slate-800 flex items-center gap-1.5 transition-all">
+            <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Android .apk</span>
+          </button>
+        </div>
+
+        <!-- Hardware Telemetry Pill (Clickable -> Opens Modem Modal) -->
+        <button id="desktop-telemetry-pill" onclick="openModal('modem-modal')" title="Click to configure modem & connection" class="hidden xl:flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs transition-colors">
+          <span class="flex items-center gap-1.5 text-slate-600 font-medium">
+            <i data-lucide="cpu" class="w-3.5 h-3.5 text-slate-400"></i>
+            <span id="top-sim-label">no SIM</span>
+          </span>
+          <span class="text-slate-300">|</span>
+          <span class="flex items-center gap-1.5 text-slate-600 font-medium">
+            <i data-lucide="signal" class="w-3.5 h-3.5 text-slate-400"></i>
+            <span id="top-signal-label">signal --</span>
+          </span>
+          <span class="text-slate-300">|</span>
+          <span id="top-conn-badge" class="flex items-center gap-1.5 font-semibold text-rose-600">
+            <span id="top-conn-dot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+            <span id="top-conn-text">Disconnected</span>
+          </span>
+          <span class="text-slate-300">|</span>
+          <span id="top-port-label" class="font-mono text-[11px] text-slate-500">COM6 | 115200</span>
+        </button>
+
+        <!-- Settings Gear Button -->
+        <button onclick="openModal('settings-modal')" title="Application & AI Settings" class="w-9 h-9 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors shadow-xs">
+          <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Middle Body: Left Sidebar + Active Workspace Panel -->
+    <div class="flex-1 flex min-h-0 overflow-hidden relative">
+
+      <!-- LEFT SIDEBAR (3-Zone Strict Flex Architecture — Zero Overlap Guaranteed) -->
+      <aside id="desktop-sidebar" class="w-64 shrink-0 bg-white border-r border-slate-200 flex flex-col h-full transition-all duration-200 z-10">
+
+        <!-- Zone A: Top Brand Block (shrink-0) -->
+        <div class="shrink-0 px-4 pt-4 pb-3 border-b border-slate-100">
+          <p class="text-[11px] font-bold tracking-wider uppercase text-blue-600 sidebar-text">YOUR WORKSPACE</p>
+          <p class="text-xs text-slate-500 mt-0.5 sidebar-text">Communication, made simple.</p>
+        </div>
+
+        <!-- Zone B: Middle Scrollable Nav (flex-1 overflow-y-auto min-h-0) -->
+        <nav class="flex-1 overflow-y-auto min-h-0 px-3 py-3 space-y-5">
+
+          <!-- Group 1: COMMUNICATION -->
+          <div>
+            <div class="px-3 mb-1.5 text-[10px] font-bold tracking-wider uppercase text-slate-400 sidebar-group-label">COMMUNICATION</div>
+            <div class="space-y-1">
+              <button data-panel="dialer" data-title="Dialer" data-subtitle="Cellular and internet calling" class="nav-btn active w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold bg-blue-50 text-blue-700 transition-all">
+                <i data-lucide="phone" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text truncate">Dialer</span>
+              </button>
+
+              <button data-panel="contacts" data-title="Contacts" data-subtitle="Manage saved SIM & device contacts" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                <i data-lucide="users" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text truncate">Contacts</span>
+              </button>
+
+              <button data-panel="videocall" data-title="Video Call" data-subtitle="Voice and encrypted LAN/Internet video rooms" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                <i data-lucide="video" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text truncate">Video Call</span>
+              </button>
+
+              <button data-panel="sms" data-title="SMS" data-subtitle="Messages, LAN peers & extracted OTP codes" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                <i data-lucide="message-square" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text truncate flex-1 text-left">SMS</span>
+                <span class="sidebar-text px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-700">3</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Group 2: DEVICE TOOLS -->
+          <div>
+            <div class="px-3 mb-1.5 text-[10px] font-bold tracking-wider uppercase text-slate-400 sidebar-group-label">DEVICE TOOLS</div>
+            <div class="space-y-1">
+              <button data-panel="sim" data-title="SIM Manager" data-subtitle="SIM telemetry, ICCID/IMSI & auto-configuration" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                <i data-lucide="sim-card" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text truncate">SIM Manager</span>
+              </button>
+
+              <button data-panel="ussd" data-title="USSD" data-subtitle="Run carrier USSD codes via MiFi HTTP or AT" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                <i data-lucide="terminal" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text truncate">USSD</span>
+              </button>
+
+              <button data-panel="apps" data-title="Apps" data-subtitle="Companion bridges, Laptop Tracker & utilities" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                <i data-lucide="layout-grid" class="w-4 h-4 shrink-0"></i>
+                <span class="sidebar-text truncate">Apps</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Group 3: ASSISTANT (Clearly separated, never overlapped!) -->
+          <div>
+            <div class="px-3 mb-1.5 text-[10px] font-bold tracking-wider uppercase text-slate-400 sidebar-group-label">ASSISTANT</div>
+            <div class="space-y-1">
+              <button data-panel="agent" data-title="Agent" data-subtitle="Your local and AI assistant" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all">
+                <i data-lucide="bot" class="w-4 h-4 shrink-0 text-blue-600"></i>
+                <span class="sidebar-text truncate flex-1 text-left">Agent</span>
+                <span class="ai-badge px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide rounded-md bg-blue-100 text-blue-700 border border-blue-200/70">AI</span>
+              </button>
+              <button data-panel="whats-new" data-title="What's New" data-subtitle="v4.1 — new features & downloads" class="nav-btn w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-all">
+                <i data-lucide="sparkles" class="w-4 h-4 shrink-0 text-emerald-600"></i>
+                <span class="sidebar-text truncate flex-1 text-left">What's New v4.1</span>
+                <span class="sidebar-text px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-200 text-emerald-800">NEW</span>
+              </button>
+            </div>
+          </div>
+
+        </nav>
+
+        <!-- Zone C: Bottom Pinned Modem Connection Card (shrink-0) -->
+        <div class="shrink-0 p-3.5 border-t border-slate-200/80 bg-slate-50">
+          <div class="modem-card-details bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-xs">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-[10px] font-bold tracking-wider uppercase text-slate-500">MODEM CONNECTION</span>
+              <span id="sidebar-modem-dot" class="w-2 h-2 rounded-full bg-rose-500"></span>
+            </div>
+            <p class="text-xs text-slate-500 mb-3 leading-relaxed">Connect only when you're ready.</p>
+            <button onclick="openModal('modem-modal')" id="sidebar-modem-btn" class="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1.5">
+              <i data-lucide="plug-zap" class="w-3.5 h-3.5"></i>
+              <span>Configure modem</span>
+            </button>
+          </div>
+          <!-- Compact button shown only when sidebar is collapsed -->
+          <button onclick="openModal('modem-modal')" title="Configure modem" class="modem-compact-btn hidden w-full py-2.5 rounded-xl bg-blue-600 text-white items-center justify-center">
+            <i data-lucide="plug-zap" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </aside>
+
+      <!-- MAIN WORKSPACE VIEWPORT -->
+      <main id="workspace-container" class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-[#F8FAFC]">
+
+        <!-- ===================================================================== -->
+        <!-- PANEL 1: DIALER (#panel-dialer)                                       -->
+        <!-- ===================================================================== -->
+        <section id="panel-dialer" class="panel-view active p-4 lg:p-6">
+          <div class="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left Column: Keypad & Cellular/VoIP Dialer (5 cols) -->
+            <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col">
+              <!-- Transport Switcher & Status -->
+              <div class="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100">
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">TRANSPORT</span>
+                  <div class="bg-slate-100 p-1 rounded-xl flex items-center text-xs font-semibold">
+                    <button id="transport-cellular" onclick="setDialerTransport('cellular')" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white shadow-xs flex items-center gap-1.5 transition-all">
+                      <i data-lucide="phone-call" class="w-3.5 h-3.5"></i>
+                      <span>Cellular</span>
+                    </button>
+                    <button id="transport-voip" onclick="setDialerTransport('voip')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition-all">
+                      <i data-lucide="globe" class="w-3.5 h-3.5"></i>
+                      <span>VoIP / LAN</span>
+                    </button>
+                  </div>
+                </div>
+                <span id="dialer-status-pill" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">Ready</span>
+              </div>
+
+              <!-- Live Active Call Banner (Hidden until CALL is pressed) -->
+              <div id="active-call-banner" class="hidden mt-4 p-3 rounded-xl bg-emerald-600 text-white flex items-center justify-between shadow-sm">
+                <div class="flex items-center gap-2.5">
+                  <span class="w-2.5 h-2.5 rounded-full bg-white animate-ping"></span>
+                  <div>
+                    <div id="active-call-target" class="text-xs font-bold">Calling...</div>
+                    <div id="active-call-timer" class="text-[11px] font-mono opacity-90">00:00 • HD Audio</div>
+                  </div>
+                </div>
+                <button onclick="endSimulatedCall()" class="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-xs font-bold">Hang up</button>
+              </div>
+
+              <!-- Number Display Box -->
+              <div class="mt-4">
+                <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">NUMBER</label>
+                <div class="flex items-center gap-2">
+                  <input id="dialer-display" type="text" placeholder="Enter number or 700-ID..." class="flex-1 h-12 px-4 rounded-xl bg-slate-50 border border-slate-200 text-xl font-mono font-semibold text-slate-900 tracking-wider focus:outline-none focus:border-blue-500 focus:bg-white transition-colors" />
+                  <button onclick="dialerBackspace()" title="Backspace" class="w-11 h-12 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 flex items-center justify-center transition-colors">
+                    <i data-lucide="delete" class="w-4 h-4"></i>
+                  </button>
+                  <button onclick="dialerClear()" title="Clear" class="w-11 h-12 rounded-xl border border-slate-200 bg-slate-50 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-600 font-bold text-sm flex items-center justify-center transition-colors">
+                    C
+                  </button>
+                </div>
+              </div>
+
+              <!-- Sub-Tabs: Keypad vs Recents -->
+              <div class="grid grid-cols-2 gap-2 mt-4 p-1 bg-slate-100 rounded-xl">
+                <button id="subtab-keypad" onclick="switchDialerSubtab('keypad')" class="py-1.5 rounded-lg bg-white text-blue-600 font-semibold text-xs shadow-xs transition-all">Keypad</button>
+                <button id="subtab-recents" onclick="switchDialerSubtab('recents')" class="py-1.5 rounded-lg text-slate-600 hover:text-slate-900 font-semibold text-xs transition-all">Recents</button>
+              </div>
+
+              <!-- View A: 3x4 Tactile Keypad -->
+              <div id="dialer-keypad-view" class="mt-4">
+                <div class="grid grid-cols-3 gap-2.5">
+                  <button onclick="pressDialKey('1')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">1</span>
+                    <span class="text-[9px] font-semibold tracking-widest text-slate-400">&nbsp;</span>
+                  </button>
+                  <button onclick="pressDialKey('2')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">2</span>
+                    <span class="text-[9px] font-semibold tracking-widest text-slate-400">ABC</span>
+                  </button>
+                  <button onclick="pressDialKey('3')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">3</span>
+                    <span class="text-[9px] font-semibold tracking-widest text-slate-400">DEF</span>
+                  </button>
+                  <button onclick="pressDialKey('4')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">4</span>
+                    <span class="text-[9px] font-semibold tracking-widest text-slate-400">GHI</span>
+                  </button>
+                  <button onclick="pressDialKey('5')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">5</span>
+                    <span class="text-[9px] font-semibold tracking-widest text-slate-400">JKL</span>
+                  </button>
+                  <button onclick="pressDialKey('6')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">6</span>
+                    <span class="text-[9px] font-semibold tracking-widest text-slate-400">MNO</span>
+                  </button>
+                  <button onclick="pressDialKey('7')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">7</span>
+                    <span class="text-[9px] font-semibold tracking-widest text-slate-400">PQRS</span>
+                  </button>
+                  <button onclick="pressDialKey('8')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">8</span>
+                    <span class="text-[9px] font-semibold tracking-widest text-slate-400">TUV</span>
+                  </button>
+                  <button onclick="pressDialKey('9')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">9</span>
+                    <span class="text-[9px] font-semibold tracking-widest text-slate-400">WXYZ</span>
+                  </button>
+                  <button onclick="pressDialKey('*')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-xl font-bold text-slate-800">*</span>
+                  </button>
+                  <button onclick="pressDialKey('0')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">0</span>
+                    <span class="text-[10px] font-semibold text-slate-400">+</span>
+                  </button>
+                  <button onclick="pressDialKey('#')" class="h-14 rounded-2xl bg-slate-50 hover:bg-blue-50 border border-slate-200/80 hover:border-blue-200 flex flex-col items-center justify-center transition-all active:scale-95">
+                    <span class="text-lg font-bold text-slate-800">#</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- View B: Recents Call Log -->
+              <div id="dialer-recents-view" class="hidden mt-4 space-y-2 max-h-[260px] overflow-y-auto">
+                <div onclick="fillAndCall('233244000111')" class="p-3 rounded-xl border border-slate-100 hover:bg-slate-50 flex items-center justify-between cursor-pointer">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center"><i data-lucide="phone-outgoing" class="w-4 h-4"></i></div>
+                    <div>
+                      <div class="text-xs font-bold text-slate-800">Alice</div>
+                      <div class="text-[11px] font-mono text-slate-500">233244000111 • Cellular</div>
+                    </div>
+                  </div>
+                  <span class="text-[11px] text-slate-400">10:42 AM</span>
+                </div>
+                <div onclick="fillAndCall('7003256099')" class="p-3 rounded-xl border border-slate-100 hover:bg-slate-50 flex items-center justify-between cursor-pointer">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center"><i data-lucide="phone-incoming" class="w-4 h-4"></i></div>
+                    <div>
+                      <div class="text-xs font-bold text-slate-800">TestB (LAN Node)</div>
+                      <div class="text-[11px] font-mono text-slate-500">7003256099 • VoIP LAN</div>
+                    </div>
+                  </div>
+                  <span class="text-[11px] text-slate-400">Yesterday</span>
+                </div>
+                <div onclick="fillAndCall('233505940530')" class="p-3 rounded-xl border border-slate-100 hover:bg-slate-50 flex items-center justify-between cursor-pointer">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center"><i data-lucide="phone-missed" class="w-4 h-4"></i></div>
+                    <div>
+                      <div class="text-xs font-bold text-slate-800">OBED</div>
+                      <div class="text-[11px] font-mono text-slate-500">233505940530 • Missed</div>
+                    </div>
+                  </div>
+                  <span class="text-[11px] text-slate-400">Nov 10</span>
+                </div>
+              </div>
+
+              <!-- Bottom Call & End Buttons -->
+              <div class="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-slate-100">
+                <button onclick="startSimulatedCall()" class="py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all active:scale-98">
+                  <i data-lucide="phone" class="w-4 h-4"></i>
+                  <span>CALL</span>
+                </button>
+                <button onclick="endSimulatedCall()" class="py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm shadow-sm shadow-rose-600/20 flex items-center justify-center gap-2 transition-all active:scale-98">
+                  <i data-lucide="phone-off" class="w-4 h-4"></i>
+                  <span>END</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Right Column: Calls (LAN + Internet) (7 cols) -->
+            <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between space-y-5">
+              <div class="space-y-4">
+                <!-- Header -->
+                <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                  <div>
+                    <h2 class="text-base font-bold text-blue-600">Calls (LAN + Internet)</h2>
+                    <p class="text-xs text-slate-500">Direct peer-to-peer VoIP, UPnP port mapping &amp; relay routing</p>
+                  </div>
+                  <span id="lan-call-state" class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">Idle</span>
+                </div>
+
+                <!-- My App ID & Relay Row -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                    <div>
+                      <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">My # (App ID)</span>
+                      <span id="my-app-id" class="font-mono text-sm font-bold text-slate-900">700 395 0263</span>
+                    </div>
+                    <button onclick="copyToClipboard('7003950263', 'App ID copied to clipboard')" class="p-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors" title="Copy App ID">
+                      <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                    </button>
+                  </div>
+
+                  <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-2">
+                    <div class="flex-1">
+                      <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Relay Server</span>
+                      <input id="relay-input" type="text" placeholder="relay.ussdpro.local:9000" class="w-full bg-transparent text-xs font-mono text-slate-800 focus:outline-none mt-0.5" />
+                    </div>
+                    <label class="flex items-center gap-1.5 text-xs font-medium text-slate-700 cursor-pointer shrink-0">
+                      <input type="checkbox" onchange="toggleRelayHost(this)" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                      <span>Host server</span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Relay Identity & Network Checkboxes -->
+                <div class="space-y-2 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/60">
+                  <div id="relay-identity-label" class="text-xs font-mono text-slate-500">Relay identity: none (no relay connected)</div>
+                  <div class="flex flex-wrap gap-5 pt-1">
+                    <label class="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                      <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                      <span>Route calls through the relay</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                      <input type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                      <span>Open my router port (UPnP)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Peers (LAN + directory) Table -->
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold text-slate-700">Peers (LAN + directory):</span>
+                    <span class="text-[11px] text-slate-400">Click a peer row to target IP</span>
+                  </div>
+                  <div class="border border-slate-200 rounded-xl overflow-hidden">
+                    <table class="w-full text-left text-xs">
+                      <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                        <tr>
+                          <th class="py-2.5 px-3.5">Status</th>
+                          <th class="py-2.5 px-3.5">Peer</th>
+                          <th class="py-2.5 px-3.5">Address</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-slate-100">
+                        <tr onclick="selectLanPeer('172.26.0.1', 'Desktop-Node-01')" class="hover:bg-blue-50/60 cursor-pointer transition-colors">
+                          <td class="py-2.5 px-3.5 font-medium text-emerald-600 flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> online
+                          </td>
+                          <td class="py-2.5 px-3.5 font-semibold text-slate-800">Desktop-Node-01</td>
+                          <td class="py-2.5 px-3.5 font-mono text-slate-600">172.26.0.1</td>
+                        </tr>
+                        <tr onclick="selectLanPeer('172.26.0.14', 'Android-Companion-02')" class="hover:bg-blue-50/60 cursor-pointer transition-colors">
+                          <td class="py-2.5 px-3.5 font-medium text-emerald-600 flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> online
+                          </td>
+                          <td class="py-2.5 px-3.5 font-semibold text-slate-800">Android-Companion-02</td>
+                          <td class="py-2.5 px-3.5 font-mono text-slate-600">172.26.0.14</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Direct IP Call Controls & Audio Flags -->
+              <div class="space-y-3 pt-3 border-t border-slate-100">
+                <div class="flex flex-wrap items-center gap-2.5">
+                  <label class="text-xs font-bold text-slate-600">IP:</label>
+                  <input id="direct-ip-input" type="text" value="172.26.0.1" placeholder="192.168.1.x" class="flex-1 min-w-[140px] h-10 px-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-800 focus:outline-none focus:border-blue-500" />
+                  <button onclick="startLanDirectCall('voice')" class="px-4 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors">
+                    <i data-lucide="phone" class="w-3.5 h-3.5"></i>
+                    <span>Voice Call</span>
+                  </button>
+                  <button onclick="switchPanel('videocall')" class="px-4 h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors">
+                    <i data-lucide="video" class="w-3.5 h-3.5"></i>
+                    <span>Video Call</span>
+                  </button>
+                  <button onclick="endSimulatedCall()" class="px-3.5 h-10 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold transition-colors">
+                    Hang Up
+                  </button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-5 pt-1">
+                  <label class="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer">
+                    <input type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                    <span>Noise filter</span>
+                  </label>
+                  <label class="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer">
+                    <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                    <span>Record calls</span>
+                  </label>
+                  <label class="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer">
+                    <input type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                    <span>Always awake</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- PANEL 2: CONTACTS (#panel-contacts)                                   -->
+        <!-- ===================================================================== -->
+        <section id="panel-contacts" class="panel-view p-4 lg:p-6 space-y-5">
+          <div class="max-w-6xl mx-auto w-full space-y-5">
+
+            <!-- Top Add & Filter Toolbar Card -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex flex-wrap items-center justify-between gap-3">
+              <div class="flex flex-wrap items-center gap-2.5 flex-1">
+                <div class="flex items-center gap-2">
+                  <label class="text-xs font-semibold text-slate-500">Name:</label>
+                  <input id="new-contact-name" type="text" placeholder="e.g. Kwame Mensah" class="h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-blue-500 w-40" />
+                </div>
+                <div class="flex items-center gap-2">
+                  <label class="text-xs font-semibold text-slate-500">Number:</label>
+                  <input id="new-contact-number" type="text" placeholder="e.g. 233244..." class="h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-800 focus:outline-none focus:border-blue-500 w-40" />
+                </div>
+                <button onclick="addNewContact()" class="h-9 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5">
+                  <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+                  <span>Add</span>
+                </button>
+              </div>
+
+              <!-- Filter Pills & Import SIM -->
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="bg-slate-100 p-1 rounded-xl flex items-center text-xs font-medium">
+                  <button onclick="filterContacts('All', this)" class="contact-filter-btn px-2.5 py-1 rounded-lg bg-white text-slate-900 shadow-xs">All</button>
+                  <button onclick="filterContacts('Favorites', this)" class="contact-filter-btn px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900">Favorites</button>
+                  <button onclick="filterContacts('SIM', this)" class="contact-filter-btn px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900">SIM</button>
+                  <button onclick="filterContacts('Device', this)" class="contact-filter-btn px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900">Device</button>
+                </div>
+                <button onclick="importSimContacts()" class="h-9 px-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors">
+                  <i data-lucide="download" class="w-3.5 h-3.5 text-blue-600"></i>
+                  <span>Import SIM</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Master-Detail Split Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <!-- Contacts Table (7 cols) -->
+              <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <table class="w-full text-left text-xs">
+                  <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider">
+                    <tr>
+                      <th class="py-3 px-4 w-10">Fav</th>
+                      <th class="py-3 px-4">Name</th>
+                      <th class="py-3 px-4">Number</th>
+                      <th class="py-3 px-4">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody id="contacts-table-body" class="divide-y divide-slate-100">
+                    <!-- Rendered dynamically by JS -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Contact Inspector Card (5 cols) -->
+              <div id="contact-inspector" class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-xs p-6 flex flex-col justify-between min-h-[340px]">
+                <div class="my-auto text-center space-y-2 py-8">
+                  <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <i data-lucide="user-circle" class="w-6 h-6"></i>
+                  </div>
+                  <h3 class="text-base font-bold text-slate-800">No contact selected</h3>
+                  <p class="text-xs text-slate-500 max-w-xs mx-auto">Click any contact row on the left to inspect details, toggle favorites, or launch a Call, Video, or SMS session.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- PANEL 3: VIDEO CALL (#panel-videocall, .full-bleed)                   -->
+        <!-- ===================================================================== -->
+        <section id="panel-videocall" class="panel-view full-bleed m-4 rounded-2xl bg-[#0B0F19] text-white border border-slate-800 shadow-xl relative">
+          <!-- Top Theater Header -->
+          <div class="h-14 px-5 border-b border-slate-800/90 flex items-center justify-between bg-[#0F1524] shrink-0">
+            <div class="flex items-center gap-2.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span class="text-sm font-bold tracking-tight">Video Call</span>
+              <span id="video-room-status" class="text-xs text-slate-400 font-mono">waiting...</span>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <button onclick="toggleVideoInCallChat()" class="px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 text-xs font-semibold flex items-center gap-1.5 transition-colors">
+                <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+                <span>Chat</span>
+              </button>
+              <button onclick="endVideoRoom()" class="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors">
+                <i data-lucide="phone-off" class="w-3.5 h-3.5"></i>
+                <span>End Call</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Center Video Stage -->
+          <div class="flex-1 flex relative overflow-hidden">
+            <div class="flex-1 flex flex-col items-center justify-center p-6 text-center relative">
+              <!-- Ambient Glow Avatar -->
+              <div class="w-24 h-24 rounded-full bg-gradient-to-tr from-indigo-600 via-blue-500 to-violet-500 shadow-2xl shadow-indigo-500/30 flex items-center justify-center mb-5 ring-4 ring-indigo-500/20">
+                <i data-lucide="video" class="w-10 h-10 text-white/90"></i>
+              </div>
+
+              <h2 id="video-stage-title" class="text-lg font-bold text-white">No active video call</h2>
+              <p id="video-stage-desc" class="text-xs text-slate-400 max-w-md mt-1.5 leading-relaxed">
+                Open the Chat Hub, select a peer and tap Video or dial a 700-XXXXXXX app number from the Dialer.
+              </p>
+
+              <button onclick="switchPanel('dialer')" class="mt-5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-600/25 transition-all">
+                Go to Dialer
+              </button>
+
+              <!-- Bottom-Right Self-View PiP Box -->
+              <div class="absolute bottom-24 right-5 w-44 h-28 rounded-xl bg-black border-2 border-emerald-500 shadow-xl overflow-hidden flex flex-col justify-between p-2.5">
+                <div class="flex justify-end">
+                  <span id="pip-cam-badge" class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-mono">CAM ON</span>
+                </div>
+                <span class="text-[11px] font-bold text-white">You</span>
+              </div>
+
+              <!-- Floating Frosted Control Dock -->
+              <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl px-4 py-2 flex items-center gap-2 sm:gap-3 shadow-2xl">
+                <button onclick="toggleVideoDockBtn(this, 'Mute')" class="flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-slate-800 text-slate-300 transition-colors">
+                  <i data-lucide="mic" class="w-4 h-4"></i>
+                  <span class="text-[10px] font-medium">Mute</span>
+                </button>
+                <button onclick="toggleVideoCamera(this)" class="flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-slate-800 text-slate-300 transition-colors">
+                  <i data-lucide="video" class="w-4 h-4"></i>
+                  <span class="text-[10px] font-medium">Camera</span>
+                </button>
+                <button onclick="showToast('Invite link copied for LAN/Relay room')" class="flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-slate-800 text-slate-300 transition-colors">
+                  <i data-lucide="user-plus" class="w-4 h-4"></i>
+                  <span class="text-[10px] font-medium">Add</span>
+                </button>
+                <button onclick="toggleVideoDockBtn(this, 'Screen Share')" class="flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-slate-800 text-slate-300 transition-colors">
+                  <i data-lucide="monitor-up" class="w-4 h-4"></i>
+                  <span class="text-[10px] font-medium">Share</span>
+                </button>
+                <button onclick="toggleVideoInCallChat()" class="flex flex-col items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-slate-800 text-slate-300 transition-colors">
+                  <i data-lucide="message-circle" class="w-4 h-4"></i>
+                  <span class="text-[10px] font-medium">Chat</span>
+                </button>
+                <button onclick="endVideoRoom()" class="flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition-colors">
+                  <i data-lucide="phone-off" class="w-4 h-4"></i>
+                  <span class="text-[10px] font-bold">End</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Collapsible In-Call Chat Side Drawer -->
+            <div id="video-chat-drawer" class="hidden w-72 border-l border-slate-800 bg-[#0F1524] flex flex-col">
+              <div class="p-3.5 border-b border-slate-800 flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-200">Room Chat</span>
+                <button onclick="toggleVideoInCallChat()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+              </div>
+              <div class="flex-1 p-3.5 text-xs text-slate-400 flex items-center justify-center text-center">
+                Encrypted WebRTC data-channel messages appear here during an active call.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- PANEL 4: SMS (#panel-sms, .full-bleed — 3-Column Dark Suite)           -->
+        <!-- ===================================================================== -->
+        <section id="panel-sms" class="panel-view full-bleed m-4 rounded-2xl bg-[#0F172A] text-slate-100 border border-slate-800 shadow-xl">
+          <div class="flex h-full min-h-0">
+
+            <!-- Column 1: Narrow Mode Rail (w-20) -->
+            <div class="w-20 shrink-0 bg-[#090D16] border-r border-slate-800/90 flex flex-col items-center py-4 gap-3">
+              <span class="text-[10px] font-bold tracking-widest uppercase text-slate-500">CHAT</span>
+
+              <button id="sms-rail-peers" onclick="switchSmsCategory('peers')" class="sms-rail-btn w-14 py-2.5 rounded-xl bg-indigo-600 text-white flex flex-col items-center gap-1 shadow-md shadow-indigo-600/20 transition-all">
+                <i data-lucide="globe" class="w-4 h-4"></i>
+                <span class="text-[10px] font-bold">Peers</span>
+              </button>
+
+              <button id="sms-rail-msgs" onclick="switchSmsCategory('msgs')" class="sms-rail-btn w-14 py-2.5 rounded-xl text-slate-400 hover:bg-slate-800/70 hover:text-slate-200 flex flex-col items-center gap-1 transition-all relative">
+                <i data-lucide="smartphone" class="w-4 h-4"></i>
+                <span class="text-[10px] font-semibold">SMS msgs</span>
+                <span class="absolute top-1.5 right-2 w-2 h-2 rounded-full bg-emerald-400"></span>
+              </button>
+
+              <button id="sms-rail-codes" onclick="switchSmsCategory('codes')" class="sms-rail-btn w-14 py-2.5 rounded-xl text-slate-400 hover:bg-slate-800/70 hover:text-slate-200 flex flex-col items-center gap-1 transition-all">
+                <i data-lucide="key-round" class="w-4 h-4"></i>
+                <span class="text-[10px] font-semibold">SMS codes</span>
+              </button>
+            </div>
+
+            <!-- Column 2: Search & Thread/Peer/OTP List (w-72) -->
+            <div class="w-64 sm:w-72 shrink-0 bg-[#0F172A] border-r border-slate-800/90 flex flex-col min-h-0">
+              <div class="p-3.5 border-b border-slate-800/80 space-y-3">
+                <div class="relative">
+                  <i data-lucide="search" class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                  <input id="sms-search-input" oninput="renderSmsSidebarList()" type="text" placeholder="Search..." class="w-full h-9 pl-8 pr-3 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
+                </div>
+                <div class="flex items-center justify-between">
+                  <h3 id="sms-list-heading" class="text-xs font-bold uppercase tracking-wider text-slate-300">Peers</h3>
+                  <span id="sms-list-badge" class="text-[10px] font-mono text-indigo-400">LAN Discovery</span>
+                </div>
+              </div>
+
+              <!-- Dynamic List Container -->
+              <div id="sms-sidebar-list" class="flex-1 overflow-y-auto dark-scroll p-2.5 space-y-2">
+                <!-- Populated dynamically by JS -->
+              </div>
+            </div>
+
+            <!-- Column 3: Active Conversation Canvas (flex-1) -->
+            <div class="flex-1 flex flex-col bg-[#131C31] min-w-0 min-h-0">
+              <!-- Thread Header -->
+              <div class="h-16 shrink-0 px-5 border-b border-slate-800/90 bg-[#172038] flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div id="sms-active-avatar" class="w-9 h-9 rounded-full bg-indigo-600 text-white font-bold text-sm flex items-center justify-center shrink-0">?</div>
+                  <div class="min-w-0">
+                    <h3 id="sms-active-title" class="text-sm font-bold text-white truncate">Select a contact</h3>
+                    <p id="sms-active-subtitle" class="text-[11px] text-slate-400 truncate">Choose a LAN peer, SMS thread, or OTP code on the left</p>
+                  </div>
+                </div>
+
+                <!-- 5 Crisp Circular Action Buttons -->
+                <div class="flex items-center gap-2 shrink-0">
+                  <button onclick="switchPanel('dialer')" title="Voice Call" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white flex items-center justify-center transition-colors">
+                    <i data-lucide="phone" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button onclick="switchPanel('videocall')" title="Video Call" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-indigo-600 text-slate-300 hover:text-white flex items-center justify-center transition-colors">
+                    <i data-lucide="video" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button onclick="showToast('End-to-end LAN / GSM carrier metadata verified')" title="Contact Info" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors">
+                    <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button onclick="showToast('Chat transcript exported to JSON')" title="Export Chat" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button onclick="switchPanel('contacts')" title="Add Contact" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors">
+                    <i data-lucide="user-plus" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Message Feed -->
+              <div id="sms-messages-feed" class="flex-1 overflow-y-auto dark-scroll p-5 space-y-3">
+                <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 space-y-2">
+                  <i data-lucide="message-square-dashed" class="w-10 h-10 text-slate-600"></i>
+                  <p class="text-xs font-medium text-slate-400">Select a peer or SMS conversation to view and send messages.</p>
+                </div>
+              </div>
+
+              <!-- Bottom Rich Composer Bar -->
+              <div class="p-3.5 border-t border-slate-800/90 bg-[#0F172A] shrink-0">
+                <div class="flex items-center gap-2 bg-[#1A243D] border border-slate-700/80 rounded-2xl px-3 py-1.5">
+                  <button onclick="insertSmsQuickEmoji()" title="Insert Emoji" class="p-1.5 text-slate-400 hover:text-indigo-400 transition-colors">
+                    <i data-lucide="smile" class="w-4 h-4"></i>
+                  </button>
+                  <button onclick="showToast('File attachment ready for LAN peer transfer')" title="Attach File" class="p-1.5 text-slate-400 hover:text-indigo-400 transition-colors">
+                    <i data-lucide="paperclip" class="w-4 h-4"></i>
+                  </button>
+                  <button onclick="showToast('Voice note recorder armed')" title="Voice Note" class="p-1.5 text-slate-400 hover:text-indigo-400 transition-colors">
+                    <i data-lucide="mic" class="w-4 h-4"></i>
+                  </button>
+                  <button onclick="draftSmsWithAi()" title="AI Smart Reply" class="p-1.5 text-indigo-400 hover:text-indigo-300 transition-colors">
+                    <i data-lucide="bot" class="w-4 h-4"></i>
+                  </button>
+                  <input id="sms-composer-input" onkeydown="if(event.key==='Enter') sendSmsMessage()" type="text" placeholder="Type a message..." class="flex-1 bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none px-2" />
+                  <button onclick="sendSmsMessage()" title="Send Message" class="w-9 h-9 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shadow-md shadow-indigo-600/30 transition-all shrink-0">
+                    <i data-lucide="send" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- PANEL 5: SIM MANAGER (#panel-sim — Complete Telemetry Dashboard)      -->
+        <!-- ===================================================================== -->
+        <section id="panel-sim" class="panel-view p-4 lg:p-6 space-y-6">
+          <div class="max-w-6xl mx-auto w-full space-y-6">
+
+            <!-- Header Card -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div class="flex items-center gap-2.5">
+                  <h2 class="text-base font-bold text-slate-900">SIM / MODEM INFORMATION</h2>
+                  <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">auto-detected &amp; auto-configured on connect</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-1">Real-time hardware identity, carrier registration, and SIM slot diagnostics.</p>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2.5">
+                <button onclick="toggleModemConnection()" id="sim-toggle-demo-btn" class="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold flex items-center gap-1.5 transition-colors">
+                  <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                  <span>Simulate Connected SIM</span>
+                </button>
+                <button onclick="refreshSimTelemetry()" class="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors">
+                  <i id="sim-refresh-icon" data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                  <span>Refresh Now</span>
+                </button>
+                <button onclick="reconfigureModemAction()" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs">
+                  <i data-lucide="sliders" class="w-3.5 h-3.5"></i>
+                  <span>Reconfigure Modem</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 12-Metric Telemetry Grid -->
+            <div id="sim-metrics-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <!-- Populated dynamically by renderSimTelemetry() -->
+            </div>
+
+            <!-- Auto-Configuration Policy Banner Card -->
+            <div class="bg-blue-50/80 border border-blue-200/90 rounded-2xl p-5 flex items-start gap-3.5">
+              <div class="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                <i data-lucide="shield-check" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h3 class="text-sm font-bold text-blue-900">Auto-configuration</h3>
+                <p class="text-xs text-blue-800/90 mt-1 leading-relaxed">
+                  On connect the modem is initialized (echo off, text SMS mode, SMS notifications, caller ID) and the SIM is identified (ICCID/IMSI/IMEI/operator). Every 20 s the SIM is re-checked — if the SIM card changes, the modem is re-configured automatically. Incoming SMS are stored and verification codes extracted.
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- PANEL 6: USSD (#panel-ussd — Complete 2-Column Interactive Console)   -->
+        <!-- ===================================================================== -->
+        <section id="panel-ussd" class="panel-view p-4 lg:p-6">
+          <div class="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- Left Configuration Column (5 cols) -->
+            <div class="lg:col-span-5 space-y-5">
+
+              <!-- Card 1: Connection Method -->
+              <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
+                <h3 class="text-sm font-bold text-blue-600">Connection Method</h3>
+                <div class="space-y-2.5">
+                  <label class="flex items-center gap-3 p-3 rounded-xl border border-blue-200 bg-blue-50/50 cursor-pointer">
+                    <input type="radio" name="ussd-conn-method" value="mifi" checked onchange="switchUssdMethod('mifi')" class="text-blue-600 focus:ring-blue-500" />
+                    <div>
+                      <div class="text-xs font-bold text-slate-900">Method 1: MiFi Web API (HTTP)</div>
+                      <div class="text-[11px] text-slate-500">Direct gateway USSD over LAN Wi-Fi / USB RNDIS</div>
+                    </div>
+                  </label>
+                  <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                    <input type="radio" name="ussd-conn-method" value="usb" onchange="switchUssdMethod('usb')" class="text-blue-600 focus:ring-blue-500" />
+                    <div>
+                      <div class="text-xs font-bold text-slate-900">Method 2: USB Modem AT (connected modem)</div>
+                      <div class="text-[11px] text-slate-500">AT+CUSD=1 serial execution via COM6</div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Card 2: Dynamic Endpoint Settings -->
+              <div id="ussd-mifi-settings-card" class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
+                <h3 class="text-sm font-bold text-blue-600">MiFi Web API Settings</h3>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1.5">MiFi IP:</label>
+                  <div class="flex items-center gap-2">
+                    <input id="ussd-mifi-ip" type="text" value="http://192.168.100.1" class="flex-1 h-10 px-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-800 focus:outline-none focus:border-blue-500" />
+                    <button onclick="testMifiConnection()" class="h-10 px-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors shrink-0">
+                      Test Connection
+                    </button>
+                  </div>
+                </div>
+                <div id="ussd-mifi-ping-status" class="text-[11px] font-mono text-slate-500">Gateway ready • Default HTTP session</div>
+              </div>
+
+              <div id="ussd-usb-settings-card" class="hidden bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
+                <h3 class="text-sm font-bold text-blue-600">USB Modem AT Settings</h3>
+                <div class="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Serial Port</label>
+                    <input type="text" value="COM6" class="w-full h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs" />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Baud Rate</label>
+                    <input type="text" value="115200" class="w-full h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs" />
+                  </div>
+                </div>
+                <div class="text-[11px] font-mono text-slate-500">Encoding: GSM 7-bit / UCS2 auto-decode</div>
+              </div>
+
+              <!-- Card 3: Carrier Presets -->
+              <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
+                <h3 class="text-sm font-bold text-blue-600">Carrier Presets</h3>
+                <div class="flex items-center gap-3">
+                  <label class="text-xs font-semibold text-slate-600 shrink-0">Carrier:</label>
+                  <select id="ussd-carrier-select" onchange="showToast('Carrier preset set to ' + this.value)" class="flex-1 h-10 px-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500">
+                    <option>Auto (from SIM)</option>
+                    <option>Telecel Ghana</option>
+                    <option>MTN Ghana</option>
+                    <option>AirtelTigo</option>
+                  </select>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Right Execution & Terminal Column (7 cols) -->
+            <div class="lg:col-span-7 space-y-5">
+
+              <!-- Card 4: Quick Codes -->
+              <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-3">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-sm font-bold text-blue-600">Quick Codes</h3>
+                  <span class="text-[11px] text-slate-400">One-click carrier execution</span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button onclick="executeQuickUssd('*124#')" class="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 text-xs font-semibold text-slate-700 transition-colors">
+                    Balance <span class="font-mono text-blue-600">*124#</span>
+                  </button>
+                  <button onclick="executeQuickUssd('*404#')" class="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 text-xs font-semibold text-slate-700 transition-colors">
+                    Registration status <span class="font-mono text-blue-600">*404#</span>
+                  </button>
+                  <button onclick="executeQuickUssd('*400#')" class="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 text-xs font-semibold text-slate-700 transition-colors">
+                    Verify registered <span class="font-mono text-blue-600">*400#</span>
+                  </button>
+                  <button onclick="executeQuickUssd('100')" class="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 text-xs font-semibold text-slate-700 transition-colors">
+                    Customer care <span class="font-mono text-blue-600">100</span>
+                  </button>
+                  <button onclick="executeQuickUssd('*#06#')" class="px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 text-xs font-semibold text-slate-700 transition-colors">
+                    IMEI <span class="font-mono text-blue-600">*#06#</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Card 5: Send USSD & Response Console -->
+              <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
+                <div>
+                  <h3 class="text-sm font-bold text-blue-600 mb-2.5">Send USSD</h3>
+                  <div class="flex items-center gap-2.5">
+                    <label class="text-xs font-semibold text-slate-600">Code:</label>
+                    <input id="ussd-code-input" onkeydown="if(event.key==='Enter') runUssdCode()" type="text" value="*124#" class="flex-1 h-11 px-4 rounded-xl bg-slate-50 border border-slate-200 font-mono text-sm font-bold text-slate-900 focus:outline-none focus:border-blue-500" />
+                    <button onclick="runUssdCode()" class="h-11 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold tracking-wider uppercase shadow-xs transition-colors">
+                      SEND
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-bold text-blue-600">USSD Response</span>
+                    <div class="flex items-center gap-2">
+                      <button onclick="copyUssdResponse()" class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-slate-600 flex items-center gap-1">
+                        <i data-lucide="copy" class="w-3 h-3"></i> Copy
+                      </button>
+                      <button onclick="clearUssdResponse()" class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-[11px] font-semibold text-slate-600">
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <pre id="ussd-response-terminal" class="w-full h-44 p-4 rounded-xl bg-slate-900 text-emerald-400 font-mono text-xs overflow-y-auto dark-scroll whitespace-pre-wrap leading-relaxed border border-slate-800">Ready. Enter a USSD code (e.g. *124#) or select a Quick Code above.</pre>
+                </div>
+
+                <!-- Interactive Multi-Step USSD Menu Reply -->
+                <div class="flex items-center gap-2 pt-1">
+                  <input id="ussd-reply-input" onkeydown="if(event.key==='Enter') sendUssdSessionReply()" type="text" placeholder="Reply option (e.g. 1, 2) for interactive USSD session..." class="flex-1 h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-800 focus:outline-none focus:border-blue-500" />
+                  <button onclick="sendUssdSessionReply()" class="h-9 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition-colors">
+                    Reply
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- PANEL 7: APPS (#panel-apps — Ecosystem & Companion Modules Hub)       -->
+        <!-- ===================================================================== -->
+        <section id="panel-apps" class="panel-view p-4 lg:p-6 space-y-6">
+          <div class="max-w-6xl mx-auto w-full space-y-6">
+
+            <!-- Header & Filter Tabs -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Companion Modules &amp; Device Bridges</h2>
+                <p class="text-xs text-slate-500 mt-0.5">Integrated C# desktop services, Android LAN bridges, and security utilities.</p>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="bg-slate-100 p-1 rounded-xl flex items-center text-xs font-semibold">
+                  <button onclick="filterAppsGrid('all', this)" class="apps-filter-btn px-3 py-1.5 rounded-lg bg-white text-slate-900 shadow-xs">All Modules</button>
+                  <button onclick="filterAppsGrid('active', this)" class="apps-filter-btn px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900">Connected</button>
+                  <button onclick="filterAppsGrid('bridge', this)" class="apps-filter-btn px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900">Device Bridges</button>
+                </div>
+                <span class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 6 Services Healthy
+                </span>
+              </div>
+            </div>
+
+            <!-- 3-Column Modules Grid -->
+            <div id="apps-modules-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+
+              <!-- Module 1: Laptop Tracker & Permissions -->
+              <div data-category="active" class="app-module-card bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between hover:border-blue-300 transition-all">
+                <div>
+                  <div class="flex items-start justify-between gap-3 mb-3">
+                    <div class="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                      <i data-lucide="shield-alert" class="w-5 h-5"></i>
+                    </div>
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Active</span>
+                  </div>
+                  <h3 class="text-sm font-bold text-slate-900">Laptop Tracker &amp; Permissions</h3>
+                  <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Local hardware geofencing, device tracking, and AI permission guardrails referenced by the Agent Console.
+                  </p>
+                </div>
+                <div class="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                  <span class="text-[11px] font-mono text-slate-400">Local Guard v4.1</span>
+                  <button onclick="openLaptopTrackerModal()" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors">Configure</button>
+                </div>
+              </div>
+
+              <!-- Module 2: OTP & Verification Code Extractor -->
+              <div data-category="active" class="app-module-card bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between hover:border-blue-300 transition-all">
+                <div>
+                  <div class="flex items-start justify-between gap-3 mb-3">
+                    <div class="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                      <i data-lucide="key-round" class="w-5 h-5"></i>
+                    </div>
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Enabled</span>
+                  </div>
+                  <h3 class="text-sm font-bold text-slate-900">OTP &amp; Verification Extractor</h3>
+                  <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Automatically parses 4–8 digit 2FA verification codes from incoming GSM SMS and routes them to SMS Codes.
+                  </p>
+                </div>
+                <div class="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                  <span class="text-[11px] font-mono text-slate-400">3 codes captured</span>
+                  <button onclick="openSmsCodesDirect()" class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors">View Codes</button>
+                </div>
+              </div>
+
+              <!-- Module 3: Android Companion Bridge (.apk) -->
+              <div data-category="bridge active" class="app-module-card bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between hover:border-blue-300 transition-all">
+                <div>
+                  <div class="flex items-start justify-between gap-3 mb-3">
+                    <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <i data-lucide="smartphone" class="w-5 h-5"></i>
+                    </div>
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">LAN Ready</span>
+                  </div>
+                  <h3 class="text-sm font-bold text-slate-900">Android Companion Bridge (.apk)</h3>
+                  <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Syncs contacts, VoIP LAN audio/video rooms, and SMS notifications between Windows .exe and Android .apk.
+                  </p>
+                </div>
+                <div class="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                  <span class="text-[11px] font-mono text-slate-400">UDP/TCP 700-ID</span>
+                  <button onclick="setPlatformMode('android')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors">Preview .apk</button>
+                </div>
+              </div>
+
+              <!-- Module 4: Bulk USSD & Balance Scheduler -->
+              <div data-category="active" class="app-module-card bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between hover:border-blue-300 transition-all">
+                <div>
+                  <div class="flex items-start justify-between gap-3 mb-3">
+                    <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                      <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Standby</span>
+                  </div>
+                  <h3 class="text-sm font-bold text-slate-900">Bulk USSD &amp; Balance Scheduler</h3>
+                  <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Automates periodic *124# airtime/data checks and carrier bundle renewals via MiFi Web API or AT commands.
+                  </p>
+                </div>
+                <div class="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                  <span class="text-[11px] font-mono text-slate-400">Interval: 30m</span>
+                  <button onclick="switchPanel('ussd')" class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors">Open USSD</button>
+                </div>
+              </div>
+
+              <!-- Module 5: Router & MiFi Admin Gateway -->
+              <div data-category="bridge" class="app-module-card bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between hover:border-blue-300 transition-all">
+                <div>
+                  <div class="flex items-start justify-between gap-3 mb-3">
+                    <div class="w-11 h-11 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center">
+                      <i data-lucide="router" class="w-5 h-5"></i>
+                    </div>
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">192.168.100.1</span>
+                  </div>
+                  <h3 class="text-sm font-bold text-slate-900">Router &amp; MiFi Admin Gateway</h3>
+                  <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Direct HTTP session diagnostics, WAN APN management, and client lease inspection for connected MiFi modems.
+                  </p>
+                </div>
+                <div class="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                  <span class="text-[11px] font-mono text-slate-400">HTTP API Ready</span>
+                  <button onclick="testMifiConnection(); switchPanel('ussd')" class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors">Ping Gateway</button>
+                </div>
+              </div>
+
+              <!-- Module 6: AT Command & COM Port Terminal -->
+              <div data-category="bridge" class="app-module-card bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between hover:border-blue-300 transition-all">
+                <div>
+                  <div class="flex items-start justify-between gap-3 mb-3">
+                    <div class="w-11 h-11 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                      <i data-lucide="terminal-square" class="w-5 h-5"></i>
+                    </div>
+                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">COM6 | 115200</span>
+                  </div>
+                  <h3 class="text-sm font-bold text-slate-900">AT Command &amp; COM Terminal</h3>
+                  <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                    Low-level serial console for raw AT+CSQ, AT+CUSD, and AT+CMGF diagnostics with live trace logging.
+                  </p>
+                </div>
+                <div class="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                  <span class="text-[11px] font-mono text-slate-400">Serial 8N1</span>
+                  <button onclick="toggleLogDrawer(true)" class="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors">Open AT Log</button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- PANEL 8: AGENT (#panel-agent — Executive AI & Local Command Console)  -->
+        <!-- ===================================================================== -->
+        <section id="panel-agent" class="panel-view p-4 lg:p-6">
+          <div class="max-w-5xl mx-auto w-full flex-1 flex flex-col min-h-0 gap-4">
+
+            <!-- Top Agent Header & Setup Banner Card -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 shrink-0 space-y-3.5">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <h2 class="text-lg font-bold text-slate-900">Agent panel</h2>
+                    <span id="agent-status-chip" class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">Local Commands Only</span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-1 leading-relaxed max-w-3xl">
+                    Ask the configured AI assistant, use safe local navigation commands, or read a response aloud. Prompts are sent only when you click Send. Device tracking and permissions stay in Laptop Tracker.
+                  </p>
+                </div>
+
+                <!-- Read AI Responses Aloud Checkbox -->
+                <label class="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 cursor-pointer shrink-0">
+                  <input id="agent-auto-tts-checkbox" type="checkbox" checked class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                  <span>Read AI responses aloud</span>
+                </label>
+              </div>
+
+              <!-- Dynamic Configuration Notice Banner -->
+              <div id="agent-config-banner" class="p-3 rounded-xl bg-amber-50/90 border border-amber-200/90 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5 text-xs text-amber-900 font-medium">
+                  <i data-lucide="alert-circle" class="w-4 h-4 text-amber-600 shrink-0"></i>
+                  <span>Configure and enable the AI assistant in <strong>Settings &gt; AI</strong> first.</span>
+                </div>
+                <button onclick="openSettingsAiTab()" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors">
+                  Open Settings &gt; AI
+                </button>
+              </div>
+
+              <!-- Quick Prompt Chips -->
+              <div class="flex flex-wrap items-center gap-2 pt-0.5">
+                <span class="text-[11px] font-semibold text-slate-400">Quick commands:</span>
+                <button onclick="sendAgentQuickPrompt('Check SIM & modem status')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-medium transition-colors">Check SIM &amp; modem status</button>
+                <button onclick="sendAgentQuickPrompt('Run USSD *124#')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-medium transition-colors">Run USSD *124#</button>
+                <button onclick="sendAgentQuickPrompt('Open SMS verification codes')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-medium transition-colors">Open SMS verification codes</button>
+                <button onclick="sendAgentQuickPrompt('Go to Laptop Tracker')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-medium transition-colors">Go to Laptop Tracker</button>
+              </div>
+            </div>
+
+            <!-- Main Chat Transcript Card -->
+            <div id="agent-chat-transcript" class="flex-1 bg-white border border-slate-200 rounded-2xl p-5 overflow-y-auto space-y-4 min-h-[210px] shadow-xs">
+              <div class="flex items-start gap-3">
+                <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                  <i data-lucide="bot" class="w-4 h-4"></i>
+                </div>
+                <div class="bg-slate-50 border border-slate-200/80 rounded-2xl rounded-tl-sm px-4 py-3 text-xs text-slate-700 leading-relaxed max-w-2xl">
+                  <div class="font-bold text-slate-900 mb-1">USSD Manager Pro Assistant</div>
+                  Hello! I can execute safe local workspace navigation (e.g., <em>"Run USSD *124#"</em>, <em>"Check SIM status"</em>, <em>"Open SMS codes"</em>) right away, or answer full natural-language queries once enabled in <strong>Settings &gt; AI</strong>.
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom Input Bar -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-3 flex items-center gap-3 shadow-xs shrink-0">
+              <input id="agent-prompt-input" onkeydown="if(event.key==='Enter') sendAgentPrompt()" type="text" value="hello" placeholder="Ask AI or enter a local command..." class="flex-1 h-11 px-3.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white transition-colors" />
+              <button onclick="readLatestAgentResponseAloud()" class="h-11 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors shrink-0">
+                <i data-lucide="volume-2" class="w-4 h-4 text-blue-600"></i>
+                <span>Read aloud</span>
+              </button>
+              <button onclick="sendAgentPrompt()" class="h-11 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors shrink-0">
+                <span>Send</span>
+                <i data-lucide="arrow-up" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ===================================================================== -->
+        <!-- NEW IN v4.1: WHAT'S NEW PANEL                                        -->
+        <!-- ===================================================================== -->
+        <section id="panel-whats-new" class="panel-view p-4 lg:p-6 space-y-6">
+          <div class="max-w-5xl mx-auto w-full space-y-6">
+            <div class="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 text-white">
+              <div class="flex items-center gap-3 mb-2">
+                <span class="px-3 py-1 rounded-full bg-white/20 text-xs font-bold">NEW</span>
+                <span class="text-xl font-bold">What's New in v4.1</span>
+              </div>
+              <p class="text-blue-100 text-sm">Secure remote control, group calls, PFS encryption, and mobile apps.</p>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div class="bg-white rounded-2xl border border-slate-200 p-5">
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3"><i data-lucide="shield-check" class="w-5 h-5"></i></div>
+                <h3 class="font-bold text-sm mb-1">Consent-Gated Remote Control</h3>
+                <p class="text-xs text-slate-500">Agent can control the device only with explicit per-command user approval. Emergency revoke available at any time.</p>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-5">
+                <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3"><i data-lucide="users" class="w-5 h-5"></i></div>
+                <h3 class="font-bold text-sm mb-1">Group Conference Calls</h3>
+                <p class="text-xs text-slate-500">Server-side conference bridge with CONF_JOIN/LEAVE/AUDIO/ROSTER protocol. 3+ participant audio calls via relay.</p>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-5">
+                <div class="w-10 h-10 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center mb-3"><i data-lucide="key" class="w-5 h-5"></i></div>
+                <h3 class="font-bold text-sm mb-1">Perfect Forward Secrecy</h3>
+                <p class="text-xs text-slate-500">Session keys rotate every 5 minutes during calls via fresh DH exchange. Recorded calls cannot be decrypted later.</p>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-5">
+                <div class="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center mb-3"><i data-lucide="smartphone" class="w-5 h-5"></i></div>
+                <h3 class="font-bold text-sm mb-1">Android &amp; iOS Apps</h3>
+                <p class="text-xs text-slate-500">Flutter mobile apps implementing the same relay protocol — same 700-XXXXXXX identity across desktop and mobile.</p>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-5">
+                <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mb-3"><i data-lucide="inbox" class="w-5 h-5"></i></div>
+                <h3 class="font-bold text-sm mb-1">Offline Message Queue</h3>
+                <p class="text-xs text-slate-500">Messages to offline peers are queued on the relay (up to 50 per peer) and delivered the moment they reconnect.</p>
+              </div>
+              <div class="bg-white rounded-2xl border border-slate-200 p-5">
+                <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3"><i data-lucide="repeat" class="w-5 h-5"></i></div>
+                <h3 class="font-bold text-sm mb-1">USSD Replay Chips</h3>
+                <p class="text-xs text-slate-500">Recent USSD sessions shown as one-click repeat chips with last response preview. Auto-updated after every session.</p>
+              </div>
+            </div>
+            <!-- Download buttons -->
+            <div class="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 class="font-bold text-base mb-4">Download v4.1</h3>
+              <div class="flex flex-wrap gap-3">
+                <a href="https://github.com/adminat233-new/ussdapp/releases/latest/download/UssdApp.exe" class="flex items-center gap-2 px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors">
+                  <i data-lucide="monitor" class="w-4 h-4"></i>
+                  Windows .exe (v4.1)
+                </a>
+                <a href="https://github.com/adminat233-new/ussdapp/releases/latest/download/UssdManagerPro.apk" class="flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition-colors">
+                  <i data-lucide="smartphone" class="w-4 h-4"></i>
+                  Android .apk (v4.1)
+                </a>
+                <a href="https://github.com/adminat233-new/ussdapp" target="_blank" class="flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-semibold transition-colors">
+                  <i data-lucide="github" class="w-4 h-4"></i>
+                  View on GitHub
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <!-- Collapsible AT / HTTP Diagnostic Log Drawer (Toggled via Bottom Footer "Log ▲/▼") -->
+    <div id="diagnostic-log-drawer" class="hidden h-40 shrink-0 bg-slate-900 text-slate-200 border-t border-slate-700 flex flex-col z-20">
+      <div class="h-8 px-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between text-[11px] font-mono">
+        <span class="text-blue-400 font-semibold">DIAGNOSTIC AT / HTTP ENGINE LOG (C# Bridge v4.1)</span>
+        <div class="flex items-center gap-3">
+          <button onclick="clearDiagnosticLog()" class="text-slate-400 hover:text-white">Clear</button>
+          <button onclick="toggleLogDrawer(false)" class="text-slate-400 hover:text-white">Close ✕</button>
+        </div>
+      </div>
+      <div id="diagnostic-log-lines" class="flex-1 overflow-y-auto dark-scroll px-4 py-2 font-mono text-[11px] space-y-1 text-slate-300">
+        <div><span class="text-slate-500">[13:13:01]</span> [SYS] USSD Manager Pro v4.1 initialized (Windows/Android Hybrid UI).</div>
+        <div><span class="text-slate-500">[13:13:02]</span> [LAN] Peer discovery listening on 172.26.0.1:7000 (2 peers online).</div>
+        <div><span class="text-slate-500">[13:13:03]</span> [MODEM] Waiting for user connect trigger (COM6 | 115200 standby).</div>
+      </div>
+    </div>
+
+    <!-- Bottom Global Status Footer Bar (Windows .exe mode) -->
+    <footer id="desktop-footer" class="h-8 shrink-0 bg-slate-50 border-t border-slate-200 px-4 flex items-center justify-between text-xs text-slate-500 font-mono z-20">
+      <div class="flex items-center gap-3 overflow-x-auto whitespace-nowrap">
+        <span>port: <strong id="footer-port" class="font-semibold text-slate-700">-</strong></span>
+        <span class="text-slate-300">|</span>
+        <span>carrier: <strong id="footer-carrier" class="font-semibold text-slate-700">-</strong></span>
+        <span class="text-slate-300">|</span>
+        <span id="footer-transport">USSD via MiFi</span>
+        <span class="text-slate-300">|</span>
+        <span id="footer-network-badge" class="inline-flex items-center gap-1.5 text-amber-600 font-semibold">
+          <span id="footer-network-dot" class="w-2 h-2 rounded-full bg-amber-500"></span>
+          <span id="footer-network-text">LAN only</span>
+        </span>
+      </div>
+
+      <div class="flex items-center gap-2.5 shrink-0">
+        <button id="footer-log-btn" onclick="toggleLogDrawer()" class="px-2 py-0.5 rounded bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-sans text-[11px] font-semibold flex items-center gap-1 transition-colors">
+          <span>Log</span>
+          <span id="footer-log-arrow">▲</span>
+        </button>
+        <span class="px-2 py-0.5 rounded bg-slate-200/70 text-slate-600 text-[11px] font-semibold">v4.1</span>
+      </div>
+    </footer>
+
+    <!-- Android Bottom Navigation Bar (Visible ONLY in Android .apk Preview Mode) -->
+    <nav id="android-bottom-nav" class="hidden h-16 shrink-0 bg-white border-t border-slate-200 px-2 items-center justify-around z-20">
+      <button onclick="switchPanel('dialer')" class="and-nav-btn flex flex-col items-center gap-1 text-blue-600 text-[10px] font-bold">
+        <i data-lucide="phone" class="w-4 h-4"></i>
+        <span>Dialer</span>
+      </button>
+      <button onclick="switchPanel('contacts')" class="and-nav-btn flex flex-col items-center gap-1 text-slate-500 text-[10px] font-medium">
+        <i data-lucide="users" class="w-4 h-4"></i>
+        <span>Contacts</span>
+      </button>
+      <button onclick="switchPanel('sms')" class="and-nav-btn flex flex-col items-center gap-1 text-slate-500 text-[10px] font-medium">
+        <i data-lucide="message-square" class="w-4 h-4"></i>
+        <span>SMS</span>
+      </button>
+      <button onclick="switchPanel('ussd')" class="and-nav-btn flex flex-col items-center gap-1 text-slate-500 text-[10px] font-medium">
+        <i data-lucide="terminal" class="w-4 h-4"></i>
+        <span>USSD</span>
+      </button>
+      <button onclick="toggleAndroidMoreSheet()" class="and-nav-btn flex flex-col items-center gap-1 text-slate-500 text-[10px] font-medium">
+        <i data-lucide="grid" class="w-4 h-4"></i>
+        <span>More</span>
+      </button>
+    </nav>
+
+    <!-- Android "More" Drawer Sheet (For Video Call, SIM Manager, Apps, Agent in .apk mode) -->
+    <div id="android-more-sheet" class="hidden fixed inset-0 bg-slate-900/50 z-50 flex items-end justify-center">
+      <div class="bg-white w-full max-w-[402px] rounded-t-3xl p-5 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">All USSD Manager Pro Modules</span>
+          <button onclick="toggleAndroidMoreSheet(false)" class="p-1 rounded-lg text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <button onclick="switchPanel('videocall'); toggleAndroidMoreSheet(false)" class="p-3 rounded-xl bg-slate-50 hover:bg-blue-50 text-left flex items-center gap-2.5">
+            <i data-lucide="video" class="w-4 h-4 text-blue-600"></i>
+            <span class="text-xs font-bold text-slate-800">Video Call</span>
+          </button>
+          <button onclick="switchPanel('sim'); toggleAndroidMoreSheet(false)" class="p-3 rounded-xl bg-slate-50 hover:bg-blue-50 text-left flex items-center gap-2.5">
+            <i data-lucide="sim-card" class="w-4 h-4 text-blue-600"></i>
+            <span class="text-xs font-bold text-slate-800">SIM Manager</span>
+          </button>
+          <button onclick="switchPanel('apps'); toggleAndroidMoreSheet(false)" class="p-3 rounded-xl bg-slate-50 hover:bg-blue-50 text-left flex items-center gap-2.5">
+            <i data-lucide="layout-grid" class="w-4 h-4 text-blue-600"></i>
+            <span class="text-xs font-bold text-slate-800">Apps</span>
+          </button>
+          <button onclick="switchPanel('agent'); toggleAndroidMoreSheet(false)" class="p-3 rounded-xl bg-slate-50 hover:bg-blue-50 text-left flex items-center gap-2.5">
+            <i data-lucide="bot" class="w-4 h-4 text-blue-600"></i>
+            <span class="text-xs font-bold text-slate-800">Agent AI</span>
+          </button>
+        </div>
+        <button onclick="openModal('modem-modal'); toggleAndroidMoreSheet(false)" class="w-full py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold">Configure Modem</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL 1: MODEM CONNECTION MODAL                                           -->
+  <!-- ========================================================================= -->
+  <div id="modem-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <i data-lucide="plug-zap" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-900">Modem &amp; Gateway Connection</h3>
+            <p class="text-[11px] text-slate-500">Connect USB AT modem or MiFi HTTP API</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modem-modal')" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">Connection Interface</label>
+          <select id="modal-modem-interface" class="w-full h-10 px-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500">
+            <option value="both">Hybrid: USB Serial Modem (COM6) + MiFi HTTP (192.168.100.1)</option>
+            <option value="usb">USB Serial Modem Only (COM6 @ 115200)</option>
+            <option value="mifi">MiFi Web API Only (http://192.168.100.1)</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Serial Port</label>
+            <input id="modal-com-port" type="text" value="COM6" class="w-full h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Baud Rate</label>
+            <input id="modal-baud-rate" type="text" value="115200" class="w-full h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 font-mono text-xs" />
+          </div>
+        </div>
+
+        <div class="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-1">
+          <div class="font-semibold text-slate-800">Auto-Initialization Sequence:</div>
+          <p class="text-[11px] text-slate-500">ATE0 (echo off) → AT+CMGF=1 (text SMS) → AT+CNMI (notifications) → AT+CLIP=1 (caller ID) → SIM ICCID/IMSI read.</p>
+        </div>
+      </div>
+
+      <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+        <button onclick="closeModal('modem-modal')" class="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-xs font-semibold text-slate-700">Cancel</button>
+        <button id="modal-connect-toggle-btn" onclick="applyModemConnectionFromModal()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs">Connect Modem</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL 2: APPLICATION & AI SETTINGS MODAL                                  -->
+  <!-- ========================================================================= -->
+  <div id="settings-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+            <i data-lucide="settings" class="w-4 h-4"></i>
+          </div>
+          <h3 class="text-sm font-bold text-slate-900">Settings</h3>
+        </div>
+        <button onclick="closeModal('settings-modal')" class="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Settings Tabs -->
+      <div class="px-5 pt-3 border-b border-slate-100 flex items-center gap-4 text-xs font-bold">
+        <button id="settings-tab-btn-ai" onclick="switchSettingsTab('ai')" class="pb-2.5 border-b-2 border-blue-600 text-blue-600">AI Assistant</button>
+        <button id="settings-tab-btn-modem" onclick="switchSettingsTab('modem')" class="pb-2.5 border-b-2 border-transparent text-slate-500 hover:text-slate-800">Modem &amp; Network</button>
+        <button id="settings-tab-btn-general" onclick="switchSettingsTab('general')" class="pb-2.5 border-b-2 border-transparent text-slate-500 hover:text-slate-800">General</button>
+      </div>
+
+      <!-- Tab 1: AI Assistant -->
+      <div id="settings-tab-ai" class="p-5 space-y-4">
+        <label class="flex items-center justify-between p-3.5 rounded-xl bg-blue-50/70 border border-blue-200 cursor-pointer">
+          <div>
+            <div class="text-xs font-bold text-slate-900">Enable AI Assistant</div>
+            <div class="text-[11px] text-slate-500">Activates natural-language responses in the Agent Panel</div>
+          </div>
+          <input id="settings-enable-ai-checkbox" type="checkbox" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+        </label>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Provider / Runtime</label>
+            <select id="settings-ai-provider" class="w-full h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium">
+              <option>Local Ollama / Llama 3.2</option>
+              <option>OpenAI-Compatible Endpoint</option>
+              <option>Gemini Cloud Bridge</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">TTS Voice Speed</label>
+            <select id="settings-tts-rate" class="w-full h-9 px-3 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium">
+              <option value="1.0">1.0x (Normal)</option>
+              <option value="1.15">1.15x (Crisp)</option>
+              <option value="0.9">0.9x (Clear)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Modem & Network -->
+      <div id="settings-tab-modem" class="hidden p-5 space-y-3 text-xs">
+        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+          <span class="font-semibold text-slate-700">SIM Re-check Polling Interval</span>
+          <span class="font-mono font-bold text-blue-600">20 seconds</span>
+        </div>
+        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+          <span class="font-semibold text-slate-700">Auto-extract SMS Verification Codes</span>
+          <input type="checkbox" checked class="rounded text-blue-600" />
+        </div>
+      </div>
+
+      <!-- Tab 3: General -->
+      <div id="settings-tab-general" class="hidden p-5 space-y-3 text-xs">
+        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+          <span class="font-semibold text-slate-700">Application Build</span>
+          <span class="font-mono text-slate-600">USSD Manager Pro v4.1 (.NET / Android)</span>
+        </div>
+        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+          <span class="font-semibold text-slate-700">Keep Laptop Tracker Permissions Local</span>
+          <input type="checkbox" checked disabled class="rounded text-blue-600" />
+        </div>
+      </div>
+
+      <div class="px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5">
+        <button onclick="closeModal('settings-modal')" class="px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700">Close</button>
+        <button onclick="saveSettingsModal()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">Save Preferences</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Non-Blocking Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-11 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- ========================================================================= -->
+  <!-- APPLICATION JAVASCRIPT ENGINE                                             -->
+  <!-- ========================================================================= -->
+  <script>
+    // Global Application State
+    const appState = {
+      activePanel: 'dialer',
+      platformMode: 'windows',
+      modemConnected: false,
+      aiEnabled: false,
+      callTimerInterval: null,
+      callSeconds: 0,
+      selectedContactId: null,
+      contactFilter: 'All',
+      smsCategory: 'peers',
+      activeSmsThreadId: 'peer-1',
+      ussdMethod: 'mifi',
+      contacts: [
+        { id: 1, name: 'Alice', number: '233244000111', source: 'Device', favorite: true },
+        { id: 2, name: 'TestB', number: '7003256099', source: 'Device', favorite: true },
+        { id: 3, name: 'OBED', number: '233505940530', source: 'Device', favorite: false }
+      ],
+      smsData: {
+        peers: [
+          {
+            id: 'peer-1',
+            name: 'Desktop-Node-01',
+            subtitle: '172.26.0.1 • Encrypted LAN',
+            initials: 'DN',
+            online: true,
+            messages: [
+              { sender: 'them', text: 'LAN peer discovery handshake complete on 172.26.0.1.', time: '13:10' },
+              { sender: 'me', text: 'Connected from USSD Manager Pro v4.1.', time: '13:11' }
+            ]
+          }
+        ],
+        msgs: [
+          {
+            id: 'sms-1',
+            name: 'Telecel GH',
+            subtitle: 'Carrier Service • GSM SMS',
+            initials: 'TG',
+            online: true,
+            unread: 1,
+            messages: [
+              { sender: 'them', text: 'Welcome to Telecel Ghana! Dial *124# to check your main account and data bundle balances.', time: '09:15' }
+            ]
+          },
+          {
+            id: 'sms-2',
+            name: 'Alice',
+            subtitle: '233244000111 • Mobile',
+            initials: 'AL',
+            online: false,
+            unread: 0,
+            messages: [
+              { sender: 'them', text: 'Hey! Did the USSD balance check go through on the MiFi router?', time: '11:20' },
+              { sender: 'me', text: 'Yes, instant response via HTTP API!', time: '11:22' }
+            ]
+          },
+          {
+            id: 'sms-3',
+            name: 'Bank Alert',
+            subtitle: 'Alerts • Verification',
+            initials: 'BA',
+            online: false,
+            unread: 1,
+            messages: [
+              { sender: 'them', text: 'Your one-time verification code is 482910. Valid for 10 minutes.', time: '12:48' }
+            ]
+          }
+        ],
+        codes: [
+          { id: 'otp-1', service: 'Bank Alert 2FA', code: '482910', time: '12:48 PM', raw: 'Your one-time verification code is 482910.' },
+          { id: 'otp-2', service: 'Telecel Self-Care', code: '903412', time: 'Yesterday', raw: 'Telecel OTP: 903412. Do not share with anyone.' },
+          { id: 'otp-3', service: 'Cloud Login', code: '771054', time: 'Nov 10', raw: 'Use 771054 to verify your session.' }
+        ]
+      }
+    };
+
+    // Initialize Lucide Icons & Default Views on Load
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      renderContactsTable();
+      renderSmsSidebarList();
+      selectSmsItem('peer-1');
+      renderSimTelemetry();
+    });
+
+    // =========================================================================
+    // 1. PANEL NAVIGATION & SIDEBAR ROUTING
+    // =========================================================================
+    function switchPanel(panelKey) {
+      const targetEl = document.getElementById('panel-' + panelKey);
+      if (!targetEl) return;
+
+      appState.activePanel = panelKey;
+
+      // Toggle .active on all .panel-view elements
+      document.querySelectorAll('.panel-view').forEach(panel => {
+        panel.classList.remove('active');
+      });
+      targetEl.classList.add('active');
+
+      // Update Desktop Sidebar Buttons
+      let matchedBtn = null;
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        const isMatch = btn.getAttribute('data-panel') === panelKey;
+        if (isMatch) {
+          matchedBtn = btn;
+          btn.classList.add('active', 'bg-blue-50', 'text-blue-700', 'font-semibold');
+          btn.classList.remove('text-slate-600', 'font-medium');
+        } else {
+          btn.classList.remove('active', 'bg-blue-50', 'text-blue-700', 'font-semibold');
+          btn.classList.add('text-slate-600', 'font-medium');
+        }
+      });
+
+      // Update Header Title & Subtitle
+      if (matchedBtn) {
+        document.getElementById('header-title').textContent = matchedBtn.getAttribute('data-title');
+        document.getElementById('header-subtitle').textContent = matchedBtn.getAttribute('data-subtitle');
+      }
+
+      // Update Android Bottom Nav Highlighting
+      document.querySelectorAll('.and-nav-btn').forEach(btn => {
+        btn.classList.remove('text-blue-600', 'font-bold');
+        btn.classList.add('text-slate-500', 'font-medium');
+      });
+
+      lucide.createIcons();
+    }
+
+    // Bind Sidebar Nav Clicks
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        switchPanel(btn.getAttribute('data-panel'));
+      });
+    });
+
+    // Sidebar Collapse Toggle
+    document.getElementById('sidebar-toggle-btn').addEventListener('click', () => {
+      document.getElementById('desktop-sidebar').classList.toggle('collapsed');
+    });
+
+    // =========================================================================
+    // 2. WINDOWS (.EXE) vs ANDROID (.APK) PLATFORM PREVIEW SWITCHER
+    // =========================================================================
+    function setPlatformMode(mode) {
+      appState.platformMode = mode;
+      const winBtn = document.getElementById('mode-win-btn');
+      const andBtn = document.getElementById('mode-and-btn');
+
+      if (mode === 'android') {
+        document.body.classList.add('android-mode');
+        andBtn.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+        andBtn.classList.remove('text-slate-500');
+        winBtn.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+        winBtn.classList.add('text-slate-500');
+        showToast('Switched to Android (.apk) mobile companion preview');
+      } else {
+        document.body.classList.remove('android-mode');
+        winBtn.classList.add('bg-white', 'text-slate-900', 'shadow-sm');
+        winBtn.classList.remove('text-slate-500');
+        andBtn.classList.remove('bg-white', 'text-slate-900', 'shadow-sm');
+        andBtn.classList.add('text-slate-500');
+        showToast('Switched to Windows (.exe) desktop layout');
+      }
+      lucide.createIcons();
+    }
+
+    function toggleAndroidMoreSheet(forceState) {
+      const sheet = document.getElementById('android-more-sheet');
+      if (typeof forceState === 'boolean') {
+        sheet.classList.toggle('hidden', !forceState);
+      } else {
+        sheet.classList.toggle('hidden');
+      }
+    }
+
+    // =========================================================================
+    // 3. DIALER PANEL INTERACTIVITY
+    // =========================================================================
+    function setDialerTransport(type) {
+      const cellBtn = document.getElementById('transport-cellular');
+      const voipBtn = document.getElementById('transport-voip');
+      if (type === 'cellular') {
+        cellBtn.className = 'px-3 py-1.5 rounded-lg bg-blue-600 text-white shadow-xs flex items-center gap-1.5 transition-all';
+        voipBtn.className = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition-all';
+      } else {
+        voipBtn.className = 'px-3 py-1.5 rounded-lg bg-blue-600 text-white shadow-xs flex items-center gap-1.5 transition-all';
+        cellBtn.className = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition-all';
+      }
+    }
+
+    function pressDialKey(digit) {
+      const input = document.getElementById('dialer-display');
+      input.value += digit;
+    }
+
+    function dialerBackspace() {
+      const input = document.getElementById('dialer-display');
+      input.value = input.value.slice(0, -1);
+    }
+
+    function dialerClear() {
+      document.getElementById('dialer-display').value = '';
+    }
+
+    function switchDialerSubtab(tab) {
+      const keypadBtn = document.getElementById('subtab-keypad');
+      const recentsBtn = document.getElementById('subtab-recents');
+      const keypadView = document.getElementById('dialer-keypad-view');
+      const recentsView = document.getElementById('dialer-recents-view');
+
+      if (tab === 'keypad') {
+        keypadBtn.className = 'py-1.5 rounded-lg bg-white text-blue-600 font-semibold text-xs shadow-xs transition-all';
+        recentsBtn.className = 'py-1.5 rounded-lg text-slate-600 hover:text-slate-900 font-semibold text-xs transition-all';
+        keypadView.classList.remove('hidden');
+        recentsView.classList.add('hidden');
+      } else {
+        recentsBtn.className = 'py-1.5 rounded-lg bg-white text-blue-600 font-semibold text-xs shadow-xs transition-all';
+        keypadBtn.className = 'py-1.5 rounded-lg text-slate-600 hover:text-slate-900 font-semibold text-xs transition-all';
+        recentsView.classList.remove('hidden');
+        keypadView.classList.add('hidden');
+      }
+    }
+
+    function fillAndCall(num) {
+      document.getElementById('dialer-display').value = num;
+      startSimulatedCall();
+    }
+
+    function startSimulatedCall() {
+      const target = document.getElementById('dialer-display').value.trim() || '7003256099';
+      document.getElementById('dialer-display').value = target;
+      const banner = document.getElementById('active-call-banner');
+      document.getElementById('active-call-target').textContent = 'Connected: ' + target;
+      document.getElementById('dialer-status-pill').textContent = 'In Call';
+      document.getElementById('lan-call-state').textContent = 'Active';
+      banner.classList.remove('hidden');
+
+      clearInterval(appState.callTimerInterval);
+      appState.callSeconds = 0;
+      appState.callTimerInterval = setInterval(() => {
+        appState.callSeconds++;
+        const mins = String(Math.floor(appState.callSeconds / 60)).padStart(2, '0');
+        const secs = String(appState.callSeconds % 60).padStart(2, '0');
+        document.getElementById('active-call-timer').textContent = `${mins}:${secs} • HD Audio`;
+      }, 1000);
+
+      appendDiagnosticLog(`[CALL] Outbound session established to ${target}`);
+    }
+
+    function endSimulatedCall() {
+      clearInterval(appState.callTimerInterval);
+      document.getElementById('active-call-banner').classList.add('hidden');
+      document.getElementById('dialer-status-pill').textContent = 'Ready';
+      document.getElementById('lan-call-state').textContent = 'Idle';
+      appendDiagnosticLog('[CALL] Session terminated.');
+    }
+
+    function toggleRelayHost(checkbox) {
+      const label = document.getElementById('relay-identity-label');
+      if (checkbox.checked) {
+        label.textContent = 'Relay identity: local-host-7003950263 (listening on :9000)';
+        label.classList.add('text-emerald-600');
+      } else {
+        label.textContent = 'Relay identity: none (no relay connected)';
+        label.classList.remove('text-emerald-600');
+      }
+    }
+
+    function selectLanPeer(ip, name) {
+      document.getElementById('direct-ip-input').value = ip;
+      showToast(`Selected LAN peer ${name} (${ip})`);
+    }
+
+    function startLanDirectCall() {
+      const ip = document.getElementById('direct-ip-input').value.trim() || '172.26.0.1';
+      document.getElementById('dialer-display').value = ip;
+      startSimulatedCall();
+    }
+
+    // =========================================================================
+    // 4. CONTACTS PANEL INTERACTIVITY
+    // =========================================================================
+    function renderContactsTable() {
+      const tbody = document.getElementById('contacts-table-body');
+      const filtered = appState.contacts.filter(c => {
+        if (appState.contactFilter === 'Favorites') return c.favorite;
+        if (appState.contactFilter === 'SIM') return c.source === 'SIM';
+        if (appState.contactFilter === 'Device') return c.source === 'Device';
+        return true;
+      });
+
+      tbody.innerHTML = filtered.map(c => {
+        const isSelected = appState.selectedContactId === c.id;
+        return `
+          <tr onclick="selectContact(${c.id})" class="cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/80' : 'hover:bg-slate-50'}">
+            <td class="py-3 px-4">
+              <button onclick="event.stopPropagation(); toggleContactFav(${c.id})" class="text-base ${c.favorite ? 'text-amber-500' : 'text-slate-300 hover:text-amber-400'}">★</button>
+            </td>
+            <td class="py-3 px-4 font-semibold text-slate-900 flex items-center gap-2.5">
+              <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-[11px] font-bold flex items-center justify-center shrink-0">${c.name.slice(0, 2).toUpperCase()}</span>
+              <span>${c.name}</span>
+            </td>
+            <td class="py-3 px-4 font-mono text-slate-600">${c.number}</td>
+            <td class="py-3 px-4">
+              <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold ${c.source === 'SIM' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'}">${c.source}</span>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function selectContact(id) {
+      appState.selectedContactId = id;
+      renderContactsTable();
+      const c = appState.contacts.find(item => item.id === id);
+      if (!c) return;
+
+      const inspector = document.getElementById('contact-inspector');
+      inspector.innerHTML = `
+        <div class="space-y-4">
+          <div class="flex items-center gap-3.5 pb-4 border-b border-slate-100">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white text-lg font-bold flex items-center justify-center shadow-sm">
+              ${c.name.slice(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-slate-900">${c.name}</h3>
+              <p class="text-xs font-mono text-slate-500">${c.number} • ${c.source}</p>
+            </div>
+          </div>
+
+          <button onclick="toggleContactFav(${c.id})" class="w-full py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-amber-50 hover:border-amber-200 text-xs font-semibold text-slate-700 transition-colors">
+            ${c.favorite ? '★ Favorited Contact' : '☆ Favorite'}
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-4 border-t border-slate-100">
+          <button onclick="switchPanel('dialer'); fillAndCall('${c.number}')" class="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors">Call</button>
+          <button onclick="switchPanel('videocall')" class="py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors">Video</button>
+          <button onclick="switchPanel('sms'); switchSmsCategory('msgs')" class="py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors">SMS</button>
+          <button onclick="deleteContact(${c.id})" class="py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition-colors">Delete</button>
+        </div>
+      `;
+    }
+
+    function toggleContactFav(id) {
+      const c = appState.contacts.find(item => item.id === id);
+      if (c) {
+        c.favorite = !c.favorite;
+        renderContactsTable();
+        if (appState.selectedContactId === id) selectContact(id);
+      }
+    }
+
+    function addNewContact() {
+      const nameInput = document.getElementById('new-contact-name');
+      const numInput = document.getElementById('new-contact-number');
+      const name = nameInput.value.trim();
+      const number = numInput.value.trim();
+      if (!name || !number) {
+        showToast('Enter both Name and Number to add a contact');
+        return;
+      }
+      const newObj = { id: Date.now(), name, number, source: 'Device', favorite: false };
+      appState.contacts.unshift(newObj);
+      nameInput.value = '';
+      numInput.value = '';
+      renderContactsTable();
+      selectContact(newObj.id);
+      showToast(`Added ${name} to Contacts`);
+    }
+
+    function deleteContact(id) {
+      appState.contacts = appState.contacts.filter(c => c.id !== id);
+      appState.selectedContactId = null;
+      renderContactsTable();
+      document.getElementById('contact-inspector').innerHTML = `
+        <div class="my-auto text-center space-y-2 py-8">
+          <h3 class="text-base font-bold text-slate-800">No contact selected</h3>
+          <p class="text-xs text-slate-500">Contact removed.</p>
+        </div>
+      `;
+      showToast('Contact deleted');
+    }
+
+    function filterContacts(filterName, btnEl) {
+      appState.contactFilter = filterName;
+      document.querySelectorAll('.contact-filter-btn').forEach(b => {
+        b.className = 'contact-filter-btn px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900';
+      });
+      btnEl.className = 'contact-filter-btn px-2.5 py-1 rounded-lg bg-white text-slate-900 shadow-xs';
+      renderContactsTable();
+    }
+
+    function importSimContacts() {
+      if (appState.contacts.some(c => c.source === 'SIM')) {
+        showToast('SIM phonebook already synchronized');
+        return;
+      }
+      appState.contacts.push(
+        { id: 101, name: 'Telecel Care', number: '100', source: 'SIM', favorite: false },
+        { id: 102, name: 'Ama Office', number: '233208112233', source: 'SIM', favorite: true }
+      );
+      renderContactsTable();
+      appendDiagnosticLog('[SIM] Imported 2 entries from SIM phonebook (AT+CPBR).');
+      showToast('Imported 2 contacts from SIM card');
+    }
+
+    // =========================================================================
+    // 5. VIDEO CALL PANEL INTERACTIVITY
+    // =========================================================================
+    function toggleVideoInCallChat() {
+      document.getElementById('video-chat-drawer').classList.toggle('hidden');
+    }
+
+    function toggleVideoCamera(btn) {
+      const badge = document.getElementById('pip-cam-badge');
+      const isOff = badge.textContent === 'CAM OFF';
+      badge.textContent = isOff ? 'CAM ON' : 'CAM OFF';
+      badge.className = isOff
+        ? 'px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-mono'
+        : 'px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 text-[9px] font-mono';
+      btn.classList.toggle('text-rose-400', !isOff);
+    }
+
+    function toggleVideoDockBtn(btn, label) {
+      btn.classList.toggle('bg-indigo-600');
+      btn.classList.toggle('text-white');
+      showToast(`${label} toggled`);
+    }
+
+    function endVideoRoom() {
+      document.getElementById('video-room-status').textContent = 'waiting...';
+      showToast('Video room idle');
+    }
+
+    // =========================================================================
+    // 6. SMS PANEL INTERACTIVITY (3-Column Dark Suite: Peers / SMS msgs / Codes)
+    // =========================================================================
+    function switchSmsCategory(cat) {
+      appState.smsCategory = cat;
+
+      // Update Rail Button Styling
+      document.querySelectorAll('.sms-rail-btn').forEach(btn => {
+        btn.className = 'sms-rail-btn w-14 py-2.5 rounded-xl text-slate-400 hover:bg-slate-800/70 hover:text-slate-200 flex flex-col items-center gap-1 transition-all';
+      });
+      const activeRail = document.getElementById('sms-rail-' + cat);
+      if (activeRail) {
+        activeRail.className = 'sms-rail-btn w-14 py-2.5 rounded-xl bg-indigo-600 text-white flex flex-col items-center gap-1 shadow-md shadow-indigo-600/20 transition-all';
+      }
+
+      const headingMap = { peers: 'Peers', msgs: 'SMS Messages', codes: 'Verification Codes' };
+      const badgeMap = { peers: 'LAN Discovery', msgs: 'GSM / MiFi', codes: 'Auto-OTP' };
+      document.getElementById('sms-list-heading').textContent = headingMap[cat];
+      document.getElementById('sms-list-badge').textContent = badgeMap[cat];
+
+      renderSmsSidebarList();
+      lucide.createIcons();
+    }
+
+    function renderSmsSidebarList() {
+      const container = document.getElementById('sms-sidebar-list');
+      const query = (document.getElementById('sms-search-input').value || '').toLowerCase();
+      const cat = appState.smsCategory;
+
+      if (cat === 'peers') {
+        const peers = appState.smsData.peers.filter(p => p.name.toLowerCase().includes(query) || p.subtitle.toLowerCase().includes(query));
+        container.innerHTML = peers.map(p => `
+          <div onclick="selectSmsItem('${p.id}')" class="p-3 rounded-xl cursor-pointer transition-colors border ${appState.activeSmsThreadId === p.id ? 'bg-indigo-600/20 border-indigo-500/50' : 'bg-slate-900/60 border-slate-800 hover:bg-slate-800/70'}">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>${p.name}
+              </span>
+              <span class="text-[10px] font-mono text-emerald-400">LAN</span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1 truncate">${p.subtitle}</p>
+          </div>
+        `).join('') + `
+          <div class="p-3 rounded-xl border border-dashed border-slate-800 text-[11px] text-slate-500 leading-relaxed mt-2">
+            Start the app on another Windows or Android device on the same LAN to auto-discover additional peers.
+          </div>
+        `;
+      } else if (cat === 'msgs') {
+        const msgs = appState.smsData.msgs.filter(m => m.name.toLowerCase().includes(query));
+        container.innerHTML = msgs.map(m => `
+          <div onclick="selectSmsItem('${m.id}')" class="p-3 rounded-xl cursor-pointer transition-colors border ${appState.activeSmsThreadId === m.id ? 'bg-indigo-600/20 border-indigo-500/50' : 'bg-slate-900/60 border-slate-800 hover:bg-slate-800/70'}">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-white">${m.name}</span>
+              ${m.unread ? `<span class="px-1.5 py-0.2 rounded-full bg-indigo-600 text-[10px] font-bold text-white">${m.unread}</span>` : ''}
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1 truncate">${m.messages[m.messages.length - 1].text}</p>
+          </div>
+        `).join('');
+      } else {
+        const codes = appState.smsData.codes.filter(c => c.service.toLowerCase().includes(query) || c.code.includes(query));
+        container.innerHTML = codes.map(otp => `
+          <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-semibold text-slate-300">${otp.service}</span>
+              <span class="text-[10px] text-slate-500">${otp.time}</span>
+            </div>
+            <div class="flex items-center justify-between bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
+              <span class="font-mono text-base font-bold tracking-widest text-emerald-400">${otp.code}</span>
+              <button onclick="copyToClipboard('${otp.code}', 'Verification code ${otp.code} copied')" class="px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition-colors">
+                Copy Code
+              </button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    function selectSmsItem(id) {
+      appState.activeSmsThreadId = id;
+      const allThreads = [...appState.smsData.peers, ...appState.smsData.msgs];
+      const thread = allThreads.find(t => t.id === id);
+      if (!thread) return;
+
+      thread.unread = 0;
+      renderSmsSidebarList();
+
+      document.getElementById('sms-active-avatar').textContent = thread.initials;
+      document.getElementById('sms-active-title').textContent = thread.name;
+      document.getElementById('sms-active-subtitle').textContent = thread.subtitle;
+
+      renderSmsFeed(thread);
+    }
+
+    function renderSmsFeed(thread) {
+      const feed = document.getElementById('sms-messages-feed');
+      feed.innerHTML = thread.messages.map(msg => {
+        const isMe = msg.sender === 'me';
+        return `
+          <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'}">
+            <div class="max-w-md px-4 py-2.5 rounded-2xl text-xs leading-relaxed ${isMe ? 'bg-indigo-600 text-white rounded-br-sm' : 'bg-slate-800 text-slate-100 rounded-bl-sm border border-slate-700/70'}">
+              ${msg.text}
+            </div>
+            <span class="text-[10px] font-mono text-slate-500 mt-1 px-1">${msg.time}</span>
+          </div>
+        `;
+      }).join('');
+      feed.scrollTop = feed.scrollHeight;
+    }
+
+    function sendSmsMessage() {
+      const input = document.getElementById('sms-composer-input');
+      const text = input.value.trim();
+      if (!text) return;
+
+      const allThreads = [...appState.smsData.peers, ...appState.smsData.msgs];
+      const thread = allThreads.find(t => t.id === appState.activeSmsThreadId) || appState.smsData.peers[0];
+
+      const now = new Date();
+      const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+      thread.messages.push({ sender: 'me', text, time: timeStr });
+      input.value = '';
+      renderSmsFeed(thread);
+      renderSmsSidebarList();
+      appendDiagnosticLog(`[MSG] Dispatched message to ${thread.name}: "${text}"`);
+    }
+
+    function insertSmsQuickEmoji() {
+      const input = document.getElementById('sms-composer-input');
+      input.value += ' 👍';
+      input.focus();
+    }
+
+    function draftSmsWithAi() {
+      document.getElementById('sms-composer-input').value = 'Received with thanks — confirming everything is connected on USSD Manager Pro.';
+    }
+
+    function openSmsCodesDirect() {
+      switchPanel('sms');
+      switchSmsCategory('codes');
+    }
+
+    // =========================================================================
+    // 7. SIM MANAGER PANEL INTERACTIVITY (12-Metric Grid + Auto-Config)
+    // =========================================================================
+    function renderSimTelemetry() {
+      const c = appState.modemConnected;
+      const metrics = [
+        { label: 'SIM Status', value: c ? 'Ready (Active)' : 'Not Inserted', icon: 'sim-card', highlight: c ? 'text-emerald-600' : 'text-rose-600' },
+        { label: 'Operator', value: c ? 'Telecel Ghana' : '—', icon: 'radio', highlight: 'text-slate-900' },
+        { label: 'Signal', value: c ? '-67 dBm (4G LTE)' : '—', icon: 'signal', highlight: c ? 'text-emerald-600' : 'text-slate-900' },
+        { label: 'Network Reg', value: c ? 'Registered (Home)' : 'Unregistered', icon: 'globe', highlight: 'text-slate-900' },
+        { label: 'Battery', value: c ? '94% (AC Powered)' : '—', icon: 'battery-charging', highlight: 'text-slate-900' },
+        { label: 'Phonebook', value: c ? '142 SIM entries' : '0 entries', icon: 'book-user', highlight: 'text-slate-900' },
+        { label: 'ICCID', value: c ? '8923301000048291042' : '—', icon: 'hash', highlight: 'text-slate-900' },
+        { label: 'IMSI', value: c ? '620020194827163' : '—', icon: 'fingerprint', highlight: 'text-slate-900' },
+        { label: 'IMEI', value: c ? '358942109482710' : '—', icon: 'cpu', highlight: 'text-slate-900' },
+        { label: 'SIM Type', value: c ? 'USIM 4G' : '—', icon: 'layers', highlight: 'text-slate-900' },
+        { label: 'Carrier', value: c ? 'Telecel GH' : '—', icon: 'tower-control', highlight: 'text-slate-900' },
+        { label: 'SIM Slot', value: 'Slot 1 (Primary)', icon: 'server', highlight: 'text-slate-900' }
+      ];
+
+      document.getElementById('sim-metrics-grid').innerHTML = metrics.map(m => `
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <span class="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider">${m.label}</span>
+            <span class="block font-mono text-sm font-bold ${m.highlight} mt-1 truncate">${m.value}</span>
+          </div>
+          <div class="w-9 h-9 rounded-xl bg-slate-50 border border-slate-200/80 text-slate-500 flex items-center justify-center shrink-0">
+            <i data-lucide="${m.icon}" class="w-4 h-4"></i>
+          </div>
+        </div>
+      `).join('');
+
+      lucide.createIcons();
+    }
+
+    function refreshSimTelemetry() {
+      const icon = document.getElementById('sim-refresh-icon');
+      icon.classList.add('animate-spin');
+      setTimeout(() => {
+        icon.classList.remove('animate-spin');
+        renderSimTelemetry();
+        appendDiagnosticLog('[SIM] Polled AT+CCID / AT+CIMI / AT+CSQ telemetry.');
+        showToast('SIM & Modem telemetry refreshed');
+      }, 450);
+    }
+
+    function reconfigureModemAction() {
+      appendDiagnosticLog('[MODEM] Re-running init: ATE0, AT+CMGF=1, AT+CNMI=2,1,0,0,0, AT+CLIP=1');
+      showToast('Modem initialization sequence completed');
+    }
+
+    // =========================================================================
+    // 8. USSD PANEL INTERACTIVITY
+    // =========================================================================
+    function switchUssdMethod(method) {
+      appState.ussdMethod = method;
+      document.getElementById('ussd-mifi-settings-card').classList.toggle('hidden', method !== 'mifi');
+      document.getElementById('ussd-usb-settings-card').classList.toggle('hidden', method !== 'usb');
+      document.getElementById('footer-transport').textContent = method === 'mifi' ? 'USSD via MiFi' : 'USSD via USB AT';
+    }
+
+    function testMifiConnection() {
+      const ip = document.getElementById('ussd-mifi-ip').value.trim() || 'http://192.168.100.1';
+      const statusEl = document.getElementById('ussd-mifi-ping-status');
+      statusEl.textContent = `Testing ${ip}...`;
+      setTimeout(() => {
+        statusEl.textContent = `Connected to ${ip} • 22 ms (HTTP 200 OK)`;
+        statusEl.className = 'text-[11px] font-mono text-emerald-600 font-semibold';
+        appendDiagnosticLog(`[HTTP] MiFi Web API reachable at ${ip} (22ms).`);
+        showToast('MiFi Web API reachable (22 ms)');
+      }, 300);
+    }
+
+    function executeQuickUssd(code) {
+      document.getElementById('ussd-code-input').value = code;
+      runUssdCode();
+    }
+
+    function runUssdCode() {
+      const code = document.getElementById('ussd-code-input').value.trim() || '*124#';
+      const terminal = document.getElementById('ussd-response-terminal');
+      const via = appState.ussdMethod === 'mifi' ? 'MiFi HTTP API' : 'USB AT+CUSD=1';
+
+      const responses = {
+        '*124#': `> Sending ${code} via ${via}...\n\nMain Account Balance: GHS 48.75\nData Bundle: 6.42 GB (Valid till 28-Nov-2026)\nBonus Airtime: GHS 5.00\n\nReply with:\n1. Buy Data Bundle\n2. Voice Offers\n3. Check Fibre/MiFi Status`,
+        '*404#': `> Sending ${code} via ${via}...\n\nSIM Registration Status: VERIFIED & ACTIVE\nGhana Card Linked: GHA-728491024-8\nStatus: Compliant`,
+        '*400#': `> Sending ${code} via ${via}...\n\nMSISDN Verification: Active on Network\nRoaming: Disabled`,
+        '100': `> Dialing Customer Care (${code})...\n\nConnected to Automated Carrier Care IVR.`,
+        '*#06#': `> Querying Device IMEI (${code})...\n\nIMEI 1: 358942109482710\nSV: 04`
+      };
+
+      const output = responses[code] || `> Sending ${code} via ${via}...\n\n[USSD OK] Carrier session response received for ${code}:\nService menu active. Reply with option number to continue.`;
+      terminal.textContent = output;
+      appendDiagnosticLog(`[USSD] Executed ${code} via ${via}`);
+    }
+
+    function sendUssdSessionReply() {
+      const replyInput = document.getElementById('ussd-reply-input');
+      const opt = replyInput.value.trim();
+      if (!opt) return;
+      const terminal = document.getElementById('ussd-response-terminal');
+      terminal.textContent += `\n\n> Reply [${opt}]:\nOption ${opt} confirmed. Request processed by carrier gateway.`;
+      terminal.scrollTop = terminal.scrollHeight;
+      replyInput.value = '';
+      appendDiagnosticLog(`[USSD] Sent session reply option "${opt}"`);
+    }
+
+    function copyUssdResponse() {
+      copyToClipboard(document.getElementById('ussd-response-terminal').textContent, 'USSD response copied');
+    }
+
+    function clearUssdResponse() {
+      document.getElementById('ussd-response-terminal').textContent = 'Terminal cleared.';
+    }
+
+    // =========================================================================
+    // 9. APPS PANEL INTERACTIVITY
+    // =========================================================================
+    function filterAppsGrid(category, btnEl) {
+      document.querySelectorAll('.apps-filter-btn').forEach(b => {
+        b.className = 'apps-filter-btn px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900';
+      });
+      btnEl.className = 'apps-filter-btn px-3 py-1.5 rounded-lg bg-white text-slate-900 shadow-xs';
+
+      document.querySelectorAll('.app-module-card').forEach(card => {
+        const cats = card.getAttribute('data-category');
+        if (category === 'all' || cats.includes(category)) {
+          card.classList.remove('hidden');
+        } else {
+          card.classList.add('hidden');
+        }
+      });
+    }
+
+    function openLaptopTrackerModal() {
+      showToast('Laptop Tracker & Permissions: Local geofence & AI command guard active');
+      appendDiagnosticLog('[TRACKER] Verified Laptop Tracker local permission boundary.');
+    }
+
+    // =========================================================================
+    // 10. AGENT PANEL INTERACTIVITY (Local Commands + AI Assistant + TTS)
+    // =========================================================================
+    let latestAgentResponseText = 'Hello! I can execute safe local workspace navigation or answer queries once enabled in Settings > AI.';
+
+    function sendAgentQuickPrompt(promptText) {
+      document.getElementById('agent-prompt-input').value = promptText;
+      sendAgentPrompt();
+    }
+
+    function sendAgentPrompt() {
+      const input = document.getElementById('agent-prompt-input');
+      const prompt = input.value.trim();
+      if (!prompt) return;
+
+      const transcript = document.getElementById('agent-chat-transcript');
+
+      // Append User Message
+      transcript.innerHTML += `
+        <div class="flex items-start justify-end gap-3">
+          <div class="bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-xs leading-relaxed max-w-xl shadow-xs">
+            ${escapeHtml(prompt)}
+          </div>
+        </div>
+      `;
+      input.value = '';
+
+      // Process Safe Local Navigation Commands or AI Response
+      const lower = prompt.toLowerCase();
+      let reply = '';
+      let actionNote = '';
+
+      if (lower.includes('sim') || lower.includes('modem')) {
+        reply = appState.modemConnected
+          ? 'Modem is connected on COM6 (115200). SIM Status: Ready (Telecel Ghana, Signal -67 dBm). Opening SIM Manager.'
+          : 'Modem is currently disconnected (no SIM). Click "Configure modem" in the sidebar or "Simulate Connected SIM" in SIM Manager.';
+        actionNote = 'Navigated to SIM Manager';
+        setTimeout(() => switchPanel('sim'), 500);
+      } else if (lower.includes('ussd') || lower.includes('*124#')) {
+        reply = 'Routing to USSD Console and executing *124# balance check via MiFi HTTP API.';
+        actionNote = 'Executed USSD *124#';
+        setTimeout(() => {
+          switchPanel('ussd');
+          executeQuickUssd('*124#');
+        }, 500);
+      } else if (lower.includes('code') || lower.includes('otp') || lower.includes('sms')) {
+        reply = 'Opening SMS Hub directly to extracted Verification Codes (latest OTP: 482910 from Bank Alert).';
+        actionNote = 'Opened SMS Verification Codes';
+        setTimeout(() => openSmsCodesDirect(), 500);
+      } else if (lower.includes('tracker') || lower.includes('laptop')) {
+        reply = 'Device tracking and permissions remain strictly inside Laptop Tracker. Opening Companion Apps hub.';
+        actionNote = 'Opened Apps > Laptop Tracker';
+        setTimeout(() => switchPanel('apps'), 500);
+      } else if (!appState.aiEnabled) {
+        reply = 'Local command received ("' + prompt + '"). For open-ended AI conversation, enable the AI assistant in Settings > AI first — or try a safe local command like "Run USSD *124#" or "Check SIM status".';
+      } else {
+        reply = `[AI Assistant]: Understood "${prompt}". All local modem, MiFi HTTP gateway (192.168.100.1), and LAN peer bridges (700 395 0263) are healthy and ready.`;
+      }
+
+      latestAgentResponseText = reply;
+
+      transcript.innerHTML += `
+        <div class="flex items-start gap-3">
+          <div class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+            <i data-lucide="bot" class="w-4 h-4"></i>
+          </div>
+          <div class="bg-slate-50 border border-slate-200/80 rounded-2xl rounded-tl-sm px-4 py-3 text-xs text-slate-700 leading-relaxed max-w-2xl space-y-1.5">
+            <div>${escapeHtml(reply)}</div>
+            ${actionNote ? `<div class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold text-[10px]">✓ ${actionNote}</div>` : ''}
+          </div>
+        </div>
+      `;
+
+      transcript.scrollTop = transcript.scrollHeight;
+      lucide.createIcons();
+
+      if (document.getElementById('agent-auto-tts-checkbox').checked) {
+        readLatestAgentResponseAloud(true);
+      }
+    }
+
+    function readLatestAgentResponseAloud(silentFallback = false) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(latestAgentResponseText);
+        utter.rate = parseFloat(document.getElementById('settings-tts-rate').value || '1.0');
+        window.speechSynthesis.speak(utter);
+        if (!silentFallback) showToast('Reading response aloud...');
+      } else if (!silentFallback) {
+        showToast('Speech synthesis unavailable in this browser');
+      }
+    }
+
+    // =========================================================================
+    // 11. MODEM CONNECTION & SETTINGS MODALS + LIVE GLOBAL SYNC
+    // =========================================================================
+    function openModal(id) {
+      document.getElementById(id).classList.remove('hidden');
+      lucide.createIcons();
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function openSettingsAiTab() {
+      openModal('settings-modal');
+      switchSettingsTab('ai');
+    }
+
+    function switchSettingsTab(tab) {
+      ['ai', 'modem', 'general'].forEach(t => {
+        document.getElementById('settings-tab-' + t).classList.toggle('hidden', t !== tab);
+        const btn = document.getElementById('settings-tab-btn-' + t);
+        btn.className = t === tab
+          ? 'pb-2.5 border-b-2 border-blue-600 text-blue-600'
+          : 'pb-2.5 border-b-2 border-transparent text-slate-500 hover:text-slate-800';
+      });
+    }
+
+    function saveSettingsModal() {
+      const enabled = document.getElementById('settings-enable-ai-checkbox').checked;
+      appState.aiEnabled = enabled;
+
+      const banner = document.getElementById('agent-config-banner');
+      const chip = document.getElementById('agent-status-chip');
+
+      if (enabled) {
+        banner.className = 'p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3';
+        banner.innerHTML = `
+          <div class="flex items-center gap-2 text-xs text-emerald-800 font-semibold">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span>AI Assistant Active (${document.getElementById('settings-ai-provider').value}) • Local + LLM Ready</span>
+          </div>
+        `;
+        chip.textContent = 'AI Active';
+        chip.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200';
+      } else {
+        banner.className = 'p-3 rounded-xl bg-amber-50/90 border border-amber-200/90 flex flex-wrap items-center justify-between gap-3';
+        banner.innerHTML = `
+          <div class="flex items-center gap-2.5 text-xs text-amber-900 font-medium">
+            <span>Configure and enable the AI assistant in <strong>Settings &gt; AI</strong> first.</span>
+          </div>
+          <button onclick="openSettingsAiTab()" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors">Open Settings &gt; AI</button>
+        `;
+        chip.textContent = 'Local Commands Only';
+        chip.className = 'px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200';
+      }
+
+      closeModal('settings-modal');
+      showToast('Preferences saved');
+    }
+
+    function applyModemConnectionFromModal() {
+      toggleModemConnection();
+      closeModal('modem-modal');
+    }
+
+    function toggleModemConnection() {
+      appState.modemConnected = !appState.modemConnected;
+      const c = appState.modemConnected;
+      const port = document.getElementById('modal-com-port').value.trim() || 'COM6';
+      const baud = document.getElementById('modal-baud-rate').value.trim() || '115200';
+
+      // Top Header Updates
+      document.getElementById('header-live-dot').className = c ? 'w-2 h-2 rounded-full bg-emerald-500 shrink-0' : 'w-2 h-2 rounded-full bg-rose-500 shrink-0';
+      document.getElementById('top-sim-label').textContent = c ? 'Telecel GH' : 'no SIM';
+      document.getElementById('top-signal-label').textContent = c ? '-67 dBm' : 'signal --';
+      document.getElementById('top-conn-badge').className = c ? 'flex items-center gap-1.5 font-semibold text-emerald-600' : 'flex items-center gap-1.5 font-semibold text-rose-600';
+      document.getElementById('top-conn-dot').className = c ? 'w-2 h-2 rounded-full bg-emerald-500' : 'w-2 h-2 rounded-full bg-rose-500';
+      document.getElementById('top-conn-text').textContent = c ? 'Connected' : 'Disconnected';
+      document.getElementById('top-port-label').textContent = `${port} | ${baud}`;
+
+      // Sidebar Updates
+      document.getElementById('sidebar-modem-dot').className = c ? 'w-2 h-2 rounded-full bg-emerald-500' : 'w-2 h-2 rounded-full bg-rose-500';
+      document.getElementById('sidebar-modem-btn').innerHTML = c
+        ? '<i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i><span>Modem Connected</span>'
+        : '<i data-lucide="plug-zap" class="w-3.5 h-3.5"></i><span>Configure modem</span>';
+      document.getElementById('sidebar-modem-btn').className = c
+        ? 'w-full py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1.5'
+        : 'w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1.5';
+
+      // Modal Button Text
+      document.getElementById('modal-connect-toggle-btn').textContent = c ? 'Disconnect Modem' : 'Connect Modem';
+
+      // Footer Updates
+      document.getElementById('footer-port').textContent = c ? port : '-';
+      document.getElementById('footer-carrier').textContent = c ? 'Telecel GH' : '-';
+      document.getElementById('footer-network-badge').className = c
+        ? 'inline-flex items-center gap-1.5 text-emerald-600 font-semibold'
+        : 'inline-flex items-center gap-1.5 text-amber-600 font-semibold';
+      document.getElementById('footer-network-dot').className = c ? 'w-2 h-2 rounded-full bg-emerald-500' : 'w-2 h-2 rounded-full bg-amber-500';
+      document.getElementById('footer-network-text').textContent = c ? 'GSM + LAN Online' : 'LAN only';
+
+      // SIM Manager Button & Grid Refresh
+      const simBtn = document.getElementById('sim-toggle-demo-btn');
+      if (simBtn) {
+        simBtn.innerHTML = c
+          ? '<i data-lucide="power-off" class="w-3.5 h-3.5"></i><span>Disconnect SIM</span>'
+          : '<i data-lucide="zap" class="w-3.5 h-3.5"></i><span>Simulate Connected SIM</span>';
+      }
+      renderSimTelemetry();
+
+      appendDiagnosticLog(c
+        ? `[MODEM] Connected to ${port} @ ${baud}. Identified Telecel Ghana (ICCID 8923301000048291042).`
+        : `[MODEM] Disconnected from ${port}.`
+      );
+      showToast(c ? `Connected to ${port} (Telecel GH)` : 'Modem disconnected');
+      lucide.createIcons();
+    }
+
+    // =========================================================================
+    // 12. DIAGNOSTIC LOG DRAWER & UTILITIES
+    // =========================================================================
+    function toggleLogDrawer(forceState) {
+      const drawer = document.getElementById('diagnostic-log-drawer');
+      const arrow = document.getElementById('footer-log-arrow');
+      const willOpen = typeof forceState === 'boolean' ? forceState : drawer.classList.contains('hidden');
+      drawer.classList.toggle('hidden', !willOpen);
+      arrow.textContent = willOpen ? '▼' : '▲';
+    }
+
+    function appendDiagnosticLog(msg) {
+      const lines = document.getElementById('diagnostic-log-lines');
+      const now = new Date();
+      const ts = now.toTimeString().split(' ')[0];
+      const div = document.createElement('div');
+      div.innerHTML = `<span class="text-slate-500">[${ts}]</span> ${escapeHtml(msg)}`;
+      lines.appendChild(div);
+      lines.scrollTop = lines.scrollHeight;
+    }
+
+    function clearDiagnosticLog() {
+      document.getElementById('diagnostic-log-lines').innerHTML = '';
+    }
+
+    function copyToClipboard(text, successMsg) {
+      const temp = document.createElement('textarea');
+      temp.value = text;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand('copy');
+      document.body.removeChild(temp);
+      showToast(successMsg || 'Copied to clipboard');
+    }
+
+    function showToast(message) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-medium shadow-lg border border-slate-700 flex items-center gap-2 transition-all';
+      toast.innerHTML = `<span class="w-2 h-2 rounded-full bg-blue-400"></span><span>${escapeHtml(message)}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 200);
+      }, 2600);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

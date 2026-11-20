@@ -1761,6 +1761,46 @@ namespace UssdApp
             // to/from on RM lines so intermediate relays see tokens not numbers.
             // Both sides learn each other's token in the INVITE/ACCEPT exchange.
             public string MediaToken = "";
+            // TNSRL v2 route announcement this client last sent; pushed to peers
+            // who register after them so direct-UDP discovery works over internet.
+            public string TnsrlAnnouncement = "";
+        }
+
+        // ── TNSRL v2: push route announcements between registered clients ──
+        // When a client registers, push all other clients' announcements to it
+        // (so it can build a direct-UDP candidate list immediately), and push
+        // its own announcement (from a prior TNSRPUSH it may have sent us) to
+        // all currently connected clients.
+        private void PushTnsrlOnRegistration(Conn newConn, string newNum)
+        {
+            if (newConn == null || newConn.W == null) return;
+            List<Conn> others = new List<Conn>();
+            lock (_mapLock)
+            {
+                foreach (Conn c in _byNumber.Values)
+                {
+                    if (c == newConn || c.IsLink || c.W == null) continue;
+                    others.Add(c);
+                }
+            }
+            // Push known announcements to the newly registered client
+            foreach (Conn other in others)
+            {
+                if (string.IsNullOrEmpty(other.TnsrlAnnouncement)) continue;
+                string push = "TNSRPUSH|1|" + other.TnsrlAnnouncement;
+                try { WriteRaw(newConn.W, push); } catch { }
+            }
+            // Push new client's stored announcement to everyone else
+            if (!string.IsNullOrEmpty(newConn.TnsrlAnnouncement))
+            {
+                string push = "TNSRPUSH|1|" + newConn.TnsrlAnnouncement;
+                foreach (Conn other in others)
+                {
+                    try { WriteRaw(other.W, push); } catch { }
+                }
+            }
+            if (others.Count > 0)
+                Emit("TNSRL: pushed " + others.Count + " route announcement(s) to #" + newNum);
         }
 
         private X509Certificate2 LoadTlsCertificate()
@@ -2083,6 +2123,11 @@ namespace UssdApp
                                  + " were refused since this number last connected");
                         }
                         MarkPeersDirty();
+                        // TNSRL v2: push all existing clients' route announcements to
+                        // the newly registered client so it can build a direct UDP path
+                        // without waiting for a LAN broadcast. Also push this new client
+                        // to everyone else who is already registered.
+                        PushTnsrlOnRegistration(conn, num);
                         // Announce to linked relays so peers elsewhere can reach us.
                         Advertise(num, conn.Ip, conn.Machine);
                         // Deliver any queued messages that arrived while peer was offline
@@ -2196,6 +2241,30 @@ namespace UssdApp
                         WriteRaw(w, "WHO|" + num + "|" + ((here || far) ? "yes" : "no") +
                                    (far ? "|remote" : ""));
                         Interlocked.Increment(ref WhoAnswered);
+                        continue;
+                    }
+
+                    // ── TNSRL v2: client sends its route announcement ────────
+                    // Store on the Conn so it can be pushed to future registrants,
+                    // and immediately push it to all currently connected clients
+                    // so they can build direct-UDP candidates without waiting for
+                    // the next LAN broadcast cycle.
+                    if (p[0] == "TNSRPUSH" && conn != null && !conn.IsLink)
+                    {
+                        string ann = line.Length > 9 ? line.Substring(9) : "";  // TNSRPUSH|<ann>
+                        int bar = ann.IndexOf('|');
+                        if (bar > 0) ann = ann.Substring(bar + 1);              // strip optional hop count
+                        if (!string.IsNullOrEmpty(ann))
+                        {
+                            conn.TnsrlAnnouncement = ann;
+                            string push = "TNSRPUSH|1|" + ann;
+                            List<Conn> others2 = new List<Conn>();
+                            lock (_mapLock)
+                                foreach (Conn c in _byNumber.Values)
+                                    if (c != conn && !c.IsLink && c.W != null) others2.Add(c);
+                            foreach (Conn other in others2)
+                                try { WriteRaw(other.W, push); } catch { }
+                        }
                         continue;
                     }
 

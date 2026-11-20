@@ -227,5 +227,61 @@ namespace UssdApp
         {
             return d.ToString("0.######", CultureInfo.InvariantCulture);
         }
+
+        // =====================================================================
+        // Geolocation fallback using Windows System.Device.Location / IP
+        // =====================================================================
+        public static bool TryGetSystemLocation(out double latitude, out double longitude, out string source)
+        {
+            latitude = 0;
+            longitude = 0;
+            source = "none";
+            try
+            {
+                // GeoCoordinateWatcher from System.Device.Location
+                var watcher = new System.Device.Location.GeoCoordinateWatcher(System.Device.Location.GeoPositionAccuracy.High);
+                if (watcher.TryStart(false, TimeSpan.FromMilliseconds(2500)))
+                {
+                    System.Device.Location.GeoCoordinate coord = watcher.Position.Location;
+                    if (!coord.IsUnknown)
+                    {
+                        latitude = coord.Latitude;
+                        longitude = coord.Longitude;
+                        source = "hardware_gps";
+                        watcher.Stop();
+                        return true;
+                    }
+                    watcher.Stop();
+                }
+            }
+            catch { }
+
+            // Fallback: network IP location via ip-api.com
+            try
+            {
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create("http://ip-api.com/json/?fields=status,lat,lon");
+                req.Timeout = 3000;
+                using (HttpWebResponse res = (HttpWebResponse)req.GetResponse())
+                using (StreamReader reader = new StreamReader(res.GetResponseStream()))
+                {
+                    string json = reader.ReadToEnd();
+                    if (json.Contains("\"status\":\"success\""))
+                    {
+                        Match mLat = Regex.Match(json, "\"lat\":\\s*([\\-\\d\\.]+)");
+                        Match mLon = Regex.Match(json, "\"lon\":\\s*([\\-\\d\\.]+)");
+                        if (mLat.Success && mLon.Success)
+                        {
+                            latitude = double.Parse(mLat.Groups[1].Value, CultureInfo.InvariantCulture);
+                            longitude = double.Parse(mLon.Groups[1].Value, CultureInfo.InvariantCulture);
+                            source = "ip_geolocation";
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return false;
+        }
     }
 }

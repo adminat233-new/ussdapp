@@ -46,8 +46,32 @@ namespace UssdApp
         public static readonly SolidColorBrush Online = New("#22C55E");
 
         // Transport mode switcher tokens
-        public static readonly SolidColorBrush SegmentActive = New("#2563EB");   // active pill background (= Accent in light)
-        public static readonly SolidColorBrush SegmentBg = New("#F1F5F9");       // pill track background
+        public static readonly SolidColorBrush SegmentActive = New("#2563EB");
+        public static readonly SolidColorBrush SegmentBg = New("#F1F5F9");
+
+        // New v4.1 tokens matching website exactly
+        public static readonly SolidColorBrush Muted = New("#CBD5E1");        // slate-300
+        public static readonly SolidColorBrush AccentText = New("#1E40AF");   // blue-800
+        public static readonly SolidColorBrush AccentBorder = New("#BFDBFE"); // blue-200
+        public static readonly SolidColorBrush Indigo = New("#4F46E5");       // indigo-600
+        public static readonly SolidColorBrush IndigoSoft = New("#EEF2FF");   // indigo-50
+        public static readonly SolidColorBrush CallSoft = New("#ECFDF5");     // emerald-50
+        public static readonly SolidColorBrush EndCall = New("#DC2626");      // red-600
+        public static readonly SolidColorBrush NavActiveBg = New("#EFF6FF");  // blue-50
+        public static readonly SolidColorBrush NavActiveText = New("#1D4ED8");// blue-700
+        public static readonly SolidColorBrush KeypadBorder = New("#E2E8F0"); // slate-200
+        // Chat dark panel
+        public static readonly SolidColorBrush ChatPanelBg = New("#0F172A");
+        public static readonly SolidColorBrush ChatPanelCard = New("#1E293B");
+        public static readonly SolidColorBrush ChatPanelBorder = New("#334155");
+        public static readonly SolidColorBrush ChatMsgBg = New("#1E293B");
+        public static readonly SolidColorBrush ChatMsgText = New("#F1F5F9");
+        public static readonly SolidColorBrush ChatInputBg = New("#1A243D");
+        public static readonly SolidColorBrush ChatHeaderBg = New("#172038");
+        // Video dark panel
+        public static readonly SolidColorBrush VideoBg = New("#0B0F19");
+        public static readonly SolidColorBrush VideoHeaderBg = New("#0F1524");
+        public static readonly SolidColorBrush VideoDockBg = New("#1E293B");
 
         public static string Current = "light";
         public static event Action Changed;
@@ -70,18 +94,27 @@ namespace UssdApp
             m["CardBrush"] = Card;
             m["CardBorder"] = CardBorder;
             m["ChromeBrush"] = Chrome;
+            m["SidebarBg"] = Panel;
+            m["HeaderBg"] = Panel;
             m["TextBrush"] = Text;
             m["SubtextBrush"] = Subtle;
             m["GrayBrush"] = Gray;
+            m["MutedBrush"] = Muted;
             m["AccentBrush"] = Accent;
             m["AccentHover"] = AccentHover;
             m["AccentSoft"] = AccentSoft;
+            m["AccentText"] = AccentText;
+            m["AccentBorder"] = AccentBorder;
+            m["IndigoBrush"] = Indigo;
+            m["IndigoSoft"] = IndigoSoft;
             m["CallBrush"] = CallBlue;
             m["CallHover"] = CallBlueHover;
+            m["CallSoft"] = CallSoft;
             m["DangerBrush"] = Danger;
             m["DangerHover"] = DangerHover;
             m["DangerSoft"] = DangerSoft;
             m["ErrorBrush"] = Error;
+            m["EndCallBrush"] = EndCall;
             m["SuccessBrush"] = Success;
             m["WarnBrush"] = Warn;
             m["GreenBrush"] = Green;
@@ -89,8 +122,21 @@ namespace UssdApp
             m["KeypadBrush"] = Keypad;
             m["KeypadHover"] = KeypadHover;
             m["KeypadPress"] = KeypadPress;
+            m["KeypadBorder"] = KeypadBorder;
             m["PillBrush"] = Pill;
             m["OnlineBrush"] = Online;
+            m["NavActiveBg"] = NavActiveBg;
+            m["NavActiveText"] = NavActiveText;
+            m["ChatPanelBg"] = ChatPanelBg;
+            m["ChatPanelCard"] = ChatPanelCard;
+            m["ChatPanelBorder"] = ChatPanelBorder;
+            m["ChatMsgBg"] = ChatMsgBg;
+            m["ChatMsgText"] = ChatMsgText;
+            m["ChatInputBg"] = ChatInputBg;
+            m["ChatHeaderBg"] = ChatHeaderBg;
+            m["VideoBg"] = VideoBg;
+            m["VideoHeaderBg"] = VideoHeaderBg;
+            m["VideoDockBg"] = VideoDockBg;
             return m;
         }
 

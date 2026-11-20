@@ -24,9 +24,10 @@ REM the console instead of needing a window station.
   /resource:"%~dp0Themes\Light.xaml",ussd.Themes.Light.xaml ^
   /resource:"%~dp0Themes\Dark.xaml",ussd.Themes.Dark.xaml ^
   /resource:"%~dp0Themes\Controls.xaml",ussd.Themes.Controls.xaml ^
-  "%~dp0UssdApp.cs" "%~dp0VoipService.cs" "%~dp0Tnsrl.cs" "%~dp0CallServer.cs" "%~dp0NumberLease.cs" "%~dp0Security.cs" "%~dp0TrackerBridge.cs" "%~dp0Transport.cs" "%~dp0StickerSync.cs" "%~dp0Transcribe.cs" "%~dp0Radio.cs" "%~dp0CallRouter.cs" "%~dp0Theme.cs" "%~dp0ConnectionHelper.cs"
+  "%~dp0UssdApp.cs" "%~dp0VoipService.cs" "%~dp0Tnsrl.cs" "%~dp0CallServer.cs" "%~dp0NumberLease.cs" "%~dp0Security.cs" "%~dp0TrackerBridge.cs" "%~dp0RemoteControl.cs" "%~dp0Transport.cs" "%~dp0StickerSync.cs" "%~dp0Transcribe.cs" "%~dp0Radio.cs" "%~dp0CallRouter.cs" "%~dp0Theme.cs" "%~dp0ConnectionHelper.cs"
 if errorlevel 1 (
     echo SELFTEST BUILD FAILED
     exit /b 1
 )
 echo SELFTEST BUILD OK: %~dp0UssdSecTest.exe
+
