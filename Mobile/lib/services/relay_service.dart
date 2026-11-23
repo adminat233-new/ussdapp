@@ -15,7 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///        CONF_AUDIO|<roomId>|<b64pcm>
 ///   IN:  OK|<number>
 ///        PEERS|n,ip,machine;...
-///        MSG|<to>|<from>|<line>
+///        MSG|<to>|<from>|<line>        (CHAT|..., WRTC|... signalling)
 ///        CONF_MIXED|<roomId>|<from>|<b64pcm>
 ///        CONF_ROSTER|<roomId>|n1,n2,...
 class RelayService {
@@ -34,12 +34,25 @@ class RelayService {
   // replacing the single onMessage callback used by the SMS/Chat panel.
   final List<Function(String, String)> _messageListeners = <Function(String, String)>[];
 
+  // WebRTC offer/answer/ICE signalling uses the same relay MSG envelope but is
+  // NOT chat. It must reach the call engine without incrementing unread or
+  // appearing as a message in the SMS panel.
+  final List<Function(String, String)> _signalListeners = <Function(String, String)>[];
+
   void addMessageListener(Function(String, String) listener) {
     if (!_messageListeners.contains(listener)) _messageListeners.add(listener);
   }
 
   void removeMessageListener(Function(String, String) listener) {
     _messageListeners.remove(listener);
+  }
+
+  void addSignalListener(Function(String, String) listener) {
+    if (!_signalListeners.contains(listener)) _signalListeners.add(listener);
+  }
+
+  void removeSignalListener(Function(String, String) listener) {
+    _signalListeners.remove(listener);
   }
 
   Socket? _socket;
@@ -153,6 +166,13 @@ class RelayService {
   }
 
   void _handleMessage(String from, String body) {
+    if (body.startsWith('WRTC|')) {
+      for (final listener
+          in List<Function(String, String)>.from(_signalListeners)) {
+        listener(from, body);
+      }
+      return;
+    }
     // Update unread count for non-current conversations
     _unread[from] = (_unread[from] ?? 0) + 1;
     onUnreadChanged?.call(_unread.values.fold(0, (a, b) => a + b));

@@ -1,24 +1,61 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/relay_service.dart';
+import '../services/speech_service.dart';
 
-/// Mutable AI settings shared by the Agent panel and Settings > AI sheet.
-/// Values are kept for the current session; no API key is written to disk.
+/// AI settings shared by the Agent panel and Settings > AI sheet. Ordinary
+/// preferences are persisted with SharedPreferences; the BYOK secret goes to
+/// platform secure storage. A failed load keeps safe in-memory defaults.
 class AgentConfig {
   String provider;
   String endpoint;
   String model;
   String apiKey;
+  bool readAloud;
+
+  static const FlutterSecureStorage _secure = FlutterSecureStorage(
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+  );
 
   AgentConfig({
     this.provider = 'ollama',
     this.endpoint = 'http://localhost:11434',
     this.model = 'llama3',
     this.apiKey = '',
+    this.readAloud = true,
   });
+
+  Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      provider = prefs.getString('ai_provider') ?? provider;
+      endpoint = prefs.getString('ai_endpoint') ?? endpoint;
+      model = prefs.getString('ai_model') ?? model;
+      readAloud = prefs.getBool('ai_read_aloud') ?? readAloud;
+      apiKey = await _secure.read(key: 'gemini_api_key') ?? '';
+    } catch (_) {
+      // Keep defaults; a settings read failure must not break the app.
+    }
+  }
+
+  Future<void> save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('ai_provider', provider);
+    await prefs.setString('ai_endpoint', endpoint);
+    await prefs.setString('ai_model', model);
+    await prefs.setBool('ai_read_aloud', readAloud);
+    final key = apiKey.trim();
+    if (key.isEmpty) {
+      await _secure.delete(key: 'gemini_api_key');
+    } else {
+      await _secure.write(key: 'gemini_api_key', value: key);
+    }
+  }
 }
 
 class AgentScreen extends StatefulWidget {
@@ -57,7 +94,17 @@ class _AgentScreenState extends State<AgentScreen> {
     ),
   ];
   bool _thinking = false;
-  bool _readAloud = true;
+
+  bool get _readAloud => widget.config.readAloud;
+
+  Future<void> _setReadAloud(bool value) async {
+    setState(() => widget.config.readAloud = value);
+    try {
+      await widget.config.save();
+    } catch (_) {
+      if (mounted) _note('Read-aloud preference could not be saved on this device.');
+    }
+  }
 
   @override
   void dispose() {
@@ -96,7 +143,7 @@ class _AgentScreenState extends State<AgentScreen> {
         _thinking = false;
       });
       _scrollDown();
-      if (_readAloud) _readAloudOnce(reply);
+      if (_readAloud) await _readAloudOnce(reply);
     } catch (e) {
       setState(() {
         _messages.add(_AgentMsg(role: 'error', content: 'Error: $e'));
@@ -167,9 +214,15 @@ class _AgentScreenState extends State<AgentScreen> {
     return 'Provider ${widget.config.provider} is not configured. Use Ollama (local) or configure Gemini in Settings > AI.';
   }
 
-  void _readAloudOnce(String text) {
-    if (!_readAloud) return;
-    _note('Read aloud is enabled, but this build has no speech engine. The preference is saved for the session.');
+  Future<void> _readAloudOnce(String text) async {
+    if (!_readAloud) {
+      _note('Read aloud is off. Enable it above to hear the response.');
+      return;
+    }
+    final spoken = await SpeechService.speak(text);
+    if (!spoken && mounted) {
+      _note('No speech engine is attached to this Flutter build. The answer is shown on screen; the preference is saved.');
+    }
   }
 
   void _quickPrompt(String prompt) {
@@ -308,8 +361,7 @@ class _AgentScreenState extends State<AgentScreen> {
                 height: 18,
                 child: Checkbox(
                   value: _readAloud,
-                  onChanged: (value) =>
-                      setState(() => _readAloud = value ?? false),
+                  onChanged: (value) => _setReadAloud(value ?? false),
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ),

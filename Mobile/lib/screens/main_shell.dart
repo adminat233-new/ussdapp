@@ -9,6 +9,7 @@ import 'dialer_screen.dart';
 import 'sim_manager_screen.dart';
 import 'ussd_screen.dart';
 import 'video_call_screen.dart';
+import '../services/call_config.dart';
 import '../services/relay_service.dart';
 
 class MainShell extends StatefulWidget {
@@ -22,6 +23,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
   int _currentIndex = 0;
   late final RelayService _relay;
   final AgentConfig _agentConfig = AgentConfig();
+  final CallConfig _callConfig = CallConfig();
   bool _relayConnected = false;
   int _unreadMessages = 0;
 
@@ -47,6 +49,16 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     _relay.onUnreadChanged = (count) {
       if (mounted) setState(() => _unreadMessages = count);
     };
+    // Restore saved number/relay and register automatically on startup.
+    _relay.init().then((_) {
+      if (mounted) setState(() {});
+    });
+    _agentConfig.load().then((_) {
+      if (mounted) setState(() {});
+    });
+    _callConfig.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -145,7 +157,11 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
     final screens = <Widget>[
       DialerScreen(relay: _relay),
       const ContactsScreen(),
-      VideoCallScreen(relay: _relay, onGoToDialer: () => _openPanel(0)),
+      VideoCallScreen(
+        relay: _relay,
+        callConfig: _callConfig,
+        onGoToDialer: () => _openPanel(0),
+      ),
       ChatScreen(relay: _relay),
       const SimManagerScreen(),
       const UssdScreen(),
@@ -265,6 +281,7 @@ class _MainShellState extends State<MainShell> with TickerProviderStateMixin {
       builder: (ctx) => _SettingsSheet(
         relay: _relay,
         config: _agentConfig,
+        callConfig: _callConfig,
         initialTab: tab,
       ),
     );
@@ -282,11 +299,13 @@ class _NavItem {
 class _SettingsSheet extends StatefulWidget {
   final RelayService relay;
   final AgentConfig config;
+  final CallConfig callConfig;
   final int initialTab;
 
   const _SettingsSheet({
     required this.relay,
     required this.config,
+    required this.callConfig,
     this.initialTab = 0,
   });
 
@@ -301,6 +320,9 @@ class _SettingsSheetState extends State<_SettingsSheet> {
   late TextEditingController _endpointCtrl;
   late TextEditingController _modelCtrl;
   late TextEditingController _keyCtrl;
+  late TextEditingController _turnUrlCtrl;
+  late TextEditingController _turnUserCtrl;
+  late TextEditingController _turnCredentialCtrl;
   late String _provider;
 
   @override
@@ -312,6 +334,10 @@ class _SettingsSheetState extends State<_SettingsSheet> {
     _endpointCtrl = TextEditingController(text: widget.config.endpoint);
     _modelCtrl = TextEditingController(text: widget.config.model);
     _keyCtrl = TextEditingController(text: widget.config.apiKey);
+    _turnUrlCtrl = TextEditingController(text: widget.callConfig.turnUrl);
+    _turnUserCtrl = TextEditingController(text: widget.callConfig.turnUsername);
+    _turnCredentialCtrl =
+        TextEditingController(text: widget.callConfig.turnCredential);
     _provider = widget.config.provider;
   }
 
@@ -322,6 +348,9 @@ class _SettingsSheetState extends State<_SettingsSheet> {
     _endpointCtrl.dispose();
     _modelCtrl.dispose();
     _keyCtrl.dispose();
+    _turnUrlCtrl.dispose();
+    _turnUserCtrl.dispose();
+    _turnCredentialCtrl.dispose();
     super.dispose();
   }
 
@@ -334,7 +363,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
     );
   }
 
-  void _saveAi() {
+  Future<void> _saveAi() async {
     final messenger = ScaffoldMessenger.of(context);
     setState(() {
       widget.config
@@ -343,10 +372,36 @@ class _SettingsSheetState extends State<_SettingsSheet> {
         ..model = _modelCtrl.text.trim()
         ..apiKey = _keyCtrl.text.trim();
     });
+    String message = 'AI settings saved on this device.';
+    try {
+      await widget.config.save();
+    } catch (_) {
+      message = 'AI settings changed in memory but could not be persisted.';
+    }
+    if (!context.mounted) return;
     Navigator.pop(context);
-    messenger.showSnackBar(
-      const SnackBar(content: Text('AI settings saved for this session.')),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _saveCalls() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      widget.callConfig
+        ..turnUrl = _turnUrlCtrl.text.trim()
+        ..turnUsername = _turnUserCtrl.text.trim()
+        ..turnCredential = _turnCredentialCtrl.text.trim();
+    });
+    String message = widget.callConfig.hasTurn
+        ? 'TURN server saved. Media can now try a relayed ICE path.'
+        : 'STUN-only calling saved. Restrictive networks may still block media.';
+    try {
+      await widget.callConfig.save();
+    } catch (_) {
+      message = 'Call settings changed in memory but could not be persisted.';
+    }
+    if (!context.mounted) return;
+    Navigator.pop(context);
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -376,6 +431,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
                       children: [
                         _tabButton('Relay', 0),
                         _tabButton('AI', 1),
+                        _tabButton('Calls', 2),
                       ],
                     ),
                   ),
@@ -402,7 +458,7 @@ class _SettingsSheetState extends State<_SettingsSheet> {
                     child: const Text('Save & Connect'),
                   ),
                 ),
-              ] else ...[
+              ] else if (_tab == 1) ...[
                 DropdownButtonFormField<String>(
                   value: _provider,
                   decoration: const InputDecoration(labelText: 'AI provider'),
@@ -429,12 +485,12 @@ class _SettingsSheetState extends State<_SettingsSheet> {
                   controller: _keyCtrl,
                   obscureText: true,
                   decoration: const InputDecoration(
-                    labelText: 'Gemini API key (BYOK, session only)',
+                    labelText: 'Gemini API key (BYOK, stored securely)',
                   ),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Prompts are sent only when you press Send. The key is kept in memory for this session.',
+                  'Prompts are sent only when you press Send. Provider, model and read-aloud survive restarts; the key is kept in platform secure storage.',
                   style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
                 ),
                 const SizedBox(height: 18),
@@ -443,6 +499,52 @@ class _SettingsSheetState extends State<_SettingsSheet> {
                   child: ElevatedButton(
                     onPressed: _saveAi,
                     child: const Text('Save AI settings'),
+                  ),
+                ),
+              ] else ...[
+                TextField(
+                  controller: _turnUrlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'TURN URL (optional)',
+                    hintText: 'turn:relay.example.com:3478?transport=udp',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _turnUserCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'TURN username (optional)'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _turnCredentialCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'TURN credential (secure storage)',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'STUN is enabled by default. Without TURN, calls across symmetric NAT or strict firewalls can fail; no app can honestly promise every network. TURN credentials are stored in platform secure storage.',
+                  style: TextStyle(color: Color(0xFFB45309), fontSize: 11),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  widget.callConfig.hasTurn
+                      ? 'TURN is configured.'
+                      : 'No TURN configured: direct/STUN path only.',
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _saveCalls,
+                    child: const Text('Save call settings'),
                   ),
                 ),
               ],

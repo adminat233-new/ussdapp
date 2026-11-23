@@ -285,6 +285,57 @@ namespace UssdApp
                 case "lockscreen":
                     return LockScreen();
 
+                case "opentracker":
+                    // Starts the real FIND desktop app after local approval.
+                    var hot = OpenLaptopTrackerRequested;
+                    if (hot != null) hot();
+                    return "Laptop Tracker launch requested.";
+
+                case "opencalls":
+                    var hoc = OpenCallsCompanionRequested;
+                    if (hoc != null) hoc();
+                    return "Cross-platform calls launch requested.";
+
+                case "startcall":
+                    // Format: "number" (voice) or "number|video".
+                    string callArg = arg ?? "";
+                    string callNumber = callArg;
+                    bool callVideo = false;
+                    int callBar = callArg.IndexOf('|');
+                    if (callBar >= 0)
+                    {
+                        callNumber = callArg.Substring(0, callBar);
+                        callVideo = callArg.Substring(callBar + 1).Trim()
+                            .Equals("video", StringComparison.OrdinalIgnoreCase);
+                    }
+                    if (string.IsNullOrWhiteSpace(callNumber)) return "ERROR: arg must be number or number|video";
+                    var hsc = StartCallRequested;
+                    if (hsc != null) hsc(callNumber.Trim(), callVideo);
+                    return "Call requested to " + callNumber.Trim() + (callVideo ? " (video)" : " (voice)");
+
+                case "answercall":
+                    var hac = AnswerCallRequested;
+                    if (hac != null) hac();
+                    return "Incoming call answer requested.";
+
+                case "rejectcall":
+                    var hrc = RejectCallRequested;
+                    if (hrc != null) hrc();
+                    return "Incoming call reject requested.";
+
+                case "endcall":
+                    var hec = EndCallRequested;
+                    if (hec != null) hec();
+                    return "Active call end requested.";
+
+                case "sendchat":
+                    // Format: "number|message". Uses the sealed relay path.
+                    int chatBar = (arg ?? "").IndexOf('|');
+                    if (chatBar < 0) return "ERROR: arg must be number|message";
+                    var hchat = SendChatRequested;
+                    if (hchat != null) hchat(arg.Substring(0, chatBar), arg.Substring(chatBar + 1));
+                    return "Chat queued to " + arg.Substring(0, chatBar);
+
                 case "derp_status":
                 case "mesh":
                     return "DERP_STATUS: experimental frame router on port 9005; opaque payloads; not a TLS tunnel";
@@ -298,6 +349,13 @@ namespace UssdApp
         // knowing about the modem or VoipService directly.
         public event Action<string> RunUssdRequested;    // ussd code
         public event Action<string, string> SendSmsRequested;  // number, body
+        public event Action OpenLaptopTrackerRequested;
+        public event Action OpenCallsCompanionRequested;
+        public event Action<string, bool> StartCallRequested;  // number, video
+        public event Action AnswerCallRequested;
+        public event Action RejectCallRequested;
+        public event Action EndCallRequested;
+        public event Action<string, string> SendChatRequested; // number, message
 
         // ── Commands ─────────────────────────────────────────────────────
 

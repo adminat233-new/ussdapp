@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
-/// SIM Manager panel from the authoritative design. This Flutter build cannot
-/// read ICCID/IMSI/IMEI or modem telemetry, so every hardware value is clearly
-/// labelled as a simulation and the toggle is a UI preview, not a modem action.
+import '../services/device_telemetry_service.dart';
+
+/// SIM Manager panel from the authoritative design. Real device identity is
+/// read when the native host exposes it; modem-only fields that mobile OSes
+/// deny to ordinary apps stay explicitly unavailable. The toggle is a clearly
+/// labelled simulation, never a claim that a modem was contacted.
 class SimManagerScreen extends StatefulWidget {
   const SimManagerScreen({super.key});
 
@@ -11,8 +14,11 @@ class SimManagerScreen extends StatefulWidget {
 }
 
 class _SimManagerScreenState extends State<SimManagerScreen> {
+  final DeviceTelemetryService _telemetry = DeviceTelemetryService();
   bool _simulatedConnected = false;
-  String _status = 'No live modem is attached to this build.';
+  bool _loading = true;
+  DeviceTelemetry? _reading;
+  String _status = 'Reading available device information...';
 
   static const List<_Metric> _metrics = <_Metric>[
     _Metric('SIM Status', 'Ready (Active)', 'Not Inserted', true),
@@ -27,7 +33,28 @@ class _SimManagerScreenState extends State<SimManagerScreen> {
     _Metric('SIM Type', 'USIM 4G', '—', false),
     _Metric('Carrier', 'Telecel GH', '—', false),
     _Metric('SIM Slot', 'Slot 1 (Primary)', 'Slot 1 (Primary)', false),
+    _Metric('Device', 'Simulation device', '—', false),
+    _Metric('OS', 'Simulation OS', '—', false),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTelemetry();
+  }
+
+  Future<void> _loadTelemetry() async {
+    if (mounted) setState(() => _loading = true);
+    final reading = await _telemetry.read();
+    if (!mounted) return;
+    setState(() {
+      _reading = reading;
+      _loading = false;
+      _status = reading.live
+          ? 'Native telemetry is available; modem-only fields may still be denied.'
+          : 'Device info only: no native SIM telemetry bridge in this build.';
+    });
+  }
 
   void _note(String message) {
     if (!mounted) return;
@@ -123,7 +150,7 @@ class _SimManagerScreenState extends State<SimManagerScreen> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _note('Telemetry polled locally; no hardware was read.'),
+                  onPressed: _loadTelemetry,
                   icon: const Icon(Icons.refresh_rounded, size: 16),
                   label: const Text('Refresh Now', style: TextStyle(fontSize: 11)),
                 ),
@@ -145,6 +172,14 @@ class _SimManagerScreenState extends State<SimManagerScreen> {
           Text(
             _status,
             style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _loading
+                ? 'Reading device information...'
+                : 'Source: ${_reading?.source ?? 'none'}'
+                    '${_simulatedConnected ? ' (displaying SIMULATION values)' : ''}',
+            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
           ),
         ],
       ),
@@ -172,8 +207,17 @@ class _SimManagerScreenState extends State<SimManagerScreen> {
   }
 
   Widget _metricCard(_Metric metric) {
-    final value = _simulatedConnected ? metric.connected : metric.disconnected;
-    final highlight = _simulatedConnected && metric.highlight
+    final reported = _reading?.values[metric.label];
+    final value = _simulatedConnected
+        ? metric.connected
+        : (_loading
+            ? 'Reading...'
+            : reported ?? 'Unavailable on this platform');
+    final isLive = !_simulatedConnected &&
+        reported != null &&
+        !reported.startsWith('Unavailable') &&
+        !reported.startsWith('Not exposed');
+    final highlight = (_simulatedConnected && metric.highlight) || isLive
         ? const Color(0xFF059669)
         : const Color(0xFF0F172A);
     return Container(
@@ -238,7 +282,7 @@ class _SimManagerScreenState extends State<SimManagerScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Auto-configuration',
+                  'Where modem control really runs',
                   style: TextStyle(
                     color: Color(0xFF1E3A8A),
                     fontSize: 13,
@@ -247,7 +291,7 @@ class _SimManagerScreenState extends State<SimManagerScreen> {
                 ),
                 SizedBox(height: 5),
                 Text(
-                  'On connect the modem is initialized (echo off, text SMS mode, SMS notifications, caller ID) and the SIM is identified (ICCID/IMSI/IMEI/operator). Every 20 s the SIM is re-checked — if the SIM card changes, the modem is re-configured automatically. Incoming SMS are stored and verification codes extracted.',
+                  'AT init (echo off, text SMS mode, SMS notifications, caller ID) and recurring SIM identity checks run in the Windows desktop app with a physical modem. This mobile build only displays device information the OS exposes; it does not initialize a modem or read SIM/IMEI secrets.',
                   style: TextStyle(color: Color(0xFF1E40AF), fontSize: 11, height: 1.5),
                 ),
               ],

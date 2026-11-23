@@ -623,6 +623,68 @@ namespace UssdApp
             }
             catch (Exception ex) { sb.AppendLine("Theme/Num EX: " + ex.Message); pass = false; }
 
+            sb.AppendLine("--- Agent tools + consent gate ---");
+            try
+            {
+                string rcDir = Path.Combine(Path.GetTempPath(), "ussd_rc_selftest_" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(rcDir);
+                RemoteControl rc = new RemoteControl(rcDir);
+                bool dialogRaised = false;
+                string pingOutput = "";
+                string trackerNumber = "";
+                string chatNumber = "";
+                string chatMessage = "";
+
+                rc.PermissionRequested += delegate(PermissionRequest r)
+                {
+                    dialogRaised = true;
+                    rc.Approve(r.Id, false);
+                };
+                rc.CommandExecuted += delegate(string id, string output)
+                {
+                    if (output.StartsWith("PONG")) pingOutput = output;
+                };
+                rc.StartCallRequested += delegate(string number, bool video)
+                {
+                    trackerNumber = number + (video ? "|video" : "|voice");
+                };
+                rc.SendChatRequested += delegate(string number, string message)
+                {
+                    chatNumber = number;
+                    chatMessage = message;
+                };
+
+                string pingId = rc.Request("selftest_ping", "ping", "");
+                for (int i = 0; i < 40 && pingOutput.Length == 0; i++) Thread.Sleep(25);
+                bool toolsOk = !string.IsNullOrEmpty(pingId) && dialogRaised && pingOutput.StartsWith("PONG");
+                sb.AppendLine("RC request/approval/event pipeline: " + (toolsOk ? "OK" : "FAIL"));
+                if (!toolsOk) pass = false;
+
+                string callId = rc.Request("selftest_call", "startcall", "7001111111|video");
+                for (int i = 0; i < 40 && trackerNumber.Length == 0; i++) Thread.Sleep(25);
+                bool callOk = !string.IsNullOrEmpty(callId) && trackerNumber == "7001111111|video";
+                sb.AppendLine("RC startcall callback: " + (callOk ? "OK" : "FAIL -> " + trackerNumber));
+                if (!callOk) pass = false;
+
+                string manifest = McpEngine.GetToolsManifestJson();
+                bool manifestOk = manifest.Contains("open_laptop_tracker") &&
+                    manifest.Contains("initiate_call") && manifest.Contains("send_chat");
+                sb.AppendLine("MCP manifest has tracker/call/chat tools: " + (manifestOk ? "OK" : "FAIL"));
+                if (!manifestOk) pass = false;
+
+                string chatJson = "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\"," +
+                    "\"params\":{\"name\":\"send_chat\",\"arguments\":{\"number\":\"7001111111\",\"message\":\"selftest sealed hello\"}}}";
+                string chatResponse = McpEngine.ProcessMcpJsonRpc(chatJson, rc, "selftest_mcp");
+                for (int i = 0; i < 40 && chatNumber.Length == 0; i++) Thread.Sleep(25);
+                bool chatOk = chatResponse.Contains("Request queued with consent gate ID") &&
+                    chatNumber == "7001111111" && chatMessage == "selftest sealed hello";
+                sb.AppendLine("MCP nested send_chat args: " + (chatOk ? "OK" : "FAIL -> " + chatNumber + "/" + chatMessage));
+                if (!chatOk) pass = false;
+
+                try { Directory.Delete(rcDir, true); } catch { }
+            }
+            catch (Exception ex) { sb.AppendLine("Agent tools EX: " + ex.Message); pass = false; }
+
             File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "selftest.log"), sb.ToString());
             return pass ? 0 : 1;
         }
@@ -3786,6 +3848,11 @@ namespace UssdApp
         private readonly List<Button> _trackerActionButtons = new List<Button>();
         private bool _trackerBusy;
         private TextBlock _appsStatus;
+        private TextBlock _trackerStoreStatus;
+        private TextBlock _apkStoreStatus;
+        private TextBlock _callsStoreStatus;
+        private Button _trackerStoreOpen;
+        private Button _callsStoreOpen;
         private string _laptopTrackerExe;
         private Process _laptopTrackerProcess;
         private TrackerWindowHost _laptopTrackerHost;
@@ -7730,7 +7797,11 @@ namespace UssdApp
         {
             command = "";
             string p = (prompt ?? "").ToLowerInvariant();
+            if (p.Contains("open find") || p.Contains("open laptop tracker")) { command = "/agent opentracker"; return true; }
             if (p.Contains("laptop tracker")) { command = "/agent tracker"; return true; }
+            if (p.Contains("open calls") || p.Contains("calls companion")) { command = "/agent calls"; return true; }
+            if (p.StartsWith("call ") && p.IndexOf('#') >= 0) { command = "/agent " + prompt.Trim(); return true; }
+            if (p.StartsWith("chat ") && p.IndexOf('#') >= 0) { command = "/agent " + prompt.Trim(); return true; }
             if (p.Contains("verification codes") || p.Contains("sms codes") || p.Contains("open sms"))
             { command = "/agent opencodes"; return true; }
             if (p.Contains("ussd") || p.Contains("*124#")) { command = "/agent ussd *124#"; return true; }
@@ -7845,7 +7916,12 @@ namespace UssdApp
                        "  • /agent peer <#num> <cmd>- Remote command to connected peer\n" +
                        "  • /agent ussd <code>      - Prepare carrier USSD code\n" +
                        "  • /agent say <text>       - Text-to-speech aloud\n" +
-                       "  • /agent open <tab>       - Navigate to dialer/contacts/video/sms/sim/ussd/apps";
+                       "  \u2022 /agent open <tab>       - Navigate to dialer/contacts/video/sms/sim/ussd/apps\n" +
+                        "  /agent opentracker      - Open FIND Laptop Tracker (asks approval)\n" +
+                        "  /agent calls            - Open cross-platform calls companion (asks approval)\n" +
+                        "  /agent call <#num> [video] - Start voice/video call (asks approval)\n" +
+                        "  /agent answer|reject|endcall - Manage the active call (asks approval)\n" +
+                        "  /agent chat <#num> <text> - Send sealed chat (asks approval)";
 
             if (string.Equals(verb, "locate", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(verb, "track", StringComparison.OrdinalIgnoreCase))
@@ -7947,6 +8023,60 @@ namespace UssdApp
                 SpeakAgentText(argument);
                 return "Spoke the text locally. No network request was made.";
             }
+            if (string.Equals(verb, "opentracker", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_remoteControl == null) return "Remote control subsystem inactive.";
+                string reqId = _remoteControl.Request("local", "opentracker", "");
+                return "FIND Laptop Tracker launch request submitted: " + reqId;
+            }
+            if (string.Equals(verb, "calls", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(verb, "opencalls", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_remoteControl == null) return "Remote control subsystem inactive.";
+                string reqId = _remoteControl.Request("local", "opencalls", "");
+                return "Calls companion launch request submitted: " + reqId;
+            }
+            if (string.Equals(verb, "call", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_remoteControl == null) return "Remote control subsystem inactive.";
+                string[] parts = argument.Split(new char[] { ' ', '\t' }, 2);
+                string target = parts.Length > 0 ? parts[0].TrimStart('#') : "";
+                if (target.Length == 0) return "Usage: /agent call <number> [video]";
+                string videoArg = parts.Length > 1 && parts[1].Trim().Equals("video", StringComparison.OrdinalIgnoreCase)
+                    ? "video" : "voice";
+                string reqId = _remoteControl.Request("local", "startcall", target + "|" + videoArg);
+                return "Call request submitted for #" + target + " (" + videoArg + "): " + reqId;
+            }
+            if (string.Equals(verb, "answer", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(verb, "reject", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(verb, "endcall", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_remoteControl == null) return "Remote control subsystem inactive.";
+                string rcCommand = string.Equals(verb, "answer", StringComparison.OrdinalIgnoreCase)
+                    ? "answercall" : (string.Equals(verb, "reject", StringComparison.OrdinalIgnoreCase)
+                        ? "rejectcall" : "endcall");
+                string reqId = _remoteControl.Request("local", rcCommand, "");
+                return "Call action request submitted (" + verb + "): " + reqId;
+            }
+            if (string.Equals(verb, "chat", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_remoteControl == null) return "Remote control subsystem inactive.";
+                int bar = argument.IndexOf('|');
+                if (bar < 0)
+                {
+                    int space = argument.IndexOfAny(new char[] { ' ', '\t' });
+                    if (space < 0) return "Usage: /agent chat <number> <message>";
+                    argument = argument.Substring(0, space).TrimStart('#') + "|" + argument.Substring(space + 1).Trim();
+                }
+                else
+                {
+                    argument = argument.Substring(0, bar).TrimStart('#') + "|" + argument.Substring(bar + 1);
+                }
+                if (argument.IndexOf('|') <= 0 || argument.Length <= argument.IndexOf('|') + 1)
+                    return "Usage: /agent chat <number> <message>";
+                string reqId = _remoteControl.Request("local", "sendchat", argument);
+                return "Sealed chat request submitted: " + reqId;
+            }
             if (string.Equals(verb, "ussd", StringComparison.OrdinalIgnoreCase))
             {
                 if (argument.Length == 0) return "Add a USSD code after /agent ussd. Nothing was sent.";
@@ -8012,14 +8142,228 @@ namespace UssdApp
             }
         }
 
+        // Store-style launchers need a real executable, not a status message.
+        // The tracker ships as FIND.exe / FIND-App.exe in the partner project's
+        // dist folders; a user-chosen path in the config always wins.
+        private static string DiscoverLaptopTrackerExe()
+        {
+            AppConfig config = AppConfig.Load();
+            if (!string.IsNullOrWhiteSpace(config.laptop_tracker_exe) && File.Exists(config.laptop_tracker_exe))
+                return Path.GetFullPath(config.laptop_tracker_exe);
+
+            string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            List<string> roots = new List<string>();
+            string docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            if (!string.IsNullOrEmpty(docs)) roots.Add(docs);
+            roots.Add(Path.Combine(profile, "Downloads"));
+            roots.Add(Path.Combine(profile, "Desktop"));
+
+            string[] relative = new string[] {
+                @"laptop-tracker\windows-app\dist\FIND-win32-x64\FIND.exe",
+                @"laptop-tracker\windows-app\dist\FIND-App-win32-x64\FIND-App.exe",
+                @"laptop-tracker\dist\FIND-win32-x64\FIND.exe"
+            };
+            foreach (string root in roots)
+            {
+                if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
+                foreach (string rel in relative)
+                {
+                    string candidate = Path.Combine(root, rel);
+                    if (File.Exists(candidate)) return candidate;
+                }
+                // The partner project is often one workspace folder below the
+                // shell folder (Documents\Default Project\laptop-tracker). A
+                // bounded search keeps that case working without probing the
+                // whole disk or trusting a stored path.
+                foreach (string child in FindNamedDirectories(root, "laptop-tracker", 2))
+                {
+                    foreach (string rel in relative)
+                    {
+                        int slash = rel.IndexOf('\\');
+                        if (slash < 0) continue;
+                        string candidate = Path.Combine(child, rel.Substring(slash + 1));
+                        if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+                    }
+                }
+            }
+            return "";
+        }
+
+        // Bounded, read-only directory search used only to locate an installed
+        // partner app. It never guesses a path that does not hold a real file.
+        private static List<string> FindNamedDirectories(string root, string name, int maxDepth)
+        {
+            List<string> found = new List<string>();
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root) || maxDepth < 0) return found;
+            try
+            {
+                foreach (string child in Directory.GetDirectories(root))
+                {
+                    string leaf = Path.GetFileName(child);
+                    if (string.Equals(leaf, name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        found.Add(child);
+                        continue;
+                    }
+                    if (maxDepth > 0) found.AddRange(FindNamedDirectories(child, name, maxDepth - 1));
+                }
+            }
+            catch { }
+            return found;
+        }
+
+        private static string DiscoverCallsCompanion()
+        {
+            AppConfig config = AppConfig.Load();
+            if (!string.IsNullOrWhiteSpace(config.calls_companion_exe) && File.Exists(config.calls_companion_exe))
+                return Path.GetFullPath(config.calls_companion_exe);
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            // GetParent("...\Csharp\") returns Csharp itself on .NET 4.0, so
+            // trim the trailing separator before walking up.
+            string trimmed = baseDir.TrimEnd(Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+            DirectoryInfo parent = Directory.GetParent(trimmed);
+            DirectoryInfo grandparent = parent == null ? null : Directory.GetParent(parent.FullName);
+            List<string> candidates = new List<string>();
+            candidates.Add(Path.Combine(baseDir, "USSDCalls", "USSDCalls.exe"));
+            candidates.Add(Path.Combine(baseDir, "USSDCalls.exe"));
+            List<string> bundles = new List<string>();
+            if (parent != null) bundles.Add(parent.FullName);
+            if (grandparent != null) bundles.Add(grandparent.FullName);
+            foreach (string bundle in bundles)
+            {
+                string direct = Path.Combine(bundle, "DesktopCalls", "release", "win-unpacked", "USSDCalls.exe");
+                candidates.Add(direct);
+                candidates.Add(Path.Combine(bundle, "DesktopCalls", "release", "win-unpacked", "USSD Manager Calls.exe"));
+                foreach (string child in FindNamedDirectories(bundle, "DesktopCalls", 1))
+                {
+                    candidates.Add(Path.Combine(child, "release", "win-unpacked", "USSDCalls.exe"));
+                    candidates.Add(Path.Combine(child, "release", "win-unpacked", "USSD Manager Calls.exe"));
+                }
+            }
+            foreach (string candidate in candidates)
+                if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+            return "";
+        }
+
+        private static Border MakeStoreAppCard(string glyph, Brush soft, Brush accent,
+            string title, string publisher, string description, string meta,
+            string status, string primaryLabel, Action primary,
+            string secondaryLabel, Action secondary,
+            out TextBlock statusBlock, out Button primaryButton)
+        {
+            Border card = new Border
+            {
+                Width = 340,
+                Background = Theme.Card,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(14),
+                Margin = new Thickness(6)
+            };
+            Grid content = new Grid();
+            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            DockPanel top = new DockPanel();
+            Border icon = new Border
+            {
+                Width = 52, Height = 52,
+                CornerRadius = new CornerRadius(12),
+                Background = soft,
+                Child = new TextBlock
+                {
+                    Text = glyph,
+                    FontSize = 26,
+                    Foreground = accent,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            };
+            DockPanel.SetDock(icon, Dock.Left);
+            top.Children.Add(icon);
+
+            statusBlock = new TextBlock
+            {
+                Text = status,
+                Foreground = BrushSuccess,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 10,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(8, 2, 0, 0)
+            };
+            DockPanel.SetDock(statusBlock, Dock.Right);
+            top.Children.Add(statusBlock);
+
+            StackPanel identity = new StackPanel { Margin = new Thickness(12, 2, 0, 0) };
+            identity.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontWeight = FontWeights.Bold,
+                FontSize = 13,
+                Foreground = BrushFg,
+                TextWrapping = TextWrapping.Wrap
+            });
+            identity.Children.Add(new TextBlock
+            {
+                Text = publisher,
+                Foreground = BrushGray,
+                FontSize = 10,
+                Margin = new Thickness(0, 3, 0, 0)
+            });
+            top.Children.Add(identity);
+            Grid.SetRow(top, 0);
+            content.Children.Add(top);
+
+            StackPanel body = new StackPanel { Margin = new Thickness(0, 12, 0, 12) };
+            body.Children.Add(new TextBlock
+            {
+                Text = description,
+                Foreground = BrushGray,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Height = 46
+            });
+            body.Children.Add(new TextBlock
+            {
+                Text = meta,
+                Foreground = BrushGray,
+                FontSize = 10,
+                FontFamily = new FontFamily("JetBrains Mono, Consolas, monospace"),
+                Margin = new Thickness(0, 8, 0, 0)
+            });
+            Grid.SetRow(body, 1);
+            content.Children.Add(body);
+
+            DockPanel foot = new DockPanel();
+            primaryButton = MakeStyledButton(primaryLabel, "PrimaryButton");
+            primaryButton.Padding = new Thickness(14, 6, 14, 6);
+            if (primary != null) primaryButton.Click += delegate { primary(); };
+            DockPanel.SetDock(primaryButton, Dock.Right);
+            foot.Children.Add(primaryButton);
+            Button secondaryButton = MakeButton(secondaryLabel);
+            secondaryButton.Margin = new Thickness(0, 0, 8, 0);
+            if (secondary != null) secondaryButton.Click += delegate { secondary(); };
+            DockPanel.SetDock(secondaryButton, Dock.Right);
+            foot.Children.Add(secondaryButton);
+            Grid.SetRow(foot, 2);
+            content.Children.Add(foot);
+
+            card.Child = content;
+            return card;
+        }
+
         private Grid BuildAppsTab()
         {
             Grid g = new Grid { Margin = new Thickness(18, 14, 18, 14) };
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // header
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // collaborated app store
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); // module grid
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // embedded tracker
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // config actions
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); // status
 
             // Website header card: title + filter segmented control + health badge.
             Border headerCard = new Border
@@ -8075,6 +8419,90 @@ namespace UssdApp
             Grid.SetRow(headerCard, 0);
             g.Children.Add(headerCard);
 
+            // Collaborated Apps: a store-style shelf for the real partner
+            // executables. These are launchers, not placeholders: Open starts
+            // FIND.exe / USSDCalls.exe on this machine when they are installed.
+            if (string.IsNullOrWhiteSpace(_laptopTrackerExe))
+                _laptopTrackerExe = DiscoverLaptopTrackerExe();
+            if (string.IsNullOrWhiteSpace(_callsCompanionExe))
+                _callsCompanionExe = DiscoverCallsCompanion();
+
+            Border storeCard = new Border
+            {
+                Background = Theme.Card,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(12, 12, 6, 12),
+                Margin = new Thickness(0, 0, 0, 12)
+            };
+            StackPanel storeBody = new StackPanel();
+            StackPanel storeHeading = new StackPanel { Margin = new Thickness(4, 0, 0, 8) };
+            storeHeading.Children.Add(new TextBlock
+            {
+                Text = "Collaborated Apps",
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                Foreground = BrushFg
+            });
+            storeHeading.Children.Add(new TextBlock
+            {
+                Text = "Partner apps from Laptop Tracker. Open one to run its real desktop app, sign in, and use its own servers and device session.",
+                FontSize = 11,
+                Foreground = BrushGray,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 2, 0, 0)
+            });
+            storeBody.Children.Add(storeHeading);
+
+            WrapPanel shelf = new WrapPanel { Orientation = Orientation.Horizontal };
+            TextBlock trackerStatus;
+            TextBlock apkStatus;
+            TextBlock callsStatus;
+
+            Border trackerStoreCard = MakeStoreAppCard(
+                "\u25C9", Theme.AccentSoft, Theme.Accent,
+                "FIND Laptop Tracker",
+                "Laptop Tracker Project  \u00b7  Desktop app",
+                "Open the tracker desktop app where its device list, permission prompts, location reports, and companion servers run. Use it normally for Android, iOS, and laptop devices.",
+                File.Exists(_laptopTrackerExe ?? "") ? Path.GetFileName(_laptopTrackerExe) : "FIND.exe not found yet",
+                "", "Open", delegate { OpenLaptopTrackerFromStore(); },
+                "Browse...", delegate { ChooseLaptopTrackerExe(); },
+                out trackerStatus, out _trackerStoreOpen);
+            _trackerStoreStatus = trackerStatus;
+            shelf.Children.Add(trackerStoreCard);
+
+            string apkPath = FindLaptopTrackerApk();
+            Button unusedApkButton;
+            Border apkStoreCard = MakeStoreAppCard(
+                "\u25A0", Theme.CallSoft, Theme.Success,
+                "FIND for Android",
+                "Laptop Tracker Project  \u00b7  Android package",
+                "The phone companion that pairs with the same tracker service. Install the APK on an Android device, then approve location and device access from the FIND app itself.",
+                string.IsNullOrEmpty(apkPath) ? "APK asset not present" : Path.GetFileName(apkPath),
+                "", "Open folder", delegate { OpenLaptopTrackerApkLocation(apkPath); },
+                "Browse...", delegate { ChooseLaptopTrackerApkLocation(); },
+                out apkStatus, out unusedApkButton);
+            _apkStoreStatus = apkStatus;
+            shelf.Children.Add(apkStoreCard);
+
+            Border callsStoreCard = MakeStoreAppCard(
+                "\u260E", Theme.CallSoft, Theme.Accent,
+                "USSD Manager Calls",
+                "USSD Manager  \u00b7  Cross-platform calls",
+                "Voice, video, and text companion for the same 700-series identity. Open it to join a call room and keep conversations available across devices and networks.",
+                File.Exists(_callsCompanionExe ?? "") ? Path.GetFileName(_callsCompanionExe) : "USSDCalls.exe not found yet",
+                "", "Open", delegate { OpenCallsCompanionFromStore(); },
+                "Browse...", delegate { ChooseCallsCompanionExe(); },
+                out callsStatus, out _callsStoreOpen);
+            _callsStoreStatus = callsStatus;
+            shelf.Children.Add(callsStoreCard);
+            storeBody.Children.Add(shelf);
+            storeCard.Child = storeBody;
+            Grid.SetRow(storeCard, 1);
+            g.Children.Add(storeCard);
+            RefreshCollaboratedAppStoreStatus();
+
             _appsStatus = new TextBlock
             {
                 Text = "All six companion services are ready. Choose a module action below.",
@@ -8097,7 +8525,7 @@ namespace UssdApp
             };
             _laptopTrackerHost = new TrackerWindowHost();
             trackerPanel.Child = _laptopTrackerHost;
-            Grid.SetRow(trackerPanel, 2);
+            Grid.SetRow(trackerPanel, 3);
             g.Children.Add(trackerPanel);
 
             List<Border> cards = new List<Border>();
@@ -8166,7 +8594,7 @@ namespace UssdApp
             cards.Add(atCard);
 
             for (int i = 0; i < cards.Count; i++) grid.Children.Add(cards[i]);
-            Grid.SetRow(grid, 1);
+            Grid.SetRow(grid, 2);
             g.Children.Add(grid);
 
             Action<string> applyFilter = delegate(string filter)
@@ -8187,22 +8615,7 @@ namespace UssdApp
 
             WrapPanel actions = new WrapPanel { Margin = new Thickness(4, 8, 4, 4) };
             Button chooseTracker = MakeButton("Choose Laptop Tracker...");
-            chooseTracker.Click += delegate
-            {
-                Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
-                {
-                    Title = "Choose Laptop Tracker",
-                    Filter = "Laptop Tracker executable (FIND-App.exe;FIND.exe)|FIND-App.exe;FIND.exe|Executable files (*.exe)|*.exe",
-                    CheckFileExists = true,
-                    Multiselect = false
-                };
-                if (dialog.ShowDialog(this) != true) return;
-                _laptopTrackerExe = dialog.FileName;
-                AppConfig config = AppConfig.Load();
-                config.laptop_tracker_exe = _laptopTrackerExe;
-                config.Save();
-                _appsStatus.Text = "Laptop Tracker selected. Use Configure on its card to open it here.";
-            };
+            chooseTracker.Click += delegate { ChooseLaptopTrackerExe(); };
             actions.Children.Add(chooseTracker);
             Button showApk = MakeButton("Show Android APK location");
             showApk.Margin = new Thickness(8, 0, 0, 0);
@@ -8210,29 +8623,124 @@ namespace UssdApp
             actions.Children.Add(showApk);
             Button chooseCalls = MakeButton("Choose cross-platform calls app...");
             chooseCalls.Margin = new Thickness(8, 0, 0, 0);
-            chooseCalls.Click += delegate
-            {
-                Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
-                {
-                    Title = "Choose USSD Manager Calls",
-                    Filter = "USSD Manager Calls (USSDCalls.exe)|USSDCalls.exe|Executable files (*.exe)|*.exe",
-                    CheckFileExists = true,
-                    Multiselect = false
-                };
-                if (dialog.ShowDialog(this) != true) return;
-                _callsCompanionExe = dialog.FileName;
-                AppConfig config = AppConfig.Load();
-                config.calls_companion_exe = _callsCompanionExe;
-                config.Save();
-                _appsStatus.Text = "Cross-platform call companion selected. Open it when you are ready.";
-            };
+            chooseCalls.Click += delegate { ChooseCallsCompanionExe(); };
             actions.Children.Add(chooseCalls);
-            Grid.SetRow(actions, 3);
+            Grid.SetRow(actions, 4);
             g.Children.Add(actions);
 
-            Grid.SetRow(_appsStatus, 4);
+            Grid.SetRow(_appsStatus, 5);
             g.Children.Add(_appsStatus);
             return g;
+        }
+
+        private static string FindLaptopTrackerApk()
+        {
+            string profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            List<string> roots = new List<string>();
+            if (!string.IsNullOrEmpty(docs)) roots.Add(docs);
+            roots.Add(Path.Combine(profile, "Downloads"));
+            roots.Add(Path.Combine(profile, "Desktop"));
+            string[] relative = new string[] {
+                @"laptop-tracker\FIND.apk",
+                @"laptop-tracker\public\FIND.apk",
+                @"laptop-tracker\android\app\build\outputs\apk\debug\app-debug.apk",
+                @"laptop-tracker\android\app\build\outputs\apk\release\app-release.apk",
+                @"ussdApp\Mobile\Android\app\src\main\assets\laptop-tracker.apk"
+            };
+            foreach (string root in roots)
+            {
+                if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
+                foreach (string rel in relative)
+                {
+                    string candidate = Path.Combine(root, rel);
+                    if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+                }
+                foreach (string project in FindNamedDirectories(root, "laptop-tracker", 2))
+                {
+                    foreach (string rel in relative)
+                    {
+                        if (rel.IndexOf("laptop-tracker\\", StringComparison.OrdinalIgnoreCase) != 0) continue;
+                        string candidate = Path.Combine(project, rel.Substring(15));
+                        if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+                    }
+                }
+                foreach (string project in FindNamedDirectories(root, "ussdApp", 2))
+                {
+                    string candidate = Path.Combine(project,
+                        @"Mobile\Android\app\src\main\assets\laptop-tracker.apk");
+                    if (File.Exists(candidate)) return Path.GetFullPath(candidate);
+                }
+            }
+            return "";
+        }
+
+        private static void SetStoreAppAvailability(TextBlock status, Button open, bool available)
+        {
+            if (status == null) return;
+            status.Text = available ? "\u25CF  Installed" : "\u25CB  Not found";
+            status.Foreground = available ? BrushSuccess : BrushWarn;
+            if (open != null) open.IsEnabled = available;
+        }
+
+        private void RefreshCollaboratedAppStoreStatus()
+        {
+            string apk = FindLaptopTrackerApk();
+            SetStoreAppAvailability(_trackerStoreStatus, _trackerStoreOpen,
+                !string.IsNullOrEmpty(_laptopTrackerExe) && File.Exists(_laptopTrackerExe));
+            SetStoreAppAvailability(_apkStoreStatus, null, !string.IsNullOrEmpty(apk) && File.Exists(apk));
+            SetStoreAppAvailability(_callsStoreStatus, _callsStoreOpen,
+                !string.IsNullOrEmpty(_callsCompanionExe) && File.Exists(_callsCompanionExe));
+        }
+
+        private void ChooseLaptopTrackerExe()
+        {
+            Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Choose Laptop Tracker desktop app",
+                Filter = "Laptop Tracker executable (FIND-App.exe;FIND.exe)|FIND-App.exe;FIND.exe|Executable files (*.exe)|*.exe",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+            if (dialog.ShowDialog(this) != true) return;
+            _laptopTrackerExe = Path.GetFullPath(dialog.FileName);
+            AppConfig config = AppConfig.Load();
+            config.laptop_tracker_exe = _laptopTrackerExe;
+            config.Save();
+            RefreshCollaboratedAppStoreStatus();
+            _appsStatus.Text = "Laptop Tracker selected. Press Open to start " + Path.GetFileName(_laptopTrackerExe) + ".";
+        }
+
+        private void ChooseCallsCompanionExe()
+        {
+            Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Choose USSD Manager Calls",
+                Filter = "USSD Manager Calls (USSDCalls.exe)|USSDCalls.exe|Executable files (*.exe)|*.exe",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+            if (dialog.ShowDialog(this) != true) return;
+            _callsCompanionExe = Path.GetFullPath(dialog.FileName);
+            AppConfig config = AppConfig.Load();
+            config.calls_companion_exe = _callsCompanionExe;
+            config.Save();
+            RefreshCollaboratedAppStoreStatus();
+            _appsStatus.Text = "Cross-platform calls app selected. Press Open to start " + Path.GetFileName(_callsCompanionExe) + ".";
+        }
+
+        private void OpenLaptopTrackerFromStore()
+        {
+            if (string.IsNullOrWhiteSpace(_laptopTrackerExe) || !File.Exists(_laptopTrackerExe))
+                _laptopTrackerExe = DiscoverLaptopTrackerExe();
+            LaunchLaptopTracker();
+        }
+
+        private void OpenCallsCompanionFromStore()
+        {
+            if (string.IsNullOrWhiteSpace(_callsCompanionExe) || !File.Exists(_callsCompanionExe))
+                _callsCompanionExe = DiscoverCallsCompanion();
+            LaunchCallsCompanion();
         }
 
         private static Border MakeAppModuleCard(string title, string description, string status,
@@ -8342,8 +8850,8 @@ namespace UssdApp
                     _callsCompanionProcess.Dispose();
                     _callsCompanionProcess = null;
                 }
-                if (string.IsNullOrEmpty(_callsCompanionExe))
-                    _callsCompanionExe = AppConfig.Load().calls_companion_exe;
+                if (string.IsNullOrWhiteSpace(_callsCompanionExe) || !File.Exists(_callsCompanionExe))
+                    _callsCompanionExe = DiscoverCallsCompanion();
                 if (string.IsNullOrEmpty(_callsCompanionExe))
                     _callsCompanionExe = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
                         "USSDCalls", "USSDCalls.exe");
@@ -8395,12 +8903,17 @@ namespace UssdApp
                     _laptopTrackerProcess = null;
                 }
                 if (string.IsNullOrWhiteSpace(_laptopTrackerExe) || !File.Exists(_laptopTrackerExe))
+                    _laptopTrackerExe = DiscoverLaptopTrackerExe();
+                if (string.IsNullOrWhiteSpace(_laptopTrackerExe) || !File.Exists(_laptopTrackerExe))
                 {
                     _appsStatus.Text = "Laptop Tracker was not found. Choose its executable, then open it again.";
                     Log("Laptop Tracker executable is missing: " + (_laptopTrackerExe ?? ""), BrushWarn);
                     return;
                 }
                 string path = Path.GetFullPath(_laptopTrackerExe);
+                AppConfig trackerConfig = AppConfig.Load();
+                trackerConfig.laptop_tracker_exe = path;
+                trackerConfig.Save();
                 _laptopTrackerProcess = Process.Start(new ProcessStartInfo
                 {
                     FileName = path,
@@ -13048,6 +13561,56 @@ HubShowWorkspace("chat");
                 {
                     try { if (_modem != null) _modem.SendSms(number, body, 30000); }
                     catch { }
+                });
+            };
+
+            // Collaborated apps and communication tools. Every one of these is
+            // reached only through an approved RemoteControl request; the
+            // permission dialog shows the exact command and argument first.
+            _remoteControl.OpenLaptopTrackerRequested += delegate
+            {
+                Dispatcher.BeginInvoke((Action)delegate
+                {
+                    ShowPage(6);
+                    OpenLaptopTrackerFromStore();
+                });
+            };
+            _remoteControl.OpenCallsCompanionRequested += delegate
+            {
+                Dispatcher.BeginInvoke((Action)delegate { OpenCallsCompanionFromStore(); });
+            };
+            _remoteControl.StartCallRequested += delegate(string number, bool video)
+            {
+                Dispatcher.BeginInvoke((Action)delegate
+                {
+                    ShowPage(0);
+                    StartVoipCallByNumber(number, video);
+                });
+            };
+            _remoteControl.AnswerCallRequested += delegate
+            {
+                Dispatcher.BeginInvoke((Action)delegate { AcceptVoipIncoming(); });
+            };
+            _remoteControl.RejectCallRequested += delegate
+            {
+                Dispatcher.BeginInvoke((Action)delegate { RejectVoipIncoming(); });
+            };
+            _remoteControl.EndCallRequested += delegate
+            {
+                Dispatcher.BeginInvoke((Action)delegate { HangupVoip(); });
+            };
+            _remoteControl.SendChatRequested += delegate(string number, string message)
+            {
+                System.Threading.Tasks.Task.Run(delegate
+                {
+                    try
+                    {
+                        bool sent = _voip != null && _voip.SendChat(number, message);
+                        Log(sent ? "[RC] Sealed chat queued to #" + number
+                                 : "[RC] Chat queue unavailable for #" + number,
+                            sent ? BrushSuccess : BrushWarn);
+                    }
+                    catch (Exception ex) { Log("[RC] Chat failed: " + ex.Message, BrushError); }
                 });
             };
 

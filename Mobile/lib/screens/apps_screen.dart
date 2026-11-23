@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Apps panel from the authoritative design. Actions either open the matching
 /// panel or report an honest status; nothing claims a service ran when it did
@@ -16,11 +17,59 @@ class AppsScreen extends StatefulWidget {
 class _AppsScreenState extends State<AppsScreen> {
   int _filter = 0;
 
+  static const MethodChannel _appsChannel =
+      MethodChannel('com.ussdapp.mobile/apps');
+
+  static const List<_PartnerApp> _partners = <_PartnerApp>[
+    _PartnerApp(
+      id: 'find_laptop_tracker',
+      title: 'FIND Laptop Tracker',
+      detail: 'Windows .exe tracker and consent guardrails.',
+      badge: 'Win .exe',
+    ),
+    _PartnerApp(
+      id: 'find_android',
+      title: 'FIND for Android',
+      detail: 'Android .apk companion for device tracking.',
+      badge: 'Android .apk',
+    ),
+    _PartnerApp(
+      id: 'ussd_calls',
+      title: 'USSD Manager Calls',
+      detail: 'Desktop call companion for voice, video and chat.',
+      badge: 'Win .exe',
+    ),
+  ];
+
   void _note(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _launchPartner(_PartnerApp app, {required bool browse}) async {
+    final method = browse ? 'browsePartnerApp' : 'openPartnerApp';
+    try {
+      final result = await _appsChannel.invokeMethod<bool>(method, <String, dynamic>{
+        'id': app.id,
+      });
+      if (result == true) {
+        _note(browse
+            ? '${app.title}: host opened the file/browser chooser.'
+            : '${app.title}: launch requested by the device host.');
+      } else {
+        _note(browse
+            ? '${app.title}: this host has no file browser bridge.'
+            : '${app.title}: this Flutter host has no app launcher bridge.');
+      }
+    } on MissingPluginException {
+      _note(browse
+          ? '${app.title}: no browser bridge in this build.'
+          : '${app.title}: no launcher bridge in this build.');
+    } on PlatformException catch (e) {
+      _note('${app.title}: ${e.message ?? 'host refused the action'}.');
+    }
   }
 
   List<_Module> _modules() {
@@ -143,6 +192,7 @@ class _AppsScreenState extends State<AppsScreen> {
       child: Column(
         children: [
           _buildHeader(),
+          _buildCollaboratedShelf(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -272,6 +322,135 @@ class _AppsScreenState extends State<AppsScreen> {
     );
   }
 
+  Widget _buildCollaboratedShelf() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Collaborated Apps',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Text(
+                'Open real apps / installers',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 10),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 132,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _partners.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, index) =>
+                  _buildPartnerCard(_partners[index]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPartnerCard(_PartnerApp app) {
+    return Container(
+      width: 196,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D4ED8).withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  app.badge,
+                  style: const TextStyle(
+                    color: Color(0xFFBFDBFE),
+                    fontSize: 8,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              const Icon(Icons.extension_rounded,
+                  color: Color(0xFF818CF8), size: 16),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            app.title,
+            maxLines: 2,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            app.detail,
+            maxLines: 2,
+            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 9),
+          ),
+          const Spacer(),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 26,
+                  child: ElevatedButton(
+                    onPressed: () => _launchPartner(app, browse: false),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2563EB),
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: const Text('Open', style: TextStyle(fontSize: 9)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: SizedBox(
+                  height: 26,
+                  child: OutlinedButton(
+                    onPressed: () => _launchPartner(app, browse: true),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFBFDBFE),
+                      padding: EdgeInsets.zero,
+                      side: const BorderSide(color: Color(0xFF334155)),
+                    ),
+                    child: const Text('Browse...', style: TextStyle(fontSize: 9)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _filterChip(String label, int value) {
     final selected = _filter == value;
     return Expanded(
@@ -386,6 +565,20 @@ class _AppsScreenState extends State<AppsScreen> {
       ),
     );
   }
+}
+
+class _PartnerApp {
+  final String id;
+  final String title;
+  final String detail;
+  final String badge;
+
+  const _PartnerApp({
+    required this.id,
+    required this.title,
+    required this.detail,
+    required this.badge,
+  });
 }
 
 class _Module {

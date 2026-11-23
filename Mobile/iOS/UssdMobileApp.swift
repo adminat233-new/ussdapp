@@ -3,6 +3,7 @@ import UIKit
 import Speech
 import AVFoundation
 import CoreLocation
+import CoreTelephony
 
 @main
 struct UssdMobileApp: App {
@@ -89,7 +90,7 @@ private struct MobileVideoCallView: View {
                     Button("Go to Dialer") { selectedTab = 0 }
                         .buttonStyle(.bordered)
                 }
-                Text("Voice and encrypted LAN/Internet video rooms. No call is active until you start or join one; live media needs a configured CallingServer.")
+                Text("Voice and encrypted LAN/Internet video rooms. No call is active until you start or join one; live media needs a configured CallingServer. There is no common signalling path with the Windows 700-number call stack, so cross-client media is not claimed.")
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.85))
             }
@@ -108,7 +109,8 @@ private struct MobileVideoCallView: View {
 
 private struct MobileSimManagerView: View {
     @State private var simulatedConnected = false
-    @State private var status = "Live SIM telemetry is not available on iOS."
+    @State private var carrierName: String? = nil
+    @State private var status = "Device information only; no modem telemetry bridge."
 
     private let metrics: [(String, String, String)] = [
         ("SIM Status", "Ready (Active)", "Not Inserted"),
@@ -125,15 +127,45 @@ private struct MobileSimManagerView: View {
         ("SIM Slot", "Slot 1 (Primary)", "Slot 1 (Primary)")
     ]
 
+    // CoreTelephony can expose the carrier name to an ordinary app. It does
+    // NOT expose ICCID, IMSI, IMEI, signal strength, or modem AT telemetry;
+    // those stay marked unavailable instead of being invented.
+    private var realValues: [String: String] {
+        guard let name = carrierName else { return [:] }
+        return [
+            "SIM Status": "Carrier visible",
+            "Operator": name,
+            "Network Reg": "Carrier visible",
+            "Carrier": name
+        ]
+    }
+
+    private func loadCarrier() {
+        let info = CTTelephonyNetworkInfo()
+        var found: String? = nil
+        if let providers = info.serviceSubscriberCellularProviders {
+            for (_, network) in providers {
+                if let name = network.carrierName, !name.isEmpty {
+                    found = name
+                    break
+                }
+            }
+        }
+        carrierName = found
+        status = found == nil
+            ? "No carrier is exposed to this app on this device."
+            : "Carrier from CoreTelephony: \(found!). SIM/modem identifiers remain unavailable."
+    }
+
     var body: some View {
         Form {
             Section {
                 Text("SIM / MODEM INFORMATION")
                     .font(.headline)
-                Text("auto-detected & auto-configured on connect")
+                Text("carrier details when iOS exposes them")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.blue)
-                Text("Real-time hardware identity, carrier registration, and SIM slot diagnostics.")
+                Text("Real carrier information is read from CoreTelephony when available. ICCID, IMSI, IMEI and AT modem diagnostics are not available to this app.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } header: {
@@ -148,7 +180,7 @@ private struct MobileSimManagerView: View {
                         : "Simulation off: no live modem is attached to this build."
                 }
                 Button("Refresh Now") {
-                    status = "Telemetry view refreshed locally; no hardware was read."
+                    loadCarrier()
                 }
                 Button("Reconfigure Modem") {
                     status = "AT init (ATE0, AT+CMGF=1, AT+CNMI, AT+CLIP) runs on a connected Windows modem, not on iOS."
@@ -166,7 +198,7 @@ private struct MobileSimManagerView: View {
                             Text(metric.0.uppercased())
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
-                            Text(simulatedConnected ? metric.1 : metric.2)
+                            Text(simulatedConnected ? metric.1 : (realValues[metric.0] ?? metric.2))
                                 .font(.footnote.monospaced().weight(.semibold))
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.7)
@@ -178,22 +210,23 @@ private struct MobileSimManagerView: View {
                     }
                 }
             } header: {
-                Text("12-metric telemetry")
+                Text("Telemetry")
             } footer: {
-                Text("iOS does not expose ICCID, IMSI or IMEI to third-party apps. Values shown while simulation is on are examples from the design, not live readings.")
+                Text("Carrier details come from CoreTelephony only when iOS exposes them. iOS does not expose ICCID, IMSI or IMEI to third-party apps. Values shown while simulation is on are examples from the design, not live readings.")
             }
 
             Section {
-                Label("Auto-configuration", systemImage: "shield.checkered")
+                Label("Where modem control really runs", systemImage: "shield.checkered")
                     .font(.subheadline.weight(.semibold))
-                Text("On connect the modem is initialized (echo off, text SMS mode, SMS notifications, caller ID) and the SIM is identified (ICCID/IMSI/IMEI/operator). Every 20 s the SIM is re-checked — if the SIM card changes, the modem is re-configured automatically. Incoming SMS are stored and verification codes extracted.")
+                Text("AT init (echo off, text SMS mode, SMS notifications, caller ID) and recurring SIM identity checks run in the Windows desktop app with a physical modem. This iOS build does not initialize a modem or read SIM/IMEI secrets. Live media in the call centre requires a configured CallingServer; there is no common signalling path with the Windows call stack.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } header: {
-                Text("Auto-configuration policy")
+                Text("Honest capability boundary")
             }
         }
         .navigationTitle("SIM Manager")
+        .onAppear(perform: loadCarrier)
     }
 }
 
@@ -215,10 +248,32 @@ private struct AppModule: Identifiable {
     let bridge: Bool
 }
 
+private struct PartnerApp: Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let badge: String
+    let scheme: String
+
+    var url: URL? { URL(string: "\(scheme)://") }
+}
+
 private struct MobileAppsView: View {
     @Binding var selectedTab: Int
     @State private var filter = 0
     @State private var status = ""
+
+    private let partners: [PartnerApp] = [
+        PartnerApp(id: "find_laptop_tracker", title: "FIND Laptop Tracker",
+                   detail: "Windows .exe tracker and consent guardrails.",
+                   badge: "Win .exe", scheme: "findtracker"),
+        PartnerApp(id: "find_android", title: "FIND for Android",
+                   detail: "Android .apk companion for device tracking.",
+                   badge: "Android .apk", scheme: "findandroid"),
+        PartnerApp(id: "ussd_calls", title: "USSD Manager Calls",
+                   detail: "Desktop call companion for voice, video and chat.",
+                   badge: "Win .exe", scheme: "ussdcalls")
+    ]
 
     private let modules: [AppModule] = [
         AppModule(icon: "shield.lefthalf.filled", title: "Laptop Tracker",
@@ -279,6 +334,51 @@ private struct MobileAppsView: View {
                 .pickerStyle(.segmented)
             } header: {
                 Text("Overview")
+            }
+
+            Section {
+                Text("Collaborated Apps")
+                    .font(.subheadline.weight(.bold))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(partners) { app in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack {
+                                    Text(app.badge)
+                                        .font(.caption2.weight(.bold))
+                                        .foregroundStyle(.blue)
+                                    Spacer()
+                                    Image(systemName: "app.badge")
+                                        .foregroundStyle(.indigo)
+                                }
+                                Text(app.title)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(2)
+                                Text(app.detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                HStack(spacing: 6) {
+                                    Button("Open") { openPartner(app) }
+                                        .buttonStyle(.borderedProminent)
+                                        .font(.caption2)
+                                    Button("Browse...") { browsePartner(app) }
+                                        .buttonStyle(.bordered)
+                                        .font(.caption2)
+                                }
+                            }
+                            .frame(width: 196, alignment: .leading)
+                            .padding(10)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground),
+                                        in: RoundedRectangle(cornerRadius: 14))
+                        }
+                    }
+                }
+                Text("Open tries the partner's custom URL scheme only if you tap it. A Windows .exe cannot be launched by iOS; no installation is implied.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Collaborated Apps")
             }
 
             Section {
@@ -349,6 +449,24 @@ private struct MobileAppsView: View {
                     in: RoundedRectangle(cornerRadius: 14))
     }
 
+    private func openPartner(_ app: PartnerApp) {
+        guard let url = app.url else {
+            status = "\(app.title): no launch URL could be built."
+            return
+        }
+        UIApplication.shared.open(url, options: [:]) { opened in
+            DispatchQueue.main.async {
+                status = opened
+                    ? "\(app.title): the custom scheme opened. The partner app must be installed to handle it."
+                    : "\(app.title): no installed handler accepted the custom scheme. Nothing was launched."
+            }
+        }
+    }
+
+    private func browsePartner(_ app: PartnerApp) {
+        status = "\(app.title): iOS has no bridge to browse Windows installer folders. Use the Windows app's Browse action."
+    }
+
     private func actionTitle(_ module: AppModule) -> String {
         switch module.kind {
         case .codes: return "View Codes"
@@ -396,7 +514,7 @@ private struct MobileAgentView: View {
     @State private var prompt = ""
     @State private var aiPrompt = ""
     @State private var apiKey = ""
-    @State private var readAloud = true
+    @AppStorage("ai.readAloud") private var readAloud = true
     @State private var showAISettings = false
     @State private var showTracker = false
     @State private var status = ""
@@ -587,7 +705,7 @@ private struct MobileAgentView: View {
                             .textSelection(.enabled)
                     }
                     Section("Safety") {
-                        Text("No background listening, relay control, or arbitrary device commands.")
+                        Text("No background listening, relay control, or arbitrary device commands. This assistant is a deterministic command router plus an optional model call; it is not AGI or ASI, and no such capability is claimed.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
