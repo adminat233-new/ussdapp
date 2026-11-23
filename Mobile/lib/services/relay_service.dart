@@ -30,6 +30,18 @@ class RelayService {
   Function(String, List<String>)? onConferenceRoster;
   Function(String, String, List<int>)? onConferenceAudio;  // roomId, from, pcm
 
+  // Additional listeners let several screens observe chat messages without
+  // replacing the single onMessage callback used by the SMS/Chat panel.
+  final List<Function(String, String)> _messageListeners = <Function(String, String)>[];
+
+  void addMessageListener(Function(String, String) listener) {
+    if (!_messageListeners.contains(listener)) _messageListeners.add(listener);
+  }
+
+  void removeMessageListener(Function(String, String) listener) {
+    _messageListeners.remove(listener);
+  }
+
   Socket? _socket;
   StreamSubscription? _sub;
   Timer? _kaTimer;
@@ -145,6 +157,9 @@ class RelayService {
     _unread[from] = (_unread[from] ?? 0) + 1;
     onUnreadChanged?.call(_unread.values.fold(0, (a, b) => a + b));
     onMessage?.call(from, body);
+    for (final listener in List<Function(String, String)>.from(_messageListeners)) {
+      listener(from, body);
+    }
   }
 
   void _parsePeers(String data) {

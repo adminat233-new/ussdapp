@@ -3,8 +3,8 @@ plugins {
     id "org.jetbrains.kotlin.android"
 }
 
-def releaseVersionCode = (project.findProperty("releaseVersionCode") ?: "10").toString().toInteger()
-def releaseVersionName = (project.findProperty("releaseVersionName") ?: "4.0.9").toString()
+def releaseVersionCode = (project.findProperty("releaseVersionCode") ?: "4066").toString().toInteger()
+def releaseVersionName = (project.findProperty("releaseVersionName") ?: "4.0.6.6").toString()
 
 android {
     namespace "com.ussdapp.mobile"

@@ -1360,6 +1360,13 @@ namespace UssdApp
         // Mesh relay: each device can forward for peers it can reach, so group
         // calls do not need a single central relay. Initialised after Start().
         public TnsrlMeshRelay MeshRelay;
+        // Experimental DERP frame router: forwards opaque TCP frames between
+        // registered node keys. It is not yet used as a live call media path.
+        // Runs on port 9005 and stays inert if the port is busy.
+        public DerpMeshRouter DerpRouter;
+        // Experimental ML-KEM-shaped placeholder. It is deliberately NOT used
+        // for live call keys; those still come from VoipCrypto's DH derivation.
+        public PqHybridKeyAgreement PqKem;
 
         public VoipCrypto _crypto;
         public VoipMedia Media = new VoipMedia();
@@ -1498,6 +1505,20 @@ namespace UssdApp
             // Mesh relay initialised here so gossip and forwarding are ready
             // before the discovery loop starts sending announcements.
             MeshRelay = new TnsrlMeshRelay(TnsrlRoutes, Emit);
+
+            // Experimental DERP frame router: start on port 9005, stay inert
+            // when the port is taken. Call media still uses the existing UDP /
+            // relay paths; this endpoint is available for future integration.
+            DerpRouter = new DerpMeshRouter(MyNumber ?? Environment.MachineName, 9005);
+            DerpRouter.Start();
+            Emit(DerpRouter.Running
+                ? "DERP frame router listening (port 9005, experimental)"
+                : "DERP frame router unavailable (port 9005 busy)");
+
+            // Post-quantum API placeholder: do not present this as an active
+            // quantum-resistant KEM. It reserves the shape for future ML-KEM.
+            PqKem = new PqHybridKeyAgreement();
+            Emit("PQ-KEM placeholder initialised (not used for live call keys)");
 
             bool sigOk = true;
             try
@@ -3925,6 +3946,18 @@ namespace UssdApp
             lock (_secLock)
             {
                 if (_e2eQueue.TryGetValue(number, out q)) _e2eQueue.Remove(number);
+                // A line held while waiting for the relay to answer PKQ is the same
+                // promise as a line held for a handshake: it must go out the moment
+                // a session key exists. Without this, a peer that speaks before it
+                // publishes a key (or a relay that does not answer PKQ) silently
+                // swallowed the first message even though the handshake completed.
+                List<string> held;
+                if (_heldForPubKey.TryGetValue(number, out held))
+                {
+                    _heldForPubKey.Remove(number);
+                    if (q == null) q = new List<string>();
+                    foreach (string ln in held) if (q.Count < 32 && !q.Contains(ln)) q.Add(ln);
+                }
                 _e2eKeys.TryGetValue(number, out k);
             }
             RelayClient r = Relay;

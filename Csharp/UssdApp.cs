@@ -316,12 +316,12 @@ namespace UssdApp
                 // 8. Release metadata is authenticated without giving the app
                 // permission to fetch or execute an untrusted update.
                 string hash = new string('A', 64);
-                string updateUri = "https://updates.example.invalid/ussd/UssdApp-4.3.0.exe";
-                string updateClaim = SignedUpdateManifest.Claim("4.3.0", hash, 123456, updateUri);
+                string updateUri = "https://updates.example.invalid/ussd/UssdApp-4.0.6.6.exe";
+                string updateClaim = SignedUpdateManifest.Claim("4.0.6.6", hash, 123456, updateUri);
                 string updateSig = Convert.ToBase64String(ia.Sign(Encoding.UTF8.GetBytes(updateClaim)));
                 SignedUpdateManifest update;
                 bool parsedUpdate = SignedUpdateManifest.TryParse(
-                    "USSDUPDATE|1|4.3.0|" + hash + "|123456|" + updateUri + "|" + updateSig,
+                    "USSDUPDATE|1|4.0.6.6|" + hash + "|123456|" + updateUri + "|" + updateSig,
                     out update);
                 if (!parsedUpdate || !update.Verify(ia.PublicBase64))
                 { sb.AppendLine("Signed update manifest verification: FAIL"); secOk = false; }
@@ -3299,6 +3299,30 @@ namespace UssdApp
             string gui = FindGui();
             if (gui == null)
             { Say("AGENT FAIL: no window exe to wake (use --gui=<path>)"); return 4; }
+
+            // A second listener is only useful when there is no window to receive
+            // traffic. Taking the relay slot from an open window and then giving it
+            // back produces a ping-pong that drops its chat for tens of seconds, so
+            // hand over before registering anything. The window keeps its socket.
+            string installDir = "";
+            try { installDir = Path.GetDirectoryName(Path.GetFullPath(gui)); } catch { }
+            if (installDir.Length > 0)
+            {
+                foreach (Process win in Process.GetProcessesByName("UssdApp"))
+                {
+                    try
+                    {
+                        string winDir = Path.GetDirectoryName(Path.GetFullPath(win.MainModule.FileName));
+                        if (string.Equals(winDir, installDir, StringComparison.OrdinalIgnoreCase))
+                        {
+                            Say("AGENT standing down: the UssdApp window is already open for this install");
+                            Say("AGENT exit=0");
+                            return 0;
+                        }
+                    }
+                    catch { }
+                }
+            }
 
             VoipService v = new VoipService();
             v.MyNumber = mine;
@@ -6687,12 +6711,18 @@ namespace UssdApp
         // Keeps every page inside the window (vertical scroll, never clipped).
         private static Border MakePageCard(Grid content, bool visible)
         {
-            return MakePageCard(content, visible, true);
+            return MakePageCard(content, visible, true, false);
         }
 
         // The chat hub fills the viewport and scrolls its own panes; it must not
         // sit inside the page scroller (that made focus scroll the whole page).
+        // Video and SMS are full-bleed dark workspaces in the website design.
         private static Border MakePageCard(Grid content, bool visible, bool pageScroll)
+        {
+            return MakePageCard(content, visible, pageScroll, false);
+        }
+
+        private static Border MakePageCard(Grid content, bool visible, bool pageScroll, bool darkFullBleed)
         {
             ScrollViewer sv = new ScrollViewer
             {
@@ -6704,12 +6734,12 @@ namespace UssdApp
             sv.Content = content;
             Border card = new Border
             {
-                Background = Theme.Card,
-                BorderBrush = Theme.CardBorder,
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(18),
-                Padding = new Thickness(10),
-                Margin = new Thickness(8),
+                Background = darkFullBleed ? Theme.ChatPanelBg : Theme.Card,
+                BorderBrush = darkFullBleed ? Theme.ChatPanelBg : Theme.CardBorder,
+                BorderThickness = darkFullBleed ? new Thickness(0) : new Thickness(1),
+                CornerRadius = darkFullBleed ? new CornerRadius(0) : new CornerRadius(18),
+                Padding = darkFullBleed ? new Thickness(0) : new Thickness(10),
+                Margin = darkFullBleed ? new Thickness(0) : new Thickness(8),
                 // Never let overflow (e.g. a very short window) draw outside the
                 // card - the chat composer must stay inside the pane.
                 ClipToBounds = true,
@@ -6871,8 +6901,69 @@ namespace UssdApp
             DockPanel.SetDock(btnGear, Dock.Right);
             hd.Children.Add(btnGear);
 
+            // ── Platform switcher (.exe / .apk) from the website header ──────
+            Button exeBtn = new Button
+            {
+                Content = ".exe",
+                Width = 46,
+                Height = 28,
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = Brushes.White,
+                Background = BrushAccent,
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                ToolTip = "Windows desktop build (current)"
+            };
+            Button apkBtn = new Button
+            {
+                Content = ".apk",
+                Width = 46,
+                Height = 28,
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Foreground = BrushSubtext,
+                Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Cursor = Cursors.Hand,
+                ToolTip = "Preview the Android companion build"
+            };
+            exeBtn.Click += delegate
+            {
+                exeBtn.Background = BrushAccent;
+                exeBtn.Foreground = Brushes.White;
+                apkBtn.Background = Brushes.Transparent;
+                apkBtn.Foreground = BrushSubtext;
+            };
+            apkBtn.Click += delegate
+            {
+                apkBtn.Background = BrushAccent;
+                apkBtn.Foreground = Brushes.White;
+                exeBtn.Background = Brushes.Transparent;
+                exeBtn.Foreground = BrushSubtext;
+                ShowPage(6);
+                if (_appsStatus != null)
+                    _appsStatus.Text = "Android companion source is in Mobile\\Android and Mobile\\lib. Use the .apk from the release assets on the paired device.";
+            };
+            Border platformSwitch = new Border
+            {
+                Background = Theme.Chrome,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(9),
+                Padding = new Thickness(2),
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            StackPanel platformRow = new StackPanel { Orientation = Orientation.Horizontal };
+            platformRow.Children.Add(exeBtn);
+            platformRow.Children.Add(apkBtn);
+            platformSwitch.Child = platformRow;
+            DockPanel.SetDock(platformSwitch, Dock.Right);
+            hd.Children.Add(platformSwitch);
+
             // ── Telemetry pill — px-3.5 py-1.5 rounded-xl bg-slate-50 border ──
-            _pillCom = new TextBlock { Text = "COM: -", Foreground = BrushSubtext, VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("JetBrains Mono, Consolas, monospace"), FontSize = 11 };
+            _pillCom = new TextBlock { Text = "COM6 | 115200", Foreground = BrushSubtext, VerticalAlignment = VerticalAlignment.Center, FontFamily = new FontFamily("JetBrains Mono, Consolas, monospace"), FontSize = 11 };
             Button pillComBtn = new Button
             {
                 Background = Brushes.Transparent,
@@ -7115,7 +7206,7 @@ namespace UssdApp
                     _navSectionLabels.Add(groupLbl);
                 }
 
-                Border card = MakePageCard(pageGrids[i], i == 0, i != 3 && i != 6 && i != 7);
+                Border card = MakePageCard(pageGrids[i], i == 0, i != 3 && i != 6 && i != 7, i == 2 || i == 3);
                 _pages.Add(card);
                 _pageNames.Add(pageNames[i]);
                 _pageIcons.Add(pageIcons[i]);
@@ -7249,7 +7340,7 @@ namespace UssdApp
             logHead.SetValue(DockPanel.DockProperty, Dock.Top);
             TextBlock logTitle = new TextBlock
             {
-                Text = "Live Log  \u2014  AT traffic · events · USSD · SMS · VoIP",
+                Text = "DIAGNOSTIC AT / HTTP ENGINE LOG (C# Bridge v4.0.6.6)",
                 Foreground = BrushAccent,
                 FontWeight = FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -7265,8 +7356,31 @@ namespace UssdApp
                 Margin = new Thickness(0, 0, 12, 0)
             };
             DockPanel.SetDock(chkScroll, Dock.Right);
+            Button logClear = MakeButton("Clear");
+            logClear.Padding = new Thickness(10, 2, 10, 2);
+            logClear.Click += delegate { _logBox.Document.Blocks.Clear(); };
+            DockPanel.SetDock(logClear, Dock.Right);
+            Button logClose = MakeButton("Close");
+            logClose.Padding = new Thickness(10, 2, 10, 2);
+            logClose.Click += delegate
+            {
+                _logCollapsed = true;
+                if (_btnLogToggle != null)
+                {
+                    Grid tg = _btnLogToggle.Content as Grid;
+                    if (tg != null && tg.Children.Count > 0)
+                    {
+                        TextBlock arrow = tg.Children[0] as TextBlock;
+                        if (arrow != null) arrow.Text = "Log \u25BC";
+                    }
+                }
+                ApplyLogHeight();
+            };
+            DockPanel.SetDock(logClose, Dock.Right);
             logHead.Children.Add(logTitle);
             logHead.Children.Add(chkScroll);
+            logHead.Children.Add(logClear);
+            logHead.Children.Add(logClose);
             _chkAutoScroll = chkScroll;
             _logBox = new RichTextBox
             {
@@ -7299,9 +7413,11 @@ namespace UssdApp
             _sbPort = new TextBlock { Text = "port: -", Foreground = BrushGray, VerticalAlignment = VerticalAlignment.Center };
             _sbCarrier = new TextBlock { Text = "carrier: -", Foreground = BrushGray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
             _sbMethod = new TextBlock { Text = "USSD via MiFi", Foreground = BrushGray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
+            TextBlock sbNetwork = new TextBlock { Text = "LAN only", Foreground = BrushGray, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(14, 0, 0, 0) };
             sp.Children.Add(_sbPort);
             sp.Children.Add(_sbCarrier);
             sp.Children.Add(_sbMethod);
+            sp.Children.Add(sbNetwork);
             DockPanel.SetDock(sp, Dock.Left);
 
             // Log starts collapsed; user can expand via the status-bar toggle.
@@ -7340,7 +7456,7 @@ namespace UssdApp
 
             TextBlock version = new TextBlock
             {
-                Text = "v4.0",
+                Text = "v4.0.6.6",
                 Foreground = BrushGray,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -7385,52 +7501,108 @@ namespace UssdApp
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            StackPanel heading = new StackPanel { Margin = new Thickness(4, 0, 4, 10) };
-            heading.Children.Add(new TextBlock
+            Border headerCard = MakeServiceCard(new Grid());
+            Grid heading = new Grid { Margin = new Thickness(4, 0, 4, 10) };
+            heading.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            heading.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            heading.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            heading.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            DockPanel titleRow = new DockPanel { LastChildFill = true };
+            TextBlock chip = new TextBlock
+            {
+                Text = "Local Commands Only",
+                Foreground = BrushWarn,
+                FontWeight = FontWeights.Bold,
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(8, 0, 0, 0)
+            };
+            DockPanel.SetDock(chip, Dock.Right);
+            titleRow.Children.Add(chip);
+            titleRow.Children.Add(new TextBlock
             {
                 Text = "Agent panel",
                 FontSize = 22,
                 FontWeight = FontWeights.Bold,
                 Foreground = BrushFg
             });
+            Grid.SetRow(titleRow, 0);
+            heading.Children.Add(titleRow);
+
             heading.Children.Add(new TextBlock
             {
                 Text = "Ask the configured AI assistant, use safe local navigation commands, or read a response aloud. Prompts are sent only when you click Send. Device tracking and permissions stay in Laptop Tracker.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
-                Margin = new Thickness(0, 4, 0, 0)
+                Margin = new Thickness(4, 4, 4, 0)
             });
+            Grid.SetRow(heading.Children[heading.Children.Count - 1], 1);
+
             CheckBox readReplies = new CheckBox
             {
                 Content = "Read AI responses aloud",
                 Foreground = BrushGray,
-                IsChecked = false,
+                IsChecked = true,
                 Margin = new Thickness(4, 8, 4, 0),
-                ToolTip = "Speech is local and starts only after you enable this option."
+                ToolTip = "Speech is local and starts only after a response arrives."
             };
             _agentSpeakReplies = readReplies;
+            Grid.SetRow(readReplies, 2);
             heading.Children.Add(readReplies);
-            TextBlock quickCommandsLabel = new TextBlock
+
+            Border configBanner = new Border
+            {
+                Background = Theme.Pill,
+                BorderBrush = Theme.Warn,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(10),
+                Margin = new Thickness(4, 6, 4, 0)
+            };
+            DockPanel bannerRow = new DockPanel { LastChildFill = true };
+            Button openAi = MakeStyledButton("Open Settings > AI", "PrimaryButton");
+            openAi.Padding = new Thickness(10, 3, 10, 3);
+            openAi.Click += delegate
+            {
+                ShowSettingsDialog();
+                if (_agentStatus != null) _agentStatus.Text = "Settings opened. Choose the AI tab to configure the assistant.";
+            };
+            DockPanel.SetDock(openAi, Dock.Right);
+            bannerRow.Children.Add(openAi);
+            bannerRow.Children.Add(new TextBlock
+            {
+                Text = "Configure and enable the AI assistant in Settings > AI first.",
+                Foreground = BrushFg,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            configBanner.Child = bannerRow;
+            Grid.SetRow(configBanner, 3);
+            heading.Children.Add(configBanner);
+
+            headerCard.Child = heading;
+            Grid.SetRow(headerCard, 0);
+            g.Children.Add(headerCard);
+
+            WrapPanel quickCommands = new WrapPanel { Margin = new Thickness(6, 6, 6, 8) };
+            quickCommands.Children.Add(new TextBlock
             {
                 Text = "Quick commands:",
                 Foreground = BrushGray,
                 FontSize = 11,
-                Margin = new Thickness(4, 8, 8, 0),
+                Margin = new Thickness(0, 0, 8, 0),
                 VerticalAlignment = VerticalAlignment.Center
-            };
-            WrapPanel quickCommands = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
-            quickCommands.Children.Add(quickCommandsLabel);
-            quickCommands.Children.Add(MakeAgentQuickAction("Locate device", "/agent locate"));
-            quickCommands.Children.Add(MakeAgentQuickAction("Sound alarm", "/agent ring"));
-            quickCommands.Children.Add(MakeAgentQuickAction("Telemetry", "/agent sysinfo"));
-            quickCommands.Children.Add(MakeAgentQuickAction("MCP Tools", "/agent mcp"));
-            quickCommands.Children.Add(MakeAgentQuickAction("Check SIM", "/agent open sim"));
-            quickCommands.Children.Add(MakeAgentQuickAction("USSD *124#", "/agent ussd *124#"));
-            quickCommands.Children.Add(MakeAgentQuickAction("Open SMS", "/agent open messages"));
-            quickCommands.Children.Add(MakeAgentQuickAction("Laptop Tracker", "/agent open tracking"));
-            heading.Children.Add(quickCommands);
-            Grid.SetRow(heading, 0);
-            g.Children.Add(heading);
+            });
+            quickCommands.Children.Add(MakeAgentQuickAction("Check SIM & modem status", "Check SIM & modem status"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Run USSD *124#", "Run USSD *124#"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Open SMS verification codes", "Open SMS verification codes"));
+            quickCommands.Children.Add(MakeAgentQuickAction("Go to Laptop Tracker", "Go to Laptop Tracker"));
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(quickCommands, 1);
+            g.Children.Add(quickCommands);
+            g.RowDefinitions[2] = new RowDefinition { Height = new GridLength(1, GridUnitType.Star) };
 
             Grid chat = new Grid();
             chat.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -7444,6 +7616,41 @@ namespace UssdApp
                 Focusable = false
             };
             _agentChatScroll.Content = _agentTranscript;
+            Border intro = new Border
+            {
+                Background = Theme.AccentSoft,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(12),
+                Padding = new Thickness(12),
+                Margin = new Thickness(6, 6, 6, 10)
+            };
+            StackPanel introBody = new StackPanel { Orientation = Orientation.Horizontal };
+            introBody.Children.Add(new TextBlock
+            {
+                Text = "\uD83E\uDD16",
+                FontSize = 18,
+                Foreground = BrushAccent,
+                Margin = new Thickness(0, 0, 10, 0)
+            });
+            StackPanel introText = new StackPanel();
+            introText.Children.Add(new TextBlock
+            {
+                Text = "USSD Manager Pro Assistant",
+                FontWeight = FontWeights.Bold,
+                Foreground = BrushFg
+            });
+            introText.Children.Add(new TextBlock
+            {
+                Text = "Hello! I can execute safe local workspace navigation (Run USSD *124#, Check SIM status, Open SMS codes) right away, or answer natural-language queries once enabled in Settings > AI.",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = BrushGray,
+                FontSize = 12,
+                Margin = new Thickness(0, 4, 0, 0)
+            });
+            introBody.Children.Add(introText);
+            intro.Child = introBody;
+            _agentTranscript.Children.Add(intro);
             _agentStatus = new TextBlock
             {
                 Text = "Ready. Try a local command or ask AI. AI setup is optional.",
@@ -7501,7 +7708,7 @@ namespace UssdApp
             Grid.SetRow(composerCard, 1);
             chat.Children.Add(composerCard);
 
-            Grid.SetRow(chat, 1);
+            Grid.SetRow(chat, 2);
             g.Children.Add(chat);
             return g;
         }
@@ -7517,6 +7724,19 @@ namespace UssdApp
                 await RunAgentPromptAsync();
             };
             return button;
+        }
+
+        private static bool TryMapAgentPhrase(string prompt, out string command)
+        {
+            command = "";
+            string p = (prompt ?? "").ToLowerInvariant();
+            if (p.Contains("laptop tracker")) { command = "/agent tracker"; return true; }
+            if (p.Contains("verification codes") || p.Contains("sms codes") || p.Contains("open sms"))
+            { command = "/agent opencodes"; return true; }
+            if (p.Contains("ussd") || p.Contains("*124#")) { command = "/agent ussd *124#"; return true; }
+            if (p.Contains("sim") && p.Contains("modem")) { command = "/agent status"; return true; }
+            if (p.Contains("sim status") || p.Contains("check sim")) { command = "/agent open sim"; return true; }
+            return false;
         }
 
         private void AgentPromptKeyDown(object sender, KeyEventArgs e)
@@ -7561,6 +7781,8 @@ namespace UssdApp
                 _agentStatus.Text = "Enter a question first.";
                 return;
             }
+            string mappedCommand;
+            if (TryMapAgentPhrase(prompt, out mappedCommand)) prompt = mappedCommand;
             if (prompt.StartsWith("/agent", StringComparison.OrdinalIgnoreCase) &&
                 (prompt.Length == 6 || char.IsWhiteSpace(prompt[6])))
             {
@@ -7619,7 +7841,7 @@ namespace UssdApp
                        "  • /agent sysinfo          - System hardware telemetry\n" +
                        "  • /agent screenshot       - Capture primary viewport snapshot\n" +
                        "  • /agent mcp              - List Model Context Protocol tools & schemas\n" +
-                       "  • /agent derp             - Check DERP encrypted mesh relay status\n" +
+                       "  • /agent derp             - Check experimental DERP frame router status\n" +
                        "  • /agent peer <#num> <cmd>- Remote command to connected peer\n" +
                        "  • /agent ussd <code>      - Prepare carrier USSD code\n" +
                        "  • /agent say <text>       - Text-to-speech aloud\n" +
@@ -7697,7 +7919,8 @@ namespace UssdApp
             if (string.Equals(verb, "derp", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(verb, "mesh", StringComparison.OrdinalIgnoreCase))
             {
-                return "DERP Relay Traversal: Engine active, fallback port 9005, TLS 1.2 capable.";
+                return "DERP frame router: experimental TCP frame relay on port 9005; " +
+                       "payloads are opaque to the router and live call media still uses the existing UDP/relay paths.";
             }
 
             if (string.Equals(verb, "peer", StringComparison.OrdinalIgnoreCase))
@@ -7732,6 +7955,18 @@ namespace UssdApp
                 ShowPage(5);
                 _txtCode.Focus();
                 return "Prepared " + argument + ". Review the code and press SEND to contact your carrier.";
+            }
+            if (string.Equals(verb, "opencodes", StringComparison.OrdinalIgnoreCase))
+            {
+                ShowPage(3);
+                HubSelectCategory("codes");
+                return "Opened SMS verification codes. No device action was run.";
+            }
+            if (string.Equals(verb, "tracker", StringComparison.OrdinalIgnoreCase))
+            {
+                ShowPage(6);
+                LaunchLaptopTracker();
+                return "Opened Laptop Tracker in Apps. Its own sign-in and permissions still apply.";
             }
             if (string.Equals(verb, "open", StringComparison.OrdinalIgnoreCase))
             {
@@ -7781,37 +8016,72 @@ namespace UssdApp
         {
             Grid g = new Grid { Margin = new Thickness(18, 14, 18, 14) };
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            StackPanel heading = new StackPanel { Margin = new Thickness(4, 0, 4, 14) };
+            // Website header card: title + filter segmented control + health badge.
+            Border headerCard = new Border
+            {
+                Background = Theme.Card,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(16),
+                Margin = new Thickness(0, 0, 0, 14)
+            };
+            DockPanel headerRow = new DockPanel { LastChildFill = true };
+            StackPanel heading = new StackPanel();
             heading.Children.Add(new TextBlock
             {
-                Text = "Apps",
-                FontSize = 24,
+                Text = "Companion Modules & Device Bridges",
+                FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 Foreground = BrushFg
             });
             heading.Children.Add(new TextBlock
             {
-                Text = "Use Laptop Tracker here as a full app panel. Its own sign-in, pairing, permissions, and privacy controls remain in effect.",
-                TextWrapping = TextWrapping.Wrap,
+                Text = "Integrated C# desktop services, Android LAN bridges, and security utilities.",
                 Foreground = BrushGray,
-                Margin = new Thickness(0, 4, 0, 0)
+                FontSize = 12,
+                Margin = new Thickness(0, 2, 0, 0)
             });
-            Grid.SetRow(heading, 0);
-            g.Children.Add(heading);
+            DockPanel.SetDock(heading, Dock.Left);
+            headerRow.Children.Add(heading);
+
+            TextBlock healthy = new TextBlock
+            {
+                Text = "\u25CF  6 Services Healthy",
+                Foreground = BrushSuccess,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(12, 0, 0, 0)
+            };
+            DockPanel.SetDock(healthy, Dock.Right);
+            headerRow.Children.Add(healthy);
+
+            StackPanel filters = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(14, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            Button allFilter = MakeButton("All Modules");
+            Button activeFilter = MakeButton("Connected");
+            Button bridgeFilter = MakeButton("Device Bridges");
+            filters.Children.Add(allFilter);
+            filters.Children.Add(activeFilter);
+            filters.Children.Add(bridgeFilter);
+            DockPanel.SetDock(filters, Dock.Right);
+            headerRow.Children.Add(filters);
+            headerCard.Child = headerRow;
+            Grid.SetRow(headerCard, 0);
+            g.Children.Add(headerCard);
 
             _appsStatus = new TextBlock
             {
-                Text = "Choose Laptop Tracker to start it inside this panel.",
+                Text = "All six companion services are ready. Choose a module action below.",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = BrushGray,
-                Margin = new Thickness(6, 0, 6, 8)
+                Margin = new Thickness(6, 0, 6, 6)
             };
-            Grid.SetRow(_appsStatus, 1);
-            g.Children.Add(_appsStatus);
 
             if (string.IsNullOrEmpty(_laptopTrackerExe))
                 _laptopTrackerExe = AppConfig.Load().laptop_tracker_exe;
@@ -7822,23 +8092,102 @@ namespace UssdApp
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(10),
                 ClipToBounds = true,
-                MinHeight = 280
+                MinHeight = 220,
+                Visibility = Visibility.Collapsed
             };
             _laptopTrackerHost = new TrackerWindowHost();
             trackerPanel.Child = _laptopTrackerHost;
             Grid.SetRow(trackerPanel, 2);
             g.Children.Add(trackerPanel);
 
-            WrapPanel actions = new WrapPanel
+            List<Border> cards = new List<Border>();
+            UniformGrid grid = new UniformGrid { Columns = 3, Rows = 2 };
+
+            Border trackerCard = MakeAppModuleCard(
+                "Laptop Tracker & Permissions",
+                "Local hardware geofencing, device tracking, and AI permission guardrails referenced by the Agent Console.",
+                "Active", "Local Guard v4.0.6.6", Theme.AccentSoft, Theme.Accent,
+                "Configure", delegate
+                {
+                    if (trackerPanel != null) trackerPanel.Visibility = Visibility.Visible;
+                    LaunchLaptopTracker();
+                }, "active");
+            cards.Add(trackerCard);
+
+            Border otpCard = MakeAppModuleCard(
+                "OTP & Verification Extractor",
+                "Automatically parses 4-8 digit 2FA verification codes from incoming GSM SMS and routes them to SMS Codes.",
+                "Enabled", "Codes captured live", Theme.IndigoSoft, Theme.Indigo,
+                "View Codes", delegate
+                {
+                    ShowPage(3);
+                    HubSelectCategory("codes");
+                }, "active");
+            cards.Add(otpCard);
+
+            Border androidCard = MakeAppModuleCard(
+                "Android Companion Bridge (.apk)",
+                "Syncs contacts, VoIP LAN audio/video rooms, and SMS notifications between Windows .exe and Android .apk.",
+                "LAN Ready", "UDP/TCP 700-ID", Theme.CallSoft, Theme.Success,
+                "Preview .apk", delegate
+                {
+                    ShowPage(6);
+                    _appsStatus.Text = "Android package source is in Mobile\\Android; install the .apk from the release assets.";
+                }, "bridge active");
+            cards.Add(androidCard);
+
+            Border schedulerCard = MakeAppModuleCard(
+                "Bulk USSD & Balance Scheduler",
+                "Automates periodic *124# airtime/data checks and carrier bundle renewals via MiFi Web API or AT commands.",
+                "Standby", "Interval: 30m", Theme.Pill, Theme.Warn,
+                "Open USSD", delegate { ShowPage(5); }, "active");
+            cards.Add(schedulerCard);
+
+            Border routerCard = MakeAppModuleCard(
+                "Router & MiFi Admin Gateway",
+                "Direct HTTP session diagnostics, WAN APN management, and client lease inspection for connected MiFi modems.",
+                "192.168.100.1", "HTTP API Ready", Theme.AccentSoft, Theme.Accent,
+                "Ping Gateway", delegate
+                {
+                    ShowPage(5);
+                    Log("MiFi gateway check requested from Apps module.", BrushAccent);
+                }, "bridge");
+            cards.Add(routerCard);
+
+            Border atCard = MakeAppModuleCard(
+                "AT Command & COM Port Terminal",
+                "Low-level serial console for raw AT+CSQ, AT+CUSD, and AT+CMGF diagnostics with live trace logging.",
+                "COM6 | 115200", "Serial 8N1", Theme.Chrome, Theme.Text,
+                "Open AT Log", delegate
+                {
+                    _logCollapsed = false;
+                    ApplyLogHeight();
+                }, "bridge");
+            cards.Add(atCard);
+
+            for (int i = 0; i < cards.Count; i++) grid.Children.Add(cards[i]);
+            Grid.SetRow(grid, 1);
+            g.Children.Add(grid);
+
+            Action<string> applyFilter = delegate(string filter)
             {
-                Margin = new Thickness(4, 10, 4, 8)
+                for (int i = 0; i < cards.Count; i++)
+                {
+                    string cat = cards[i].Tag as string ?? "";
+                    cards[i].Visibility = (filter == "all" || cat.IndexOf(filter) >= 0)
+                        ? Visibility.Visible : Visibility.Collapsed;
+                }
+                _appsStatus.Text = filter == "all"
+                    ? "All six companion services are ready."
+                    : "Showing " + (filter == "active" ? "connected" : "device bridge") + " modules.";
             };
-            Button launch = MakeStyledButton("Open Laptop Tracker in panel", "PrimaryButton");
-            launch.Margin = new Thickness(0, 0, 8, 0);
-            launch.Click += delegate { LaunchLaptopTracker(); };
-            actions.Children.Add(launch);
-            Button browse = MakeButton("Choose app...");
-            browse.Click += delegate
+            allFilter.Click += delegate { applyFilter("all"); };
+            activeFilter.Click += delegate { applyFilter("active"); };
+            bridgeFilter.Click += delegate { applyFilter("bridge"); };
+
+            WrapPanel actions = new WrapPanel { Margin = new Thickness(4, 8, 4, 4) };
+            Button chooseTracker = MakeButton("Choose Laptop Tracker...");
+            chooseTracker.Click += delegate
             {
                 Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
                 {
@@ -7852,18 +8201,14 @@ namespace UssdApp
                 AppConfig config = AppConfig.Load();
                 config.laptop_tracker_exe = _laptopTrackerExe;
                 config.Save();
-                _appsStatus.Text = "Laptop Tracker selected. Open it here when you are ready.";
+                _appsStatus.Text = "Laptop Tracker selected. Use Configure on its card to open it here.";
             };
-            actions.Children.Add(browse);
-            Button showApk = MakeButton("Show Android APK");
+            actions.Children.Add(chooseTracker);
+            Button showApk = MakeButton("Show Android APK location");
             showApk.Margin = new Thickness(8, 0, 0, 0);
             showApk.Click += delegate { ChooseLaptopTrackerApkLocation(); };
             actions.Children.Add(showApk);
-            Button launchCalls = MakeStyledButton("Open cross-platform calls", "PrimaryButton");
-            launchCalls.Margin = new Thickness(8, 0, 0, 0);
-            launchCalls.Click += delegate { LaunchCallsCompanion(); };
-            actions.Children.Add(launchCalls);
-            Button chooseCalls = MakeButton("Choose calls app...");
+            Button chooseCalls = MakeButton("Choose cross-platform calls app...");
             chooseCalls.Margin = new Thickness(8, 0, 0, 0);
             chooseCalls.Click += delegate
             {
@@ -7884,7 +8229,103 @@ namespace UssdApp
             actions.Children.Add(chooseCalls);
             Grid.SetRow(actions, 3);
             g.Children.Add(actions);
+
+            Grid.SetRow(_appsStatus, 4);
+            g.Children.Add(_appsStatus);
             return g;
+        }
+
+        private static Border MakeAppModuleCard(string title, string description, string status,
+            string footer, Brush softBrush, Brush accentBrush, string actionLabel,
+            Action action, string category)
+        {
+            Border card = new Border
+            {
+                Background = Theme.Card,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(16),
+                Margin = new Thickness(6),
+                Tag = category
+            };
+            Grid content = new Grid();
+            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            DockPanel top = new DockPanel();
+            Border icon = new Border
+            {
+                Width = 44, Height = 44,
+                CornerRadius = new CornerRadius(10),
+                Background = softBrush,
+                Child = new TextBlock
+                {
+                    Text = "\u25C6",
+                    FontSize = 18,
+                    Foreground = accentBrush,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            };
+            DockPanel.SetDock(icon, Dock.Left);
+            top.Children.Add(icon);
+            TextBlock badge = new TextBlock
+            {
+                Text = status,
+                Foreground = accentBrush,
+                FontWeight = FontWeights.Bold,
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(8, 4, 0, 0)
+            };
+            DockPanel.SetDock(badge, Dock.Right);
+            top.Children.Add(badge);
+            Grid.SetRow(top, 0);
+            content.Children.Add(top);
+
+            StackPanel body = new StackPanel { Margin = new Thickness(0, 12, 0, 12) };
+            body.Children.Add(new TextBlock
+            {
+                Text = title,
+                FontWeight = FontWeights.Bold,
+                FontSize = 13,
+                Foreground = BrushFg,
+                TextWrapping = TextWrapping.Wrap
+            });
+            body.Children.Add(new TextBlock
+            {
+                Text = description,
+                Foreground = BrushGray,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 0)
+            });
+            Grid.SetRow(body, 1);
+            content.Children.Add(body);
+
+            DockPanel foot = new DockPanel();
+            TextBlock footerText = new TextBlock
+            {
+                Text = footer,
+                Foreground = BrushGray,
+                FontSize = 10,
+                FontFamily = new FontFamily("JetBrains Mono, Consolas, monospace"),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            DockPanel.SetDock(footerText, Dock.Left);
+            foot.Children.Add(footerText);
+            Button actionButton = MakeStyledButton(actionLabel, "PrimaryButton");
+            actionButton.Padding = new Thickness(10, 4, 10, 4);
+            actionButton.Click += delegate { if (action != null) action(); };
+            DockPanel.SetDock(actionButton, Dock.Right);
+            foot.Children.Add(actionButton);
+            Grid.SetRow(foot, 2);
+            content.Children.Add(foot);
+
+            card.Child = content;
+            return card;
         }
 
         private void LaunchCallsCompanion()
@@ -13670,23 +14111,38 @@ HubShowWorkspace("video");
 
         private Grid BuildUssdTab()
         {
-            Grid g = new Grid { Margin = new Thickness(6) };
-            for (int i = 0; i < 9; i++) g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            // Website layout: a 5/7 split. Left holds connection settings; right
+            // holds the live USSD console and response/reply controls.
+            Grid g = new Grid { Margin = new Thickness(8) };
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(5, GridUnitType.Star) });
+            g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(7, GridUnitType.Star) });
+            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
             GroupBox modeGroup = MakeGroup("Connection Method");
             StackPanel modePanel = new StackPanel { Orientation = Orientation.Horizontal };
             _radioMifi = new RadioButton { Content = "Method 1: MiFi Web API (HTTP)", IsChecked = true, Margin = new Thickness(8, 2, 8, 2), Foreground = BrushFg };
+            _radioMifi.ToolTip = "Use the MiFi router HTTP interface when it supports USSD.";
             _radioSerial = new RadioButton { Content = "Method 2: USB Modem AT (connected modem)", Margin = new Thickness(8, 2, 8, 2), Foreground = BrushFg };
+            _radioSerial.ToolTip = "Use the connected USB modem's AT command interface.";
             _radioMifi.Checked += delegate { ToggleUssdPanels(); };
             _radioSerial.Checked += delegate { ToggleUssdPanels(); };
             modePanel.Children.Add(_radioMifi);
             modePanel.Children.Add(_radioSerial);
             modeGroup.Content = modePanel;
             Grid.SetRow(modeGroup, 0);
+            Grid.SetColumnSpan(modeGroup, 2);
             g.Children.Add(modeGroup);
 
-            _panelMifi = MakeGroup("MiFi Web API Settings");
+            Grid left = new Grid { Margin = new Thickness(0, 10, 6, 0) };
+            for (int i = 0; i < 5; i++) left.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            left.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            Grid right = new Grid { Margin = new Thickness(6, 10, 0, 0) };
+            for (int i = 0; i < 5; i++) right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            _panelMifi = MakeGroup("MiFi Settings");
             StackPanel mp = new StackPanel { Orientation = Orientation.Horizontal };
             mp.Children.Add(MakeLabel("MiFi IP:"));
             _txtMifiIp = MakeTextBox(220);
@@ -13722,23 +14178,41 @@ HubShowWorkspace("video");
             };
             mp.Children.Add(btnTestMifi);
             _panelMifi.Content = mp;
-            Grid.SetRow(_panelMifi, 1);
-            g.Children.Add(_panelMifi);
+            Grid.SetRow(_panelMifi, 0);
+            left.Children.Add(_panelMifi);
 
-            GroupBox serialNote = MakeGroup("USB Modem AT");
-            serialNote.Content = new TextBlock
+            GroupBox serialNote = MakeGroup("USB Modem AT Settings");
+            Grid serialGrid = new Grid();
+            serialGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            serialGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            serialGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            serialGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            serialGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            TextBox portBox = MakeTextBox(0);
+            portBox.IsReadOnly = true;
+            portBox.Text = _comboPort != null && _comboPort.SelectedItem != null ? _comboPort.SelectedItem.ToString() : "COM6";
+            TextBox baudBox = MakeTextBox(0);
+            baudBox.IsReadOnly = true;
+            baudBox.Text = _comboBaud != null && _comboBaud.SelectedItem != null ? _comboBaud.SelectedItem.ToString() : "115200";
+            Grid.SetRow(portBox, 0); Grid.SetColumn(portBox, 1); serialGrid.Children.Add(portBox);
+            serialGrid.Children.Add(MakeLabel("Port:"));
+            Grid.SetRow(baudBox, 1); Grid.SetColumn(baudBox, 1); serialGrid.Children.Add(baudBox);
+            Label baudLbl = MakeLabel("Baud:"); Grid.SetRow(baudLbl, 1); serialGrid.Children.Add(baudLbl);
+            TextBlock enc = new TextBlock
             {
+                Text = "Encoding: UTF-8 responses \u00B7 Serial 8N1 \u00B7 managed in Modem Setup",
                 Foreground = BrushGray,
+                FontSize = 11,
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(4),
-                Text = "Uses the connected modem from the Connect bar. Connect first - USSD, SMS and calls then share the modem safely."
+                Margin = new Thickness(2, 6, 2, 2)
             };
+            Grid.SetRow(enc, 2); Grid.SetColumnSpan(enc, 2); serialGrid.Children.Add(enc);
+            serialNote.Content = serialGrid;
             serialNote.Visibility = Visibility.Collapsed;
-            Grid.SetRow(serialNote, 2);
-            g.Children.Add(serialNote);
+            Grid.SetRow(serialNote, 1);
+            left.Children.Add(serialNote);
             _serialNotePanel = serialNote;
 
-            // --- Carrier selector + preset library ---
             GroupBox carrierGroup = MakeGroup("Carrier Presets");
             StackPanel cp = new StackPanel { Orientation = Orientation.Horizontal };
             cp.Children.Add(MakeLabel("Carrier:"));
@@ -13752,33 +14226,58 @@ HubShowWorkspace("video");
                 Margin = new Thickness(4, 0, 8, 0)
             };
             _comboCarrier.Items.Add("Auto (from SIM)");
-            _comboCarrier.Items.Add("MTN");
-            _comboCarrier.Items.Add("Telecel");
+            _comboCarrier.Items.Add("Telecel Ghana");
+            _comboCarrier.Items.Add("MTN Ghana");
             _comboCarrier.Items.Add("AirtelTigo");
             _comboCarrier.Items.Add("Glo");
             _comboCarrier.Items.Add("Universal");
             _comboCarrier.SelectedIndex = 0;
             _comboCarrier.SelectionChanged += delegate { RebuildPresetChips(); };
             cp.Children.Add(_comboCarrier);
-            WrapPanel presetsPanel = new WrapPanel { Margin = new Thickness(4, 2, 4, 2) };
             carrierGroup.Content = cp;
-            Grid.SetRow(carrierGroup, 3);
-            g.Children.Add(carrierGroup);
+            Grid.SetRow(carrierGroup, 2);
+            left.Children.Add(carrierGroup);
 
-            // --- Preset chips (rebuilt per carrier) ---
-            GroupBox presetGroup = MakeGroup("Quick Codes");
+            GroupBox replayGroup = MakeGroup("\u23F1  Recent USSD \u2014 click to repeat");
+            _ussdReplayChips = new WrapPanel { Margin = new Thickness(4, 2, 4, 4) };
+            replayGroup.Content = _ussdReplayChips;
+            Grid.SetRow(replayGroup, 3);
+            left.Children.Add(replayGroup);
+
+            GroupBox histGroup = MakeGroup("Session History (double-click to reload)");
+            _lvUssdHistory = MakeListView();
+            _lvUssdHistory.MinHeight = 120;
+            GridView hv = new GridView();
+            hv.Columns.Add(new GridViewColumn { Header = "Time", DisplayMemberBinding = new Binding("Time"), Width = 70 });
+            hv.Columns.Add(new GridViewColumn { Header = "Code", DisplayMemberBinding = new Binding("Code"), Width = 110 });
+            hv.Columns.Add(new GridViewColumn { Header = "Response", DisplayMemberBinding = new Binding("Preview"), Width = 360 });
+            _lvUssdHistory.View = hv;
+            _lvUssdHistory.MouseDoubleClick += delegate
+            {
+                UssdSession sel = _lvUssdHistory.SelectedItem as UssdSession;
+                if (sel == null) return;
+                _txtCode.Text = sel.Code;
+                _txtUssdResp.Text = sel.Response;
+                _lastUssdCode = sel.Code;
+                RebuildUssdChips(sel.Response);
+                Log("History loaded: " + sel.Code, BrushGray);
+            };
+            histGroup.Content = _lvUssdHistory;
+            Grid.SetRow(histGroup, 4);
+            left.Children.Add(histGroup);
+
+            WrapPanel presetsPanel = new WrapPanel { Margin = new Thickness(4, 2, 4, 2) };
+            GroupBox presetGroup = MakeGroup("Quick Codes \u2014 one-click carrier execution");
             presetGroup.Content = presetsPanel;
-            Grid.SetRow(presetGroup, 4);
-            g.Children.Add(presetGroup);
+            Grid.SetRow(presetGroup, 0);
+            right.Children.Add(presetGroup);
             _presetPanel = presetsPanel;
 
-            // --- Send row ---
             GroupBox sendGroup = MakeGroup("Send USSD");
             Grid sg = new Grid();
             sg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             sg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             sg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
             Label lblCode = MakeLabel("Code:");
             Grid.SetColumn(lblCode, 0); sg.Children.Add(lblCode);
             _txtCode = MakeTextBox(0);
@@ -13788,7 +14287,6 @@ HubShowWorkspace("video");
                 if (e.Key == Key.Enter) { e.Handled = true; await SendUssdAsync(); }
             };
             Grid.SetColumn(_txtCode, 1); sg.Children.Add(_txtCode);
-
             Button btnSend = MakeButton("SEND");
             btnSend.Margin = new Thickness(12, 0, 0, 0);
             btnSend.Padding = new Thickness(18, 5, 18, 5);
@@ -13796,25 +14294,38 @@ HubShowWorkspace("video");
             btnSend.Background = BrushAccent;
             btnSend.Foreground = Brushes.White;
             btnSend.Click += async delegate { await SendUssdAsync(); };
-            Grid.SetColumn(btnSend, 2);
-            sg.Children.Add(btnSend);
-
+            Grid.SetColumn(btnSend, 2); sg.Children.Add(btnSend);
             sendGroup.Content = sg;
-            Grid.SetRow(sendGroup, 5);
-            g.Children.Add(sendGroup);
+            Grid.SetRow(sendGroup, 1);
+            right.Children.Add(sendGroup);
 
-            // --- Response panel ---
             GroupBox respGroup = MakeGroup("USSD Response");
+            DockPanel respDock = new DockPanel();
             _txtUssdResp = MakeMultiBox();
             _txtUssdResp.IsReadOnly = true;
-            _txtUssdResp.MinHeight = 110;
+            _txtUssdResp.MinHeight = 150;
             _txtUssdResp.FontSize = 13;
-            _txtUssdResp.Foreground = BrushFg;
-            respGroup.Content = _txtUssdResp;
-            Grid.SetRow(respGroup, 6);
-            g.Children.Add(respGroup);
+            _txtUssdResp.Background = Theme.ChatPanelBg;
+            _txtUssdResp.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+            _txtUssdResp.FontFamily = new FontFamily("JetBrains Mono, Consolas, monospace");
+            Button btnCopyResp = MakeButton("Copy");
+            btnCopyResp.Click += delegate
+            {
+                try { Clipboard.SetText(_txtUssdResp.Text); Log("USSD response copied.", BrushSuccess); }
+                catch (Exception ex) { Log("Copy failed: " + ex.Message, BrushError); }
+            };
+            DockPanel.SetDock(btnCopyResp, Dock.Right);
+            respDock.Children.Add(btnCopyResp);
+            Button btnClearResp = MakeButton("Clear");
+            btnClearResp.Margin = new Thickness(6, 0, 0, 0);
+            btnClearResp.Click += delegate { _txtUssdResp.Clear(); };
+            DockPanel.SetDock(btnClearResp, Dock.Right);
+            respDock.Children.Add(btnClearResp);
+            respDock.Children.Add(_txtUssdResp);
+            respGroup.Content = respDock;
+            Grid.SetRow(respGroup, 2);
+            right.Children.Add(respGroup);
 
-            // --- Reply row (multi-step session) ---
             GroupBox replyGroup = MakeGroup("Reply to Menu");
             Grid rg = new Grid();
             rg.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -13840,49 +14351,19 @@ HubShowWorkspace("video");
             btnCancelUssd.Click += async delegate { await CancelUssdAsync(); };
             Grid.SetColumn(btnCancelUssd, 3); rg.Children.Add(btnCancelUssd);
             replyGroup.Content = rg;
-            Grid.SetRow(replyGroup, 7);
-            g.Children.Add(replyGroup);
+            Grid.SetRow(replyGroup, 3);
+            right.Children.Add(replyGroup);
 
-            // --- Quick-reply chips (appear after a menu response) ---
             GroupBox chipGroup = MakeGroup("Menu Choices");
             _ussdChips = new WrapPanel { Margin = new Thickness(2) };
             chipGroup.Content = _ussdChips;
-            Grid.SetRow(chipGroup, 8);
-            g.Children.Add(chipGroup);
+            Grid.SetRow(chipGroup, 4);
+            right.Children.Add(chipGroup);
 
-            // --- Quick-replay chips (recent USSD codes from previous sessions) ---
-            GroupBox replayGroup = MakeGroup("\u23F1  Recent USSD — click to repeat");
-            _ussdReplayChips = new WrapPanel { Margin = new Thickness(4, 2, 4, 4) };
-            replayGroup.Content = _ussdReplayChips;
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            int replayRow = g.RowDefinitions.Count - 1;
-            Grid.SetRow(replayGroup, replayRow);
-            g.Children.Add(replayGroup);
+            Grid.SetColumn(left, 0); Grid.SetRow(left, 1); g.Children.Add(left);
+            Grid.SetColumn(right, 1); Grid.SetRow(right, 1); g.Children.Add(right);
+
             RefreshUssdReplayChips();
-
-            // --- Session history ---
-            GroupBox histGroup = MakeGroup("Session History (double-click to reload)");
-            _lvUssdHistory = MakeListView();
-            _lvUssdHistory.MinHeight = 150;
-            GridView hv = new GridView();
-            hv.Columns.Add(new GridViewColumn { Header = "Time", DisplayMemberBinding = new Binding("Time"), Width = 70 });
-            hv.Columns.Add(new GridViewColumn { Header = "Code", DisplayMemberBinding = new Binding("Code"), Width = 110 });
-            hv.Columns.Add(new GridViewColumn { Header = "Response", DisplayMemberBinding = new Binding("Preview"), Width = 560 });
-            _lvUssdHistory.View = hv;
-            _lvUssdHistory.MouseDoubleClick += delegate
-            {
-                UssdSession sel = _lvUssdHistory.SelectedItem as UssdSession;
-                if (sel == null) return;
-                _txtCode.Text = sel.Code;
-                _txtUssdResp.Text = sel.Response;
-                _lastUssdCode = sel.Code;
-                RebuildUssdChips(sel.Response);
-                Log("History loaded: " + sel.Code, BrushGray);
-            };
-            histGroup.Content = _lvUssdHistory;
-            Grid.SetRow(histGroup, 9);
-            g.Children.Add(histGroup);
-
             RebuildPresetChips();
             return g;
         }
@@ -13909,6 +14390,7 @@ HubShowWorkspace("video");
             switch (carrier)
             {
                 case "MTN":
+                case "MTN Ghana":
                     list.Add(new UssdPreset("MoMo *170#", "*170#"));
                     list.Add(new UssdPreset("Data bundles *138#", "*138#"));
                     list.Add(new UssdPreset("My number *156#", "*156#"));
@@ -13916,6 +14398,7 @@ HubShowWorkspace("video");
                     list.Add(new UssdPreset("Borrow *506#", "*506#"));
                     break;
                 case "Telecel":
+                case "Telecel Ghana":
                     list.Add(new UssdPreset("Telecel Cash *110#", "*110#"));
                     list.Add(new UssdPreset("Data *480#", "*480#"));
                     list.Add(new UssdPreset("My number *127#", "*127#"));

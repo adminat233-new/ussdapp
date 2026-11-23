@@ -5,24 +5,27 @@ using System.Text;
 namespace UssdApp
 {
     // =========================================================================
-    // Post-Quantum Hybrid Cryptography Engine (PQ-KEM / ML-KEM Ready)
+    // Post-quantum KEM API shape (EXPERIMENTAL PLACEHOLDER - NOT ML-KEM)
     //
-    // Implements quantum-resistant key encapsulation mechanism (KEM) hybrid logic.
-    // Combines classical Diffie-Hellman / ECDH with lattice-based entropy
-    // representation (NIST FIPS 203 ML-KEM / Kyber architecture principles).
-    // The derived hybrid session key satisfies:
-    //   K_session = SHA-256( DH_classical_shared || KEM_lattice_shared || transcript_hash )
-    // Guaranteeing security against both classical and Shor's quantum attacks.
+    // This file is intentionally honest: it reserves the interface a real
+    // FIPS 203 ML-KEM implementation would occupy, but the encapsulate and
+    // decapsulate bodies are entropy/HMAC placeholders. They are NOT a lattice
+    // KEM and must not be described as quantum-resistant in user-facing text.
+    // Live call keys continue to come from the audited classical DH path in
+    // VoipCrypto. DeriveHybridSessionKey is available for future integration
+    // once a reviewed ML-KEM implementation is added.
     // =========================================================================
 
     public sealed class PqHybridKeyAgreement
     {
+        public const bool IsProductionReady = false;
+
         private readonly byte[] _latticePrivateKey;
         public readonly byte[] LatticePublicKey;
 
         public PqHybridKeyAgreement()
         {
-            // Generate simulated 768-dimensional lattice seed (Kyber-768 parameter sizing: 32 bytes seed, 1184 public bytes)
+            // Placeholder byte layout matching the intended ML-KEM-768 API shape only.
             _latticePrivateKey = new byte[64];
             LatticePublicKey = new byte[1184];
             using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
@@ -37,7 +40,7 @@ namespace UssdApp
             if (peerLatticePublicKey == null || peerLatticePublicKey.Length == 0)
                 throw new ArgumentNullException("peerLatticePublicKey");
 
-            // Ciphertext representation for Kyber-768 (1088 bytes)
+            // Placeholder ciphertext of the intended ML-KEM-768 size.
             ciphertext = new byte[1088];
             byte[] sharedSecret = new byte[32];
 
@@ -55,7 +58,7 @@ namespace UssdApp
             if (ciphertext == null || ciphertext.Length == 0)
                 throw new ArgumentNullException("ciphertext");
 
-            // Deterministic decapsulation under private key
+            // Placeholder HMAC only - not a KEM decapsulation operation.
             using (HMACSHA256 hmac = new HMACSHA256(_latticePrivateKey))
             {
                 return hmac.ComputeHash(ciphertext);

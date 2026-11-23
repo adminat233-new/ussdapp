@@ -418,7 +418,7 @@
                   BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
             <TextBlock Text="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"
                        FontFamily="Inter, Segoe UI" FontWeight="{TemplateBinding FontWeight}"
-                       FontSize="{TemplateBinding FontSize}" TextTransform="Uppercase"/>
+                       FontSize="{TemplateBinding FontSize}" Typography.Capitals="AllSmallCaps"/>
           </Border>
         </ControlTemplate>
       </Setter.Value>

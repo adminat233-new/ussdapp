@@ -1,27 +1,33 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
 namespace UssdApp
 {
     // =========================================================================
-    // Deterministic Encrypted Relay Protocol (DERP) & Advanced NAT Traversal Engine
+    // Deterministic Encrypted Relay Protocol (DERP) frame router.
     //
-    // Provides full-connectivity packet routing over TLS / encrypted TCP streams
-    // when symmetric NAT or CGNAT prevents direct UDP hole-punching.
-    // Follows Tailscale-like DERP frame specification:
-    //   Magic Cookie: "DERP1" (5 bytes)
-    //   Frame Type:
-    //     0x01: ClientInfo / Handshake (client public key + proof)
-    //     0x02: ServerInfo (server public key + MTU)
-    //     0x03: SendPacket (destination peer key + length + ciphertext)
-    //     0x04: RecvPacket (source peer key + length + ciphertext)
-    //     0x05: KeepAlive
-    //     0x06: Ping / Pong
+    // This is an experimental TCP fallback transport, not a TLS server and not
+    // yet wired into live call media. It carries opaque frames: the router only
+    // reads the destination key and forwards the ciphertext, so it never sees
+    // call key material or decoded media.
+    //
+    // Wire shape:
+    //   greeting: "DERP1" (5 bytes)
+    //   frame:    network-order 4-byte body length, then body
+    //   body[0]:  frame type, body[1..]: payload
+    //
+    // Frame types:
+    //   0x01 CLIENT_INFO  UTF-8 node key, registers the connection
+    //   0x02 SERVER_INFO  UTF-8 status line
+    //   0x03 SEND_PACKET  1-byte dest length, dest key, opaque ciphertext
+    //   0x04 RECV_PACKET  1-byte source length, source key, opaque ciphertext
+    //   0x05 KEEPALIVE
+    //   0x06 PING
     // =========================================================================
 
     public sealed class DerpFrame
@@ -39,15 +45,44 @@ namespace UssdApp
 
     public sealed class DerpMeshRouter
     {
+        private const int MaxFrameBytes = 65536;
+        private const int MaxClients = 64;
+
+        private sealed class Session
+        {
+            public TcpClient Client;
+            public NetworkStream Stream;
+            public readonly object WriteLock = new object();
+            public string NodeKey;
+        }
+
         private readonly string _localNodeKey;
         private readonly int _relayPort;
+        private readonly Dictionary<string, Session> _clients = new Dictionary<string, Session>();
+        private readonly object _clientsLock = new object();
         private TcpListener _listener;
         private volatile bool _running;
+        private int _framesRouted;
 
         public DerpMeshRouter(string localNodeKey, int relayPort)
         {
             _localNodeKey = localNodeKey ?? "node_local";
             _relayPort = relayPort > 0 ? relayPort : 9005;
+        }
+
+        public int ClientCount
+        {
+            get { lock (_clientsLock) return _clients.Count; }
+        }
+
+        public int FramesRouted
+        {
+            get { return _framesRouted; }
+        }
+
+        public bool Running
+        {
+            get { return _running; }
         }
 
         public void Start()
@@ -63,13 +98,26 @@ namespace UssdApp
                 t.Name = "DerpRouter_Listen";
                 t.Start();
             }
-            catch { }
+            catch
+            {
+                _running = false;
+                try { if (_listener != null) _listener.Stop(); } catch { }
+                _listener = null;
+            }
         }
 
         public void Stop()
         {
             _running = false;
             try { if (_listener != null) _listener.Stop(); } catch { }
+            lock (_clientsLock)
+            {
+                foreach (Session s in _clients.Values)
+                {
+                    try { if (s.Client != null) s.Client.Close(); } catch { }
+                }
+                _clients.Clear();
+            }
         }
 
         private void ListenLoop()
@@ -79,7 +127,7 @@ namespace UssdApp
                 try
                 {
                     TcpClient client = _listener.AcceptTcpClient();
-                    Thread handler = new Thread(() => HandleClient(client));
+                    Thread handler = new Thread(delegate() { HandleClient(client); });
                     handler.IsBackground = true;
                     handler.Start();
                 }
@@ -92,53 +140,192 @@ namespace UssdApp
 
         private void HandleClient(TcpClient client)
         {
-            using (client)
-            using (NetworkStream stream = client.GetStream())
+            Session session = new Session();
+            session.Client = client;
+            try
             {
-                stream.ReadTimeout = 15000;
-                stream.WriteTimeout = 15000;
-                try
+                session.Stream = client.GetStream();
+                session.Stream.ReadTimeout = 15000;
+                session.Stream.WriteTimeout = 15000;
+
+                byte[] magic = new byte[5];
+                if (!ReadExact(session.Stream, magic, 0, 5) ||
+                    Encoding.ASCII.GetString(magic) != "DERP1") return;
+
+                Send(session, BuildFrame(DerpFrame.TYPE_SERVER_INFO,
+                    Encoding.UTF8.GetBytes("DERP_SERVER_OK|MTU=1420|NODE=" + _localNodeKey)));
+
+                while (_running)
                 {
-                    // Read header: 5 bytes magic "DERP1"
-                    byte[] magic = new byte[5];
-                    int read = stream.Read(magic, 0, 5);
-                    if (read < 5 || Encoding.ASCII.GetString(magic) != "DERP1")
-                        return;
+                    DerpFrame frame = ReadFrame(session.Stream);
+                    if (frame == null) break;
+                    if (frame.Payload == null) continue;
 
-                    // Send ServerInfo response
-                    byte[] srvInfo = Encoding.UTF8.GetBytes("DERP_SERVER_OK|MTU=1420|NODE=" + _localNodeKey);
-                    byte[] frame = BuildFrame(DerpFrame.TYPE_SERVER_INFO, srvInfo);
-                    stream.Write(frame, 0, frame.Length);
-
-                    // Client relay loop
-                    byte[] lenBuf = new byte[4];
-                    while (_running && client.Connected)
+                    if (frame.Type == DerpFrame.TYPE_CLIENT_INFO)
                     {
-                        int r = stream.Read(lenBuf, 0, 4);
-                        if (r < 4) break;
-                        int frameLen = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(lenBuf, 0));
-                        if (frameLen <= 0 || frameLen > 65536) break;
-
-                        byte[] body = new byte[frameLen];
-                        int total = 0;
-                        while (total < frameLen)
+                        string key = CleanKey(Encoding.UTF8.GetString(frame.Payload));
+                        if (key.Length == 0)
                         {
-                            int n = stream.Read(body, total, frameLen - total);
-                            if (n <= 0) break;
-                            total += n;
+                            Send(session, Status("ERR|badkey"));
+                            continue;
                         }
-                        if (total < frameLen) break;
-
-                        byte frameType = body[0];
-                        if (frameType == DerpFrame.TYPE_PING)
+                        bool full = false;
+                        lock (_clientsLock)
                         {
-                            byte[] pong = BuildFrame(DerpFrame.TYPE_KEEPALIVE, new byte[0]);
-                            stream.Write(pong, 0, pong.Length);
+                            if (session.NodeKey != null && _clients.ContainsKey(session.NodeKey) &&
+                                object.ReferenceEquals(_clients[session.NodeKey], session))
+                                _clients.Remove(session.NodeKey);
+                            if (session.NodeKey == null && !_clients.ContainsKey(key) && _clients.Count >= MaxClients)
+                            {
+                                full = true;
+                            }
+                            else
+                            {
+                                Session old;
+                                if (_clients.TryGetValue(key, out old) && !object.ReferenceEquals(old, session))
+                                {
+                                    try { if (old.Client != null) old.Client.Close(); } catch { }
+                                }
+                                _clients[key] = session;
+                                session.NodeKey = key;
+                            }
                         }
+                        if (full) { Send(session, Status("ERR|full")); continue; }
+                        Send(session, Status("OK|registered|NODE=" + key));
+                    }
+                    else if (frame.Type == DerpFrame.TYPE_SEND_PACKET)
+                    {
+                        Route(session, frame.Payload);
+                    }
+                    else if (frame.Type == DerpFrame.TYPE_PING)
+                    {
+                        Send(session, BuildFrame(DerpFrame.TYPE_KEEPALIVE, new byte[0]));
                     }
                 }
-                catch { }
             }
+            catch { }
+            finally
+            {
+                if (session.NodeKey != null)
+                {
+                    lock (_clientsLock)
+                    {
+                        Session current;
+                        if (_clients.TryGetValue(session.NodeKey, out current) &&
+                            object.ReferenceEquals(current, session))
+                            _clients.Remove(session.NodeKey);
+                    }
+                }
+                try { client.Close(); } catch { }
+            }
+        }
+
+        private void Route(Session from, byte[] payload)
+        {
+            if (from == null || from.NodeKey == null || payload == null || payload.Length < 2)
+            {
+                Send(from, Status("ERR|badpacket"));
+                return;
+            }
+            int keyLen = payload[0];
+            if (keyLen <= 0 || keyLen > 128 || payload.Length <= keyLen + 1)
+            {
+                Send(from, Status("ERR|badpacket"));
+                return;
+            }
+            string destKey = CleanKey(Encoding.UTF8.GetString(payload, 1, keyLen));
+            byte[] cipher = new byte[payload.Length - keyLen - 1];
+            Buffer.BlockCopy(payload, keyLen + 1, cipher, 0, cipher.Length);
+            if (destKey.Length == 0 || cipher.Length == 0)
+            {
+                Send(from, Status("ERR|badpacket"));
+                return;
+            }
+
+            byte[] srcBytes = Encoding.UTF8.GetBytes(from.NodeKey);
+            if (srcBytes.Length > 255)
+            {
+                Send(from, Status("ERR|badkey"));
+                return;
+            }
+            byte[] delivery = new byte[1 + srcBytes.Length + cipher.Length];
+            delivery[0] = (byte)srcBytes.Length;
+            Buffer.BlockCopy(srcBytes, 0, delivery, 1, srcBytes.Length);
+            Buffer.BlockCopy(cipher, 0, delivery, 1 + srcBytes.Length, cipher.Length);
+
+            Session to;
+            bool found;
+            lock (_clientsLock) { found = _clients.TryGetValue(destKey, out to); }
+            if (!found || to == null)
+            {
+                Send(from, Status("ERR|noroute"));
+                return;
+            }
+            if (Send(to, BuildFrame(DerpFrame.TYPE_RECV_PACKET, delivery)))
+                Interlocked.Increment(ref _framesRouted);
+            else
+                Send(from, Status("ERR|sendfailed"));
+        }
+
+        private static byte[] Status(string text)
+        {
+            return BuildFrame(DerpFrame.TYPE_SERVER_INFO, Encoding.UTF8.GetBytes(text));
+        }
+
+        private static string CleanKey(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return "";
+            string s = raw.Trim();
+            if (s.Length > 128) return "";
+            foreach (char c in s)
+            {
+                bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                          (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '#';
+                if (!ok) return "";
+            }
+            return s;
+        }
+
+        private static bool Send(Session s, byte[] frame)
+        {
+            if (s == null || s.Stream == null) return false;
+            try
+            {
+                lock (s.WriteLock)
+                {
+                    s.Stream.Write(frame, 0, frame.Length);
+                    s.Stream.Flush();
+                }
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static bool ReadExact(Stream stream, byte[] buffer, int offset, int count)
+        {
+            int total = 0;
+            while (total < count)
+            {
+                int n = stream.Read(buffer, offset + total, count - total);
+                if (n <= 0) return false;
+                total += n;
+            }
+            return true;
+        }
+
+        private static DerpFrame ReadFrame(Stream stream)
+        {
+            byte[] lenBuf = new byte[4];
+            if (!ReadExact(stream, lenBuf, 0, 4)) return null;
+            int len = IPAddress.NetworkToHostOrder(BitConverter.ToInt32(lenBuf, 0));
+            if (len <= 0 || len > MaxFrameBytes) return null;
+            byte[] body = new byte[len];
+            if (!ReadExact(stream, body, 0, len)) return null;
+            DerpFrame f = new DerpFrame();
+            f.Type = body[0];
+            f.Payload = new byte[len - 1];
+            if (len > 1) Buffer.BlockCopy(body, 1, f.Payload, 0, len - 1);
+            return f;
         }
 
         public static byte[] BuildFrame(byte type, byte[] payload)

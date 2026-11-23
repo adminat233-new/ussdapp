@@ -287,7 +287,7 @@ namespace UssdApp
 
                 case "derp_status":
                 case "mesh":
-                    return "DERP_STATUS: mesh relay listening port 9005, TLS 1.2 capable, MTU=1420";
+                    return "DERP_STATUS: experimental frame router on port 9005; opaque payloads; not a TLS tunnel";
 
                 default:
                     return "UNKNOWN_COMMAND: " + command;
