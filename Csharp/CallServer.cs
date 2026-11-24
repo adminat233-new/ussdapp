@@ -281,22 +281,76 @@ namespace UssdApp
         public long WhoAsked;
 
         // Per-call media token registry: maps random token → number and back.
-        // When a call starts, both sides send their token in INVITE/ACCEPT as
-        // "mtoken=<hex>". The relay registers both, so RM lines can carry tokens
-        // instead of real numbers and intermediate relays see no identity at all.
+        // Both sides advertise their token in INVITE/ACCEPT as "mtoken=<hex>";
+        // every relay on the signalling path registers it and gossips it to its
+        // links. RM lines crossing a relay link then carry tokens instead of real
+        // numbers. The final relay resolves them before writing to the client, so
+        // the client never needs to know a token existed.
         // Tokens are 8 random bytes (16 hex chars), generated per call.
         private readonly Dictionary<string, string> _tokenToNumber = new Dictionary<string, string>();
         private readonly Dictionary<string, string> _numberToToken = new Dictionary<string, string>();
+        private readonly Dictionary<string, long> _tokenSeen = new Dictionary<string, long>();
         private readonly object _tokenLock = new object();
 
-        public void RegisterMediaToken(string number, string token)
+        // Observability: "the relay hid the pair" is a claim about bytes on the
+        // wire, not about a comment in this file. These counters are printed on
+        // RELAY STATUS and asserted by the headless selftest.
+        public long MediaTokenized;
+        public long MediaTokenDelivered;
+
+        public static bool IsMediaToken(string s)
         {
-            if (string.IsNullOrEmpty(number) || string.IsNullOrEmpty(token)) return;
+            if (s == null || s.Length != 16) return false;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+                if (!hex) return false;
+            }
+            return true;
+        }
+
+        // Find the token in an INVITE/ACCEPT payload. The relay read loop splits
+        // on four fields, so the token can be glued after the earlier fields;
+        // scanning every pipe-separated part is deliberately position-independent.
+        public static string MediaTokenFromCallPayload(string payload)
+        {
+            if (string.IsNullOrEmpty(payload)) return "";
+            string[] parts = payload.Split(new char[] { '|' });
+            for (int i = 0; i < parts.Length; i++)
+            {
+                if (!parts[i].StartsWith("mtoken=", StringComparison.Ordinal)) continue;
+                string tok = parts[i].Substring(7).Trim().ToLowerInvariant();
+                if (IsMediaToken(tok)) return tok;
+            }
+            return "";
+        }
+
+        // First binding wins. A token that is already mapped to a different
+        // number is refused rather than overwritten: otherwise anybody who saw
+        // the token in an INVITE could redirect another call's media by claiming
+        // the same token from their own connection.
+        public bool RegisterMediaToken(string number, string token)
+        {
+            if (string.IsNullOrEmpty(number) || !IsMediaToken(token)) return false;
+            string t = token.ToLowerInvariant();
             lock (_tokenLock)
             {
-                _tokenToNumber[token] = number;
-                _numberToToken[number] = token;
+                string bound;
+                if (_tokenToNumber.TryGetValue(t, out bound))
+                {
+                    if (bound == number) _tokenSeen[t] = DateTime.Now.Ticks;
+                    return false;
+                }
+                if (_tokenToNumber.Count >= 4096) PruneMediaTokensLocked();
+                string previous;
+                if (_numberToToken.TryGetValue(number, out previous) && previous != t)
+                    _tokenToNumber.Remove(previous);
+                _tokenToNumber[t] = number;
+                _numberToToken[number] = t;
+                _tokenSeen[t] = DateTime.Now.Ticks;
             }
+            return true;
         }
 
         public void ClearMediaToken(string number)
@@ -308,19 +362,112 @@ namespace UssdApp
                 if (_numberToToken.TryGetValue(number, out token))
                 {
                     _tokenToNumber.Remove(token);
+                    _tokenSeen.Remove(token);
                     _numberToToken.Remove(number);
                 }
             }
         }
 
-        private string ResolveToken(string tokenOrNumber)
+        private void PruneMediaTokensLocked()
         {
+            long cutoff = DateTime.Now.Ticks - (2L * 60L * TimeSpan.TicksPerMinute);
+            List<string> dead = new List<string>();
+            foreach (KeyValuePair<string, long> kv in _tokenSeen)
+                if (kv.Value < cutoff) dead.Add(kv.Key);
+            foreach (string t in dead)
+            {
+                string num;
+                if (_tokenToNumber.TryGetValue(t, out num) && _numberToToken.ContainsKey(num) && _numberToToken[num] == t)
+                    _numberToToken.Remove(num);
+                _tokenToNumber.Remove(t);
+                _tokenSeen.Remove(t);
+            }
+            // A relay can live for weeks. If a two-hour sweep still leaves the
+            // registry oversized, drop all bindings: a new INVITE re-registers.
+            if (_tokenToNumber.Count >= 4096)
+            {
+                _tokenToNumber.Clear();
+                _numberToToken.Clear();
+                _tokenSeen.Clear();
+            }
+        }
+
+        public string ResolveToken(string tokenOrNumber)
+        {
+            if (string.IsNullOrEmpty(tokenOrNumber)) return tokenOrNumber;
+            string t = tokenOrNumber.ToLowerInvariant();
             lock (_tokenLock)
             {
                 string num;
-                if (_tokenToNumber.TryGetValue(tokenOrNumber, out num)) return num;
+                if (_tokenToNumber.TryGetValue(t, out num)) return num;
             }
-            return tokenOrNumber; // fall back: it's already a number
+            return tokenOrNumber; // already a number, or a peer with no token
+        }
+
+        private string TokenForNumber(string number)
+        {
+            if (string.IsNullOrEmpty(number)) return "";
+            lock (_tokenLock)
+            {
+                string tok;
+                return _numberToToken.TryGetValue(number, out tok) ? tok : "";
+            }
+        }
+
+        // Replace both RM number fields with their per-call tokens before the
+        // line leaves a relay. If either side has no token (older peer, direct
+        // call, or a call whose INVITE crossed before this build) leave the line
+        // untouched: a half-hidden pair would only look private.
+        public string MediaLineWithTokens(string line, string resolvedTo)
+        {
+            if (!line.StartsWith("RM|", StringComparison.Ordinal)) return line;
+            string[] p = line.Split(new char[] { '|' }, 4);
+            if (p.Length < 4) return line;
+            string toTok = TokenForNumber(resolvedTo);
+            string fromTok = TokenForNumber(ResolveToken(p[2]));
+            if (!IsMediaToken(toTok) || !IsMediaToken(fromTok)) return line;
+            Interlocked.Increment(ref MediaTokenized);
+            return "RM|" + toTok + "|" + fromTok + "|" + p[3];
+        }
+
+        public string MediaLineWithNumbers(string line)
+        {
+            if (!line.StartsWith("RM|", StringComparison.Ordinal)) return line;
+            string[] p = line.Split(new char[] { '|' }, 4);
+            if (p.Length < 4) return line;
+            return "RM|" + ResolveToken(p[1]) + "|" + ResolveToken(p[2]) + "|" + p[3];
+        }
+
+        // Learn a token from a call line and tell linked relays. The caller's
+        // number is taken from the authenticated connection, not from the line:
+        // a client cannot claim somebody else's number just by sending mtoken.
+        private void NoteMediaTokenFromCall(string line, Conn from)
+        {
+            if (!line.StartsWith("MSG|", StringComparison.Ordinal)) return;
+            string[] p = line.Split(new char[] { '|' }, 4);
+            if (p.Length < 4) return;
+            string tok = MediaTokenFromCallPayload(p[3]);
+            if (tok.Length == 0) return;
+            string number = (from != null && !from.IsLink && !string.IsNullOrEmpty(from.Number)) ? from.Number : p[2];
+            if (RegisterMediaToken(number, tok))
+            {
+                string gossip = "MTOK|" + tok + "|" + number;
+                foreach (Conn c in LinkConns(from)) WriteRaw(c.W, gossip);
+                Emit("Media token registered for #" + number + ": linked relays see an opaque call id");
+            }
+        }
+
+        private void NoteMediaTokenFromLink(Conn from, string[] p)
+        {
+            if (from == null || !from.IsLink || p == null || p.Length < 3) return;
+            string tok = p[1].Trim().ToLowerInvariant();
+            string number = p[2].Trim();
+            if (!IsMediaToken(tok) || !RegexIsNumber(number)) return;
+            if (RegisterMediaToken(number, tok))
+            {
+                string gossip = "MTOK|" + tok + "|" + number;
+                foreach (Conn c in LinkConns(from)) WriteRaw(c.W, gossip);
+            }
         }
         public long WhoAnswered;
 
@@ -2312,6 +2459,11 @@ namespace UssdApp
                         TryOnionLine(conn, p[1]);
                         continue;
                     }
+                    if (conn.IsLink && p[0] == "MTOK" && p.Length >= 3)
+                    {
+                        NoteMediaTokenFromLink(conn, p);
+                        continue;
+                    }
                     if (conn.IsLink && p[0] == "XF" && p.Length >= 4)
                     {
                         int hops = 0;
@@ -2447,30 +2599,30 @@ namespace UssdApp
 
         private void Route(Conn from, string toNumber, string line, int hops)
         {
-            // ── Media token resolution ────────────────────────────────────
-            // RM lines may carry per-call tokens instead of real numbers so that
-            // intermediate relays cannot correlate the call pair. Resolve the
-            // token to the real number before routing; the token remains in the
-            // line so the recipient can route back using their own token.
+            // A call INVITE/ACCEPT carries mtoken=; register it before any
+            // media can arrive, and gossip it so the relays in between can
+            // tokenize RM lines without ever asking the client to do so.
+            NoteMediaTokenFromCall(line, from);
+
+            // RM lines crossing a relay link carry per-call tokens, not numbers.
+            // Resolve only for routing here: rewriting the line before a hop
+            // would leak the pair to the very relay we are hiding it from.
             string resolvedTo = toNumber;
-            if (line.StartsWith("RM|", StringComparison.Ordinal))
-            {
-                string realNum = ResolveToken(toNumber);
-                if (realNum != toNumber)
-                {
-                    resolvedTo = realNum;
-                    // Rewrite the line with the real number so the client can
-                    // route replies back. The from-field is kept as the token.
-                    line = "RM|" + realNum + "|" + line.Substring(line.IndexOf('|', 3) + 1);
-                }
-            }
+            bool rm = line.StartsWith("RM|", StringComparison.Ordinal);
+            if (rm) resolvedTo = ResolveToken(toNumber);
+            string wireLine = line;
             Conn target = null;
             lock (_mapLock) _byNumber.TryGetValue(resolvedTo, out target);
             if (target != null && !target.IsLink)
             {
-                if (line.StartsWith("RM|", StringComparison.Ordinal))
+                if (rm)
+                {
+                    string numbered = MediaLineWithNumbers(wireLine);
+                    if (numbered != wireLine) Interlocked.Increment(ref MediaTokenDelivered);
+                    wireLine = numbered;
                     Interlocked.Increment(ref MediaDelivered);
-                WriteRaw(target.W, line);
+                }
+                WriteRaw(target.W, wireLine);
                 return;
             }
 
@@ -2518,7 +2670,17 @@ namespace UssdApp
                     }
                     else Emit("Forwarding #" + toNumber + " in clear: " + why);
                 }
-                if (Forward(from, toNumber, hops, line)) return;
+                // Route by the resolved number, but write the tokenized line:
+                // the relay on the far end resolves the token again, and the
+                // relay in between never sees either endpoint's number.
+                string forwardLine = rm ? MediaLineWithTokens(wireLine, resolvedTo) : wireLine;
+                string envelope = from != null ? (from.Number ?? "") : "";
+                if (rm && forwardLine != wireLine)
+                {
+                    string[] fp = forwardLine.Split(new char[] { '|' }, 4);
+                    if (fp.Length >= 4 && IsMediaToken(fp[2])) envelope = fp[2];
+                }
+                if (Forward(from, resolvedTo, envelope, hops, forwardLine)) return;
                 // The route exists but the link is down mid-flight. Fall through
                 // and queue it: that is what makes a link blip invisible to users.
             }
@@ -3454,6 +3616,8 @@ namespace UssdApp
                             else if (p[0] == "MWHO" || p[0] == "MDROP") TryMailLine(l.C, p, line);
                             else if (p[0] == "MRCVD") TryMailLine(l.C, line.Split(new char[] { '|' }, 6), line);
                             else if (p[0] == "ONION" && p.Length >= 2) TryOnionLine(l.C, p[1]);
+                            else if (p[0] == "MTOK" && p.Length >= 3)
+                                NoteMediaTokenFromLink(l.C, p);
                             else if (p[0] == "XF" && p.Length >= 4)
                             {
                                 int hops = 0; int.TryParse(p[1], out hops);

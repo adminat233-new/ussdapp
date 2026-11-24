@@ -171,7 +171,11 @@ $fwdA = Max-Field $txtA 'media_fwd'
 $fwdB = Max-Field $txtB 'media_fwd'
 $delA = Max-Field $txtA 'media_del'
 $delB = Max-Field $txtB 'media_del'
-"counters  relayA fwd=$fwdA del=$delA   relayB fwd=$fwdB del=$delB"
+$tokA = Max-Field $txtA 'mtok_fwd'
+$tokB = Max-Field $txtB 'mtok_fwd'
+$tokDelA = Max-Field $txtA 'mtok_del'
+$tokDelB = Max-Field $txtB 'mtok_del'
+"counters  relayA fwd=$fwdA del=$delA mtok_fwd=$tokA mtok_del=$tokDelA   relayB fwd=$fwdB del=$delB mtok_fwd=$tokB mtok_del=$tokDelB"
 
 $safeY = SafetyOf $outY1
 $safeP = SafetyOf $outP
@@ -221,6 +225,15 @@ $checks += @{ n = 'RELAY B counted media frames it delivered to its own client'
              ok = ($delB -gt 0); d = "media_del=$delB" }
 $checks += @{ n = '...and the same in reverse, so the path is not one-way'
              ok = ($fwdB -gt 0 -and $delA -gt 0); d = "B fwd=$fwdB, A del=$delA" }
+# Hiding the pair is a claim about bytes on the wire, not about a comment in
+# CallServer. Both relays must show a tokenized frame leaving a link and a
+# restored-number frame delivered to a client, in both directions.
+$checks += @{ n = 'RELAY A hid the number pair before forwarding media across the link'
+             ok = ($tokA -gt 0); d = "mtok_fwd=$tokA" }
+$checks += @{ n = 'RELAY B restored real numbers before delivering media to its client'
+             ok = ($tokDelB -gt 0); d = "mtok_del=$tokDelB" }
+$checks += @{ n = '...and the token path worked in reverse too'
+             ok = ($tokB -gt 0 -and $tokDelA -gt 0); d = "B mtok_fwd=$tokB, A mtok_del=$tokDelA" }
 $checks += @{ n = 'neither relay logged the chat canary in clear'
              ok = (($txtA.IndexOf($canary) -lt 0) -and ($txtB.IndexOf($canary) -lt 0)); d = '' }
 

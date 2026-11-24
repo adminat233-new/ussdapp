@@ -1883,6 +1883,21 @@ namespace UssdApp
         public string CallVerified { get { return _callVerified; } }
         public string CallPeerNumber { get { return _peerNumber; } }
 
+        // One opaque 16-hex token per relay call, advertised in INVITE/ACCEPT.
+        // Relays use it to replace both numbers in RM lines while the frame is
+        // in flight; the callee still sees the caller's real number at delivery.
+        string _mediaToken = "";
+        string _peerMediaToken = "";
+
+        static string NewMediaToken()
+        {
+            byte[] b = new byte[8];
+            using (RandomNumberGenerator rng = RandomNumberGenerator.Create()) rng.GetBytes(b);
+            StringBuilder sb = new StringBuilder(16);
+            for (int i = 0; i < b.Length; i++) sb.Append(b[i].ToString("x2"));
+            return sb.ToString();
+        }
+
         // The two fields appended to INVITE/ACCEPT. Last, so a peer that stops reading
         // after the DH key - every build before this one - still works.
         string CallAuthFields(string dhPub)
@@ -1970,6 +1985,8 @@ namespace UssdApp
                     _callId = p[1];
                     VideoCall = p[2] == "1";
                     _crypto = new VoipCrypto();
+                    _peerMediaToken = CallServer.MediaTokenFromCallPayload(p[4]);
+                    _mediaToken = NewMediaToken();   // ours goes in ACCEPT
                     _callVerified = "pending";
                     // This handler was given four fields by the relay's split, so
                     // whatever the caller appended after the DH key is still glued
@@ -2729,11 +2746,14 @@ namespace UssdApp
                 RemoteName = "#" + number + " (" + (info == null ? "via relay" : info.Machine) + ")";
                 _callId = Guid.NewGuid().ToString("N").Substring(0, 8);
                 _crypto = new VoipCrypto();
+                _mediaToken = NewMediaToken();
+                _peerMediaToken = "";
                 SetState("Calling #" + number + " (relay) ...");
                 _callVerified = "pending";      // the last call's answer is not this one's
                 if (!Relay.SendMessage(number, MyNumber,
                     "INVITE|" + _callId + "|" + (video ? "1" : "0") + "|" + LocalName + "|" +
-                    _crypto.Pub.ToString() + CallAuthFields(_crypto.Pub.ToString())))
+                    _crypto.Pub.ToString() + CallAuthFields(_crypto.Pub.ToString()) +
+                    "|mtoken=" + _mediaToken))
                 {
                     EndCallInternal(false);
                     Emit("Relay not connected.");
@@ -3310,9 +3330,12 @@ namespace UssdApp
             {
                 if (p[1] != _callId) return true;
                 _pendingPeerPub = BigInteger.Parse(p[2]);
+                string peerTok = CallServer.MediaTokenFromCallPayload(line);
+                if (peerTok.Length > 0) _peerMediaToken = peerTok;
                 // The answer carries the callee's proof: without it, only the caller
                 // would be authenticated and the other direction could be whoever the
-                // relay put on the wire.
+                // relay put on the wire. mtoken is a trailing field, so the signature
+                // stays exactly where older builds expect it.
                 bool proofOk = VerifyCallProof(string.IsNullOrEmpty(_peerNumber) ? RemoteName : _peerNumber,
                     p[1], p[2], p.Length >= 4 ? p[3] : "", p.Length >= 5 ? p[4] : "");
                 if (!proofOk)
@@ -3409,7 +3432,8 @@ namespace UssdApp
                 if (Relay == null || _peerNumber == null) return;
                 InCall = true;
                 SendSig("ACCEPT|" + _callId + "|" + _crypto.Pub.ToString() +
-                        CallAuthFields(_crypto.Pub.ToString()));
+                        CallAuthFields(_crypto.Pub.ToString()) +
+                        (string.IsNullOrEmpty(_mediaToken) ? "" : "|mtoken=" + _mediaToken));
                 SetupMediaForCall(RemoteIp);
                 // We already hold the caller's public key from INVITE, so derive
                 // now (after setup, which clears the key) - no plaintext window.
@@ -4551,6 +4575,8 @@ namespace UssdApp
             _callTcp = null; _callReader = null; _callWriter = null;
             _viaRelay = false;
             _peerNumber = null;
+            _mediaToken = "";
+            _peerMediaToken = "";
             SetState("Idle");
             Action h = CallEnded;
             if (h != null) h();

@@ -635,6 +635,45 @@ namespace UssdApp
             }
             catch (Exception ex) { sb.AppendLine("Theme/Num EX: " + ex.Message); pass = false; }
 
+            sb.AppendLine("--- Relay media tokens ---");
+            try
+            {
+                string ta = "0011223344556677";
+                string tb = "8899aabbccddeeff";
+                bool formatOk = CallServer.IsMediaToken(ta) &&
+                    !CallServer.IsMediaToken("001122334455667") &&
+                    !CallServer.IsMediaToken("00112233445566zz");
+                sb.AppendLine("Media token format: " + (formatOk ? "OK" : "FAIL"));
+
+                // The relay read loop hands INVITE fields over as one glued
+                // string, so the token must be found position-independently.
+                string glued = "pubkey|signature|mtoken=" + ta;
+                bool parseOk = CallServer.MediaTokenFromCallPayload(glued) == ta;
+                sb.AppendLine("Media token from glued call fields: " + (parseOk ? "OK" : "FAIL"));
+
+                CallServer tokens = new CallServer();
+                bool regA = tokens.RegisterMediaToken("7001111111", ta);
+                bool regB = tokens.RegisterMediaToken("7002222222", tb);
+                bool hijackRefused = !tokens.RegisterMediaToken("7003333333", ta);
+                string clearLine = "RM|7002222222|7001111111|QUJD";
+                string hiddenLine = tokens.MediaLineWithTokens(clearLine, "7002222222");
+                string restoredLine = tokens.MediaLineWithNumbers(hiddenLine);
+                bool wireOk = hiddenLine == ("RM|" + tb + "|" + ta + "|QUJD") &&
+                              restoredLine == clearLine &&
+                              hiddenLine.IndexOf("700", StringComparison.Ordinal) < 0;
+                sb.AppendLine("RM pair hidden then restored: " + (wireOk ? "OK" : "FAIL -> " + hiddenLine + " / " + restoredLine));
+                sb.AppendLine("Media token first binding wins: " + (!hijackRefused ? "FAIL" : "OK"));
+
+                tokens.ClearMediaToken("7001111111");
+                string halfHidden = tokens.MediaLineWithTokens(clearLine, "7002222222");
+                bool noHalfHide = halfHidden == clearLine;
+                sb.AppendLine("No half-hidden RM pair: " + (noHalfHide ? "OK" : "FAIL -> " + halfHidden));
+
+                if (!formatOk || !parseOk || !regA || !regB || !hijackRefused || !wireOk || !noHalfHide)
+                    pass = false;
+            }
+            catch (Exception ex) { sb.AppendLine("Media token EX: " + ex.Message); pass = false; }
+
             sb.AppendLine("--- Agent tools + consent gate ---");
             try
             {
@@ -3235,6 +3274,9 @@ namespace UssdApp
                     // Calls carried between relays are invisible to the two endpoints,
                     // which is precisely why a mesh claim needs a number on it.
                     " media_fwd=" + s.MediaForwarded + " media_del=" + s.MediaDelivered +
+                    // A privacy claim needs a witness too: these count RM lines
+                    // whose pair was hidden before a hop and restored at delivery.
+                    " mtok_fwd=" + s.MediaTokenized + " mtok_del=" + s.MediaTokenDelivered +
                     // Same reason: whether callers were dialling off a cold cache is a
                     // fact about timing, and a fact about timing needs counting.
                     " who_asked=" + s.WhoAsked +
@@ -3683,6 +3725,7 @@ namespace UssdApp
         private int _sideTab;
         private StackPanel _vidIdle;
         private Border _firstRunCard;
+        private TextBlock _firstRunRelayHint;
         private Button _vidIdleButton, _btnSideChat, _btnSideNotes, _btnSideToggle;
         private System.Windows.Shapes.Ellipse _vidIdleAvatar;
         private UIElement _stageTag;
@@ -4230,6 +4273,22 @@ namespace UssdApp
                 };
                 sp.Children.Add(relayInfo);
 
+                // The relay answer used to exist only in the log. Put the verdict on
+                // the card itself, where the person pasting the line can see it. The
+                // probe is TCP-only: it says "answered a connection check", not
+                // "verified" - identity still has to be checked before registration.
+                TextBlock relayHint = new TextBlock
+                {
+                    Text = "Checking the relay...",
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x94, 0xa3, 0xb8)),
+                    FontSize = 12,
+                    Margin = new Thickness(0, 0, 0, 12),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                sp.Children.Add(relayHint);
+                _firstRunRelayHint = relayHint;
+                ProbeFirstRunRelay(relayHint, FirstRunRelayAddress());
+
                 TextBlock simInfo = new TextBlock
                 {
                     Text = "A SIM is optional — all calling, chat and video work without one.",
@@ -4270,16 +4329,37 @@ namespace UssdApp
                 {
                     string line = (seedBox.Text ?? "").Trim();
                     if (line.Length == 0) return;
+                    RelaySeedEntry seed;
+                    if (!RelaySeed.TryParseLine(line, out seed))
+                    {
+                        string bad = "That is not a seed line: it needs host:port, with a "
+                                   + "fingerprint too if the sender gave one. Nothing was saved.";
+                        relayHint.Text = bad;
+                        relayHint.Foreground = BrushWarn;
+                        Log(bad, BrushError);
+                        return;
+                    }
                     try
                     {
-                        // Write to relays.seed and trigger bootstrap
+                        // Write to relays.seed and trigger bootstrap. Keep the card's
+                        // verdict beside the box, because the old log-only answer was
+                        // easy to miss on a first run.
                         string seedPath = VoipService.SeedPath;
-                        File.AppendAllText(seedPath, "\n" + line + "\n");
-                        Log("Seed line saved. Connecting...", BrushGray);
+                        string existing = File.Exists(seedPath) ? File.ReadAllText(seedPath) : "";
+                        if (existing.IndexOf(line, StringComparison.Ordinal) < 0)
+                            File.AppendAllText(seedPath, "\n" + line + "\n");
+                        Log("Seed line saved. Checking the relay...", BrushGray);
                         ApplyCallSettings();
                         SaveStateSafe();
+                        ProbeFirstRunRelay(relayHint, seed.Address);
                     }
-                    catch (Exception ex) { Log("Seed paste: " + ex.Message, BrushError); }
+                    catch (Exception ex)
+                    {
+                        string failed = "Seed line could not be saved: " + ex.Message;
+                        relayHint.Text = failed;
+                        relayHint.Foreground = BrushWarn;
+                        Log("Seed paste: " + ex.Message, BrushError);
+                    }
                 };
                 sp.Children.Add(connectBtn);
 
@@ -4301,6 +4381,74 @@ namespace UssdApp
             catch (Exception ex) { Log("Welcome overlay: " + ex.Message, BrushGray); }
         }
 
+        // Which address the first-run card should check: an explicit relay first,
+        // then the first seed line. A seed line is a decision somebody already
+        // made; looking at it is read-only and never registers this install.
+        private string FirstRunRelayAddress()
+        {
+            string addr = _txtRelay != null ? (_txtRelay.Text ?? "").Trim() : "";
+            if (addr.Length == 0 && _cfg != null) addr = (_cfg.relay_server ?? "").Trim();
+            if (addr.Length == 0)
+            {
+                try
+                {
+                    string path = VoipService.SeedPath;
+                    if (File.Exists(path))
+                    {
+                        List<RelaySeedEntry> entries = RelaySeed.Load(File.ReadAllText(path));
+                        if (entries.Count > 0) addr = entries[0].Address;
+                    }
+                }
+                catch { }
+            }
+            return addr;
+        }
+
+        // A TCP connection check is deliberately a small claim: it answers
+        // "did anything take this connection?", not "is this the relay I meant?"
+        // and not "is the internet up everywhere". That check runs on a worker
+        // so a dead address cannot freeze the first-run window, and the card is
+        // only touched back on the dispatcher.
+        private void ProbeFirstRunRelay(TextBlock hint, string address)
+        {
+            if (hint == null) return;
+            if (string.IsNullOrEmpty(address))
+            {
+                hint.Text = "No relay is set yet. You can still reach people on this "
+                          + "network; paste a seed line above or host one in Settings "
+                          + "to reach anyone else.";
+                hint.Foreground = BrushWarn;
+                return;
+            }
+            hint.Text = "Checking the relay you are connected to...";
+            hint.Foreground = BrushGray;
+            Thread probe = new Thread((ThreadStart)delegate
+            {
+                bool answered = false;
+                string err = null;
+                try { answered = ConnectionHelper.ProbeInternet(address); }
+                catch (Exception ex) { err = ex.Message; }
+                string text = answered
+                    ? "The relay answered a connection check. It still has to prove "
+                    + "its key before this app registers with it."
+                    : "The relay did not answer this connection check"
+                      + (err != null ? " (" + err + ")" : "") +
+                      ". Check its address, port and firewall; local-network calling still works.";
+                Brush colour = answered ? BrushSuccess : BrushWarn;
+                Dispatcher.BeginInvoke((Action)delegate
+                {
+                    // The user may have dismissed the card or navigated while a
+                    // dead address was still waiting out its three-second check.
+                    if (_firstRunCard == null) return;
+                    hint.Text = text;
+                    hint.Foreground = colour;
+                });
+            });
+            probe.IsBackground = true;
+            probe.Name = "UssdRelayHint";
+            probe.Start();
+        }
+
         // Navigating to another page is an explicit sign the user is done with
         // the welcome card. Leaving it above the new page looks like dead clicks.
         private void DismissFirstRunWelcome()
@@ -4311,6 +4459,7 @@ namespace UssdApp
                 if (_contentHost != null && _contentHost.Children.Contains(_firstRunCard))
                     _contentHost.Children.Remove(_firstRunCard);
                 _firstRunCard = null;
+                _firstRunRelayHint = null;
             }
             catch (Exception ex) { Log("Welcome overlay close: " + ex.Message, BrushGray); }
         }
@@ -5040,6 +5189,12 @@ namespace UssdApp
                                     if (_txtRelay != null) _txtRelay.Text = f;
                                     Log("Connected through the seed list: " + f +
                                         ". Save Settings to keep it, or type your own relay over it.", BrushSuccess);
+                                    if (_firstRunRelayHint != null)
+                                    {
+                                        _firstRunRelayHint.Text = "A seed relay proved its key and is connected. "
+                                                               + "Save Settings to keep it.";
+                                        _firstRunRelayHint.Foreground = BrushSuccess;
+                                    }
                                     FlushOutbox();
                                 }
                                 else
@@ -5048,6 +5203,15 @@ namespace UssdApp
                                         (boom != null ? " (" + boom + ")" : "") +
                                         ", so nothing was registered anywhere. Reachable on this network"
                                         + " only until you set a relay - see the lines above for each try.", BrushWarn);
+                                    // The bootstrap verdict is stronger than the TCP hint: a
+                                    // relay can answer a socket and still fail its key check.
+                                    if (_firstRunRelayHint != null)
+                                    {
+                                        _firstRunRelayHint.Text = "None of the seed relays proved its key, so "
+                                                               + "nothing was registered. Reachable on this "
+                                                               + "network only; check the seed line and retry.";
+                                        _firstRunRelayHint.Foreground = BrushWarn;
+                                    }
                                 }
                             });
                         });
