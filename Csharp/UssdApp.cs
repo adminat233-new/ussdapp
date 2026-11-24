@@ -65,6 +65,18 @@ namespace UssdApp
                 Application app = new Application();
                 Boot.Mark("Application created");
                 var win = new MainWindow();
+                // A click that throws must leave a visible reason, not just a
+                // silent crash.log nobody opens. WPF exceptions are recoverable;
+                // background ones are logged before the process exits.
+                app.DispatcherUnhandledException += delegate(object sender, DispatcherUnhandledExceptionEventArgs e)
+                {
+                    win.ReportUnhandledException(e.Exception);
+                    e.Handled = true;
+                };
+                AppDomain.CurrentDomain.UnhandledException += delegate(object sender, UnhandledExceptionEventArgs e)
+                {
+                    win.ReportUnhandledException(e.ExceptionObject as Exception);
+                };
                 Boot.Mark("MainWindow constructed");
                 win.Show();
                 Boot.Mark("Show returned");
@@ -676,7 +688,7 @@ namespace UssdApp
                     "\"params\":{\"name\":\"send_chat\",\"arguments\":{\"number\":\"7001111111\",\"message\":\"selftest sealed hello\"}}}";
                 string chatResponse = McpEngine.ProcessMcpJsonRpc(chatJson, rc, "selftest_mcp");
                 for (int i = 0; i < 40 && chatNumber.Length == 0; i++) Thread.Sleep(25);
-                bool chatOk = chatResponse.Contains("Request queued with consent gate ID") &&
+                bool chatOk = chatResponse.Contains("Queued for consent approval (not yet executed). Consent gate ID:") &&
                     chatNumber == "7001111111" && chatMessage == "selftest sealed hello";
                 sb.AppendLine("MCP nested send_chat args: " + (chatOk ? "OK" : "FAIL -> " + chatNumber + "/" + chatMessage));
                 if (!chatOk) pass = false;
@@ -2259,6 +2271,7 @@ namespace UssdApp
         public string tracker_token_protected = "";
         public string laptop_tracker_exe = "";
         public string calls_companion_exe = "";
+        public string laptop_tracker_apk = "";
         public bool host_calls = false;    // run the call server on this PC
         // Put a call's audio/video on the relay instead of trying UDP first. Off by
         // default; it exists for networks that block or shape UDP, and it is NOT what
@@ -2355,53 +2368,54 @@ namespace UssdApp
                     string t = File.ReadAllText(FilePath);
                     AppConfig c = new AppConfig();
                     Match m;
-                    m = Regex.Match(t, "\"mifi_ip\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.mifi_ip = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"com_port\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.com_port = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"baud\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.baud = m.Groups[1].Value;
+                    m = Regex.Match(t, "\"mifi_ip\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.mifi_ip = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"com_port\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.com_port = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"baud\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.baud = U(m.Groups[1].Value);
                     m = Regex.Match(t, "\"use_serial\"\\s*:\\s*(true|false)"); if (m.Success) c.use_serial = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"auto_connect\"\\s*:\\s*(true|false)"); if (m.Success) c.auto_connect = m.Groups[1].Value == "true";
-                    m = Regex.Match(t, "\"virtual_number\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.virtual_number = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"number_token\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.number_token = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"relay_server\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_server = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"tracker_server\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_server = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"tracker_pair_code\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_pair_code = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"tracker_device_id\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_device_id = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"tracker_token_protected\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_token_protected = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"laptop_tracker_exe\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.laptop_tracker_exe = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"calls_companion_exe\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.calls_companion_exe = m.Groups[1].Value;
+                    m = Regex.Match(t, "\"virtual_number\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.virtual_number = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"number_token\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.number_token = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"relay_server\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_server = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"tracker_server\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_server = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"tracker_pair_code\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_pair_code = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"tracker_device_id\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_device_id = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"tracker_token_protected\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.tracker_token_protected = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"laptop_tracker_exe\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.laptop_tracker_exe = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"calls_companion_exe\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.calls_companion_exe = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"laptop_tracker_apk\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.laptop_tracker_apk = U(m.Groups[1].Value);
                     m = Regex.Match(t, "\"host_calls\"\\s*:\\s*(true|false)"); if (m.Success) c.host_calls = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"relay_media\"\\s*:\\s*(true|false)"); if (m.Success) c.relay_media = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"relay_port_map\"\\s*:\\s*(true|false)"); if (m.Success) c.relay_port_map = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"relay_tls\"\\s*:\\s*(true|false)"); if (m.Success) c.relay_tls = m.Groups[1].Value == "true";
-                    m = Regex.Match(t, "\"theme\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.theme = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"display_name\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.display_name = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"stun_servers\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.stun_servers = m.Groups[1].Value;
+                    m = Regex.Match(t, "\"theme\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.theme = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"display_name\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.display_name = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"stun_servers\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.stun_servers = U(m.Groups[1].Value);
                     m = Regex.Match(t, "\"noise_filter\"\\s*:\\s*(true|false)"); if (m.Success) c.noise_filter = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"record_calls\"\\s*:\\s*(true|false)"); if (m.Success) c.record_calls = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"transcribe_calls\"\\s*:\\s*(true|false)"); if (m.Success) c.transcribe_calls = m.Groups[1].Value == "true";
-                    m = Regex.Match(t, "\"whisper_exe\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.whisper_exe = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"whisper_model\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.whisper_model = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"whisper_lang\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.whisper_lang = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"relay_policy\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_policy = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"relay_allow\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_allow = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"relay_peers\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_peers = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"relay_advertise\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_advertise = m.Groups[1].Value;
+                    m = Regex.Match(t, "\"whisper_exe\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.whisper_exe = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"whisper_model\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.whisper_model = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"whisper_lang\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.whisper_lang = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"relay_policy\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_policy = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"relay_allow\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_allow = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"relay_peers\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_peers = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"relay_advertise\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_advertise = U(m.Groups[1].Value);
                     m = Regex.Match(t, "\"relay_autolink\"\\s*:\\s*(true|false)"); if (m.Success) c.relay_autolink = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"relay_automesh\"\\s*:\\s*(true|false)"); if (m.Success) c.relay_automesh = m.Groups[1].Value == "true";
-                    m = Regex.Match(t, "\"relay_onion\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_onion = m.Groups[1].Value;
+                    m = Regex.Match(t, "\"relay_onion\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.relay_onion = U(m.Groups[1].Value);
                     m = Regex.Match(t, "\"relay_carry_mail\"\\s*:\\s*(true|false)"); if (m.Success) c.relay_carry_mail = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"relay_store_kb\"\\s*:\\s*(\\d+)"); if (m.Success) { int v; if (int.TryParse(m.Groups[1].Value, out v)) c.relay_store_kb = v; }
                     m = Regex.Match(t, "\"relay_bandwidth_kbps\"\\s*:\\s*(\\d+)"); if (m.Success) { int v; if (int.TryParse(m.Groups[1].Value, out v)) c.relay_bandwidth_kbps = v; }
                     m = Regex.Match(t, "\"gateway_enabled\"\\s*:\\s*(true|false)"); if (m.Success) c.gateway_enabled = m.Groups[1].Value == "true";
-                    m = Regex.Match(t, "\"gateway_name\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.gateway_name = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"radio_port\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.radio_port = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"radio_callsign\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.radio_callsign = m.Groups[1].Value;
+                    m = Regex.Match(t, "\"gateway_name\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.gateway_name = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"radio_port\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.radio_port = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"radio_callsign\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.radio_callsign = U(m.Groups[1].Value);
                     m = Regex.Match(t, "\"radio_carries\"\\s*:\\s*(true|false)"); if (m.Success) c.radio_carries = m.Groups[1].Value == "true";
-                    m = Regex.Match(t, "\"chat_bg_color\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.chat_bg_color = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"chat_bg_image\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.chat_bg_image = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"ai_api_key\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.ai_api_key = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"ai_model\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.ai_model = m.Groups[1].Value;
-                    m = Regex.Match(t, "\"ai_endpoint\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.ai_endpoint = m.Groups[1].Value;
+                    m = Regex.Match(t, "\"chat_bg_color\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.chat_bg_color = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"chat_bg_image\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.chat_bg_image = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"ai_api_key\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.ai_api_key = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"ai_model\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.ai_model = U(m.Groups[1].Value);
+                    m = Regex.Match(t, "\"ai_endpoint\"\\s*:\\s*\"([^\"]*)\""); if (m.Success) c.ai_endpoint = U(m.Groups[1].Value);
                     m = Regex.Match(t, "\"ai_enabled\"\\s*:\\s*(true|false)"); if (m.Success) c.ai_enabled = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"always_awake\"\\s*:\\s*(true|false)"); if (m.Success) c.always_awake = m.Groups[1].Value == "true";
                     m = Regex.Match(t, "\"carry_for_peers\"\\s*:\\s*(true|false)"); if (m.Success) c.carry_for_peers = m.Groups[1].Value == "true";
@@ -2429,6 +2443,7 @@ namespace UssdApp
                 "  \"tracker_token_protected\": \"" + J(tracker_token_protected) + "\",\n" +
                 "  \"laptop_tracker_exe\": \"" + J(laptop_tracker_exe) + "\",\n" +
                 "  \"calls_companion_exe\": \"" + J(calls_companion_exe) + "\",\n" +
+                "  \"laptop_tracker_apk\": \"" + J(laptop_tracker_apk) + "\",\n" +
                 "  \"host_calls\": " + (host_calls ? "true" : "false") + ",\n" +
                 "  \"relay_media\": " + (relay_media ? "true" : "false") + ",\n" +
                 "  \"relay_port_map\": " + (relay_port_map ? "true" : "false") + ",\n" +
@@ -2507,6 +2522,16 @@ namespace UssdApp
         {
             if (s == null) return "";
             return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+
+        // J() escapes backslashes and quotes when writing the hand-rolled JSON.
+        // Load must reverse that exactly, otherwise every Load()/Save() cycle
+        // doubles the backslashes in a Windows path until File.Exists() fails.
+        // Reverse order: J escaped quotes last, so unescape quotes first.
+        private static string U(string s)
+        {
+            if (s == null) return "";
+            return s.Replace("\\\"", "\"").Replace("\\\\", "\\");
         }
     }
 
@@ -3609,10 +3634,22 @@ namespace UssdApp
         private System.Windows.Shapes.Ellipse _avatarRing;
         private TextBlock _ovPeer, _ovState, _ovTimer;
         private Button _ovBtnMute, _ovBtnKeypad, _ovBtnEnd, _ovBtnAnswer, _ovBtnDecline;
+        private Button _ovBtnAddVideo, _ovBtnDropVideo;
         private bool _ovKeypadOpen;
         private bool _voipRinging;              // an incoming VoIP call is pending
         private DateTime _voipStart = DateTime.MinValue;   // VoIP call connected at
         private bool _voipE2E;                             // one-shot: E2E setup (reset/record) done
+        private bool _voipConnected;                       // media key confirmed (not merely InCall)
+        private DateTime _connectSince = DateTime.MinValue; // outgoing/incoming connect start
+        // One "connecting" panel is built into the video page and both hub call
+        // views. They all follow the same call state so whichever workspace is
+        // on screen shows the same professional pre-connection experience.
+        private readonly List<Grid> _connectOverlays = new List<Grid>();
+        private readonly List<TextBlock> _connectPeerLabels = new List<TextBlock>();
+        private readonly List<TextBlock> _connectStateLabels = new List<TextBlock>();
+        private readonly List<TextBlock> _connectHintLabels = new List<TextBlock>();
+        private readonly List<TextBlock> _connectTimerLabels = new List<TextBlock>();
+        private readonly List<TextBlock> _connectInitialLabels = new List<TextBlock>();
         private readonly AudioFilter _audioFilter = new AudioFilter();
         private CallRecorder _recorder;
         private Transcriber _transcriber;
@@ -3633,6 +3670,7 @@ namespace UssdApp
         private CheckBox _chkPortMap;        // ask the router to forward the relay port
         private TextBlock _relayTrustText;   // which key the relay in front of us showed
         private TextBox _txtMyNumber;        // this device's virtual number
+        private TextBlock _appIdText;        // "Your App ID" chip on the dialer
         private VoipAudio _voipAudio;
         private ListView _lvPeers;
         private TextBox _txtVoipIp;
@@ -3644,6 +3682,7 @@ namespace UssdApp
         private int[] _sideHostTag;
         private int _sideTab;
         private StackPanel _vidIdle;
+        private Border _firstRunCard;
         private Button _vidIdleButton, _btnSideChat, _btnSideNotes, _btnSideToggle;
         private System.Windows.Shapes.Ellipse _vidIdleAvatar;
         private UIElement _stageTag;
@@ -3851,11 +3890,22 @@ namespace UssdApp
         private TextBlock _trackerStoreStatus;
         private TextBlock _apkStoreStatus;
         private TextBlock _callsStoreStatus;
+        private TextBlock _trackerStoreMeta;
+        private TextBlock _apkStoreMeta;
+        private TextBlock _callsStoreMeta;
         private Button _trackerStoreOpen;
+        private Button _apkStoreOpen;
         private Button _callsStoreOpen;
         private string _laptopTrackerExe;
+        private string _laptopTrackerApk;
         private Process _laptopTrackerProcess;
         private TrackerWindowHost _laptopTrackerHost;
+        // Launched apps take over the whole Apps page instead of appearing in a
+        // 220px strip at the bottom. These hold the page pieces to hide/restore.
+        private Border _appsTrackerPanel;
+        private TextBlock _appsTrackerState;
+        private readonly List<UIElement> _appsNormalChrome = new List<UIElement>();
+        private bool _appsTrackerFull;
         private string _callsCompanionExe;
         private Process _callsCompanionProcess;
         private System.Speech.Synthesis.SpeechSynthesizer _agentSpeech;
@@ -3879,6 +3929,7 @@ namespace UssdApp
         // ── System Tray ───────────────────────────────────────────────────
         private System.Windows.Forms.NotifyIcon _trayIcon;
         private bool _trayMinimized = false;
+        private bool _shutdownStarted = false;
 
         // ── Network quality ───────────────────────────────────────────────
         private int _tickCount;
@@ -4233,18 +4284,11 @@ namespace UssdApp
                 sp.Children.Add(connectBtn);
 
                 Button gotIt = MakeButton("Got it");
-                gotIt.Click += delegate
-                {
-                    try
-                    {
-                        if (_contentHost != null && _contentHost.Children.Contains(card))
-                            _contentHost.Children.Remove(card);
-                    }
-                    catch { }
-                };
+                gotIt.Click += delegate { DismissFirstRunWelcome(); };
                 sp.Children.Add(gotIt);
 
                 card.Child = sp;
+                _firstRunCard = card;
                 // Show over whatever page is currently visible
                 if (_contentHost != null)
                 {
@@ -4255,6 +4299,20 @@ namespace UssdApp
                 }
             }
             catch (Exception ex) { Log("Welcome overlay: " + ex.Message, BrushGray); }
+        }
+
+        // Navigating to another page is an explicit sign the user is done with
+        // the welcome card. Leaving it above the new page looks like dead clicks.
+        private void DismissFirstRunWelcome()
+        {
+            try
+            {
+                if (_firstRunCard == null) return;
+                if (_contentHost != null && _contentHost.Children.Contains(_firstRunCard))
+                    _contentHost.Children.Remove(_firstRunCard);
+                _firstRunCard = null;
+            }
+            catch (Exception ex) { Log("Welcome overlay close: " + ex.Message, BrushGray); }
         }
 
         // ---------- Identity key recovery ----------
@@ -4391,15 +4449,26 @@ namespace UssdApp
                     else
                         ToneSynth.StopRing();
                     if (_voipStateText != null) _voipStateText.Text = s;
-                    // start the call clock the moment the call is connected
-                    if (s != null && s.IndexOf("E2E", StringComparison.Ordinal) >= 0 && !_voipE2E)
+                    // InCall turns true as soon as the INVITE is sent, so it is
+                    // not "connected": the media key confirmation is. The old
+                    // check looked for a literal "E2E" that no state string ever
+                    // contained, which meant the call clock and recording never
+                    // started. Match the strings VoipService actually emits.
+                    bool connectedNow = VoipStateIsConnected(s);
+                    _voipConnected = connectedNow;
+                    if (connectedNow && !_voipE2E)
                     {
                         _voipE2E = true;
                         _voipStart = DateTime.Now;
+                        _connectSince = DateTime.MinValue;
                         _audioFilter.Reset();
                         StartRecordingIfNeeded();
                         StartTranscriberIfNeeded();
                         ClearSubtitles();
+                    }
+                    else if (!connectedNow && _voip != null && _voip.InCall && _connectSince == DateTime.MinValue)
+                    {
+                        _connectSince = DateTime.Now;
                     }
                     // Offline fallback: if the callee was unreachable send a
                     // chat notification so they see the missed call when they
@@ -4420,7 +4489,11 @@ namespace UssdApp
                         // Show hub workspace back to chat after failed call
                         HubShowWorkspace("chat");
                     }
-                    ApplyVoipBreath(s); UpdateVoipButtons(); UpdateCallOverlay();
+                    ApplyVoipBreath(s);
+                    UpdateConnectingUi(s);
+                    UpdateVoipButtons();
+                    UpdateCallOverlay();
+                    UpdateVideoStage();
                 }); };
                 _voip.CallEnded += delegate { Dispatcher.BeginInvoke((Action)delegate
                 {
@@ -4428,6 +4501,10 @@ namespace UssdApp
                     _voipRinging = false;
                     _voipStart = DateTime.MinValue;
                     _voipE2E = false;
+                    _voipConnected = false;
+                    _connectSince = DateTime.MinValue;
+                    HideConnectingOverlays();
+                    UpdateVideoStage();
                     if (_ovTimer != null) _ovTimer.Text = "00:00";
                     StopRecording();
                     StopTranscriber();
@@ -5280,9 +5357,15 @@ namespace UssdApp
                 {
                     if (started)
                     {
+                        // Show the professional connecting panel immediately:
+                        // InCall is already true, the media key is not.
+                        _voipConnected = false;
+                        _connectSince = DateTime.Now;
+                        UpdateConnectingUi("Calling #" + AppNum.Format(number) + " ...");
                         BeginVoipRec(number, "out", video);
                         OpenVoipMedia();
                         if (video) ShowVideoWindow();
+                        UpdateVideoStage();
                     }
                     else if (AppNum.IsApp(AppNum.NormalizeForCall(number)))
                     {
@@ -5315,8 +5398,12 @@ namespace UssdApp
         private void HangupVoip()
         {
             if (_voip != null) _voip.EndCall();
+            _voipConnected = false;
+            _connectSince = DateTime.MinValue;
+            HideConnectingOverlays();
             RecordVoipCallEnd();
             StopVoipMedia();
+            UpdateVideoStage();
         }
 
         // Call history: arm a VoIP record when a call starts.
@@ -5366,9 +5453,13 @@ namespace UssdApp
             {
                 BeginVoipRec(_voipPeerName, "in", video);
                 _voip.AcceptIncomingCall();
+                _voipConnected = false;
+                _connectSince = DateTime.Now;
+                UpdateConnectingUi("Incoming call accepted");
                 OpenVoipMedia();
                 if (video) ShowVideoWindow();
                 UpdateVoipButtons();
+                UpdateVideoStage();
             }
             catch (Exception ex) { Log("VoIP accept error: " + ex.Message, BrushWarn); }
             UpdateCallOverlay();
@@ -5586,15 +5677,24 @@ namespace UssdApp
         // Stage label + idle/active visuals reflect the current peer / state.
         private void UpdateVideoStage()
         {
-            bool live = _voip != null && (_voip.InCall || _voip.ConferenceMode);
-            if (_vidIdle != null) _vidIdle.Visibility = live ? Visibility.Collapsed : Visibility.Visible;
-            if (_vidIdleButton != null) _vidIdleButton.Visibility = Visibility.Visible;
+            bool inCall = _voip != null && (_voip.InCall || _voip.ConferenceMode);
+            bool conference = _voip != null && _voip.ConferenceMode;
+            // "Live" means the media key is confirmed. While the INVITE is
+            // still being answered the stage says connecting and the pre-call
+            // panel (not the idle card, not a fake "Live" badge) is shown.
+            bool live = inCall && (_voipConnected || conference);
+            bool connecting = inCall && !live;
+            if (_vidIdle != null) _vidIdle.Visibility = inCall ? Visibility.Collapsed : Visibility.Visible;
+            if (_vidIdleButton != null) _vidIdleButton.Visibility = inCall ? Visibility.Collapsed : Visibility.Visible;
             if (_stageTag != null) _stageTag.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
+            if (_pipHost != null && !conference)
+                _pipHost.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
             if (_tileRemoteName != null)
-                _tileRemoteName.Text = _voipPeerName ?? "Remote";
+                _tileRemoteName.Text = _voipPeerName ?? "Video Call";
             if (_videoStateText != null)
             {
                 _videoStateText.Text = live ? "  \u00b7  Live \u00b7 end-to-end encrypted"
+                    : connecting ? "  \u00b7  connecting\u2026"
                     : "  \u00b7  no active call";
             }
             if (_tileLocalName != null)
@@ -6267,6 +6367,20 @@ namespace UssdApp
             }
         }
 
+        // A USSD click must say what happened somewhere the user is looking.
+        // The collapsed log is a breadcrumb, not feedback; this puts the reason
+        // in the response box and the short form in the visible header status.
+        private void ShowUssdNotice(string detail, string status, Brush color)
+        {
+            try
+            {
+                if (_ussdTypeTimer != null) { _ussdTypeTimer.Stop(); _ussdTypeTimer = null; }
+                if (_txtUssdResp != null) _txtUssdResp.Text = detail;
+                SetStatus(status, color);
+            }
+            catch { }
+        }
+
         // Breathing highlight for the call-state text while a call is active.
         private void StartCallBreath()
         {
@@ -6385,20 +6499,19 @@ namespace UssdApp
             _ovBtnKeypad = MakeOverlayButton("Keypad", Theme.Panel, BrushFg);
             _ovBtnKeypad.Click += delegate { ToggleOverlayKeypad(); };
             // Mid-call voice ↔ video switch buttons
-            Button ovBtnAddVideo = MakeOverlayButton("\uD83D\uDCF9 Add Video", Theme.Panel, BrushFg);
-            ovBtnAddVideo.Click += delegate
+            _ovBtnAddVideo = MakeOverlayButton("\uD83D\uDCF9 Add Video", Theme.Panel, BrushFg);
+            _ovBtnAddVideo.Click += delegate
             {
                 if (_voip != null) _voip.SwitchToVideo();
                 ShowVideoWindow();
+                UpdateCallOverlay();
             };
-            Button ovBtnDropVideo = MakeOverlayButton("\uD83D\uDD07 Voice Only", Theme.Panel, BrushFg);
-            ovBtnDropVideo.Click += delegate
+            _ovBtnDropVideo = MakeOverlayButton("\uD83D\uDD07 Voice Only", Theme.Panel, BrushFg);
+            _ovBtnDropVideo.Click += delegate
             {
                 if (_voip != null) _voip.SwitchToVoice();
+                UpdateCallOverlay();
             };
-            // Wire visibility: show Add Video when voice-only, Drop Video when video
-            ovBtnAddVideo.Tag  = "switchToVideo";
-            ovBtnDropVideo.Tag = "switchToVoice";
             _ovBtnEnd = MakeOverlayButton("End", Theme.Danger, Brushes.White);
             _ovBtnEnd.Click += delegate { EndOverlayCall(); };
 
@@ -6406,8 +6519,8 @@ namespace UssdApp
             btns.Children.Add(_ovBtnDecline);
             btns.Children.Add(_ovBtnMute);
             btns.Children.Add(_ovBtnKeypad);
-            btns.Children.Add(ovBtnAddVideo);
-            btns.Children.Add(ovBtnDropVideo);
+            btns.Children.Add(_ovBtnAddVideo);
+            btns.Children.Add(_ovBtnDropVideo);
             btns.Children.Add(_ovBtnEnd);
             center.Children.Add(btns);
 
@@ -6486,6 +6599,12 @@ namespace UssdApp
             _ovBtnDecline.Visibility = answerMode ? Visibility.Visible : Visibility.Collapsed;
             _ovBtnMute.Visibility = answerMode ? Visibility.Collapsed : Visibility.Visible;
             _ovBtnKeypad.Visibility = answerMode ? Visibility.Collapsed : Visibility.Visible;
+            bool showSwitch = !answerMode && voipLive && _voip != null;
+            bool videoOn = showSwitch && _voip.VideoCall;
+            if (_ovBtnAddVideo != null)
+                _ovBtnAddVideo.Visibility = (showSwitch && !videoOn) ? Visibility.Visible : Visibility.Collapsed;
+            if (_ovBtnDropVideo != null)
+                _ovBtnDropVideo.Visibility = (showSwitch && videoOn) ? Visibility.Visible : Visibility.Collapsed;
             // incoming: Decline is the way out - a second End would be ambiguous
             _ovBtnEnd.Visibility = answerMode ? Visibility.Collapsed : Visibility.Visible;
 
@@ -7273,7 +7392,12 @@ namespace UssdApp
                     _navSectionLabels.Add(groupLbl);
                 }
 
-                Border card = MakePageCard(pageGrids[i], i == 0, i != 3 && i != 6 && i != 7, i == 2 || i == 3);
+                // The chat hub (index 3) and the video workspace (index 2) own
+                // their scrolling internally: header and composer must stay
+                // pinned, so the page itself must never scroll. Wrapping the
+                // whole 3-pane hub in a page ScrollViewer is what pushed the
+                // message box off-screen.
+                Border card = MakePageCard(pageGrids[i], i == 0, i != 2 && i != 3, i == 2 || i == 3);
                 _pages.Add(card);
                 _pageNames.Add(pageNames[i]);
                 _pageIcons.Add(pageIcons[i]);
@@ -7666,10 +7790,11 @@ namespace UssdApp
             quickCommands.Children.Add(MakeAgentQuickAction("Run USSD *124#", "Run USSD *124#"));
             quickCommands.Children.Add(MakeAgentQuickAction("Open SMS verification codes", "Open SMS verification codes"));
             quickCommands.Children.Add(MakeAgentQuickAction("Go to Laptop Tracker", "Go to Laptop Tracker"));
-            g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            // Quick actions size to their content; only the transcript grows.
+            g.RowDefinitions[1].Height = GridLength.Auto;
+            g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             Grid.SetRow(quickCommands, 1);
             g.Children.Add(quickCommands);
-            g.RowDefinitions[2] = new RowDefinition { Height = new GridLength(1, GridUnitType.Star) };
 
             Grid chat = new Grid();
             chat.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
@@ -7866,10 +7991,11 @@ namespace UssdApp
                 if (_agentSpeakReplies.IsChecked == true) SpeakAgentText(localResponse);
                 return;
             }
-            if (!_aiEnabled || string.IsNullOrEmpty(_aiApiKey))
+            if (!AiIsUsable())
             {
-                _agentStatus.Text = "AI is not configured. Your prompt is still here; local commands work without AI. Use the Settings gear only if you want to configure an AI provider.";
-                AppendAgentBubble("AI is not configured. Your prompt was not sent. Local commands remain available.", false);
+                string why = AiUnavailableReason();
+                _agentStatus.Text = why;
+                AppendAgentBubble(why + " Your prompt was not sent. Local /agent commands remain available.", false);
                 return;
             }
 
@@ -7896,6 +8022,16 @@ namespace UssdApp
             {
                 _agentAskButton.IsEnabled = true;
             }
+        }
+
+        // RemoteControl.Request returns null for a real refusal (revoked,
+        // rate-limited, banned command or full queue). Reporting "submitted: "
+        // with a null id was a silent lie, so every caller goes through here.
+        private static string ConsentRequestResult(string reqId, string action)
+        {
+            if (string.IsNullOrEmpty(reqId))
+                return action + " was refused by the consent gate (revoked, rate-limited, banned, or queue full). Nothing was executed.";
+            return action + " queued for consent approval: " + reqId;
         }
 
         private string RunLocalAgentCommand(string prompt)
@@ -7957,7 +8093,7 @@ namespace UssdApp
                 if (_remoteControl != null)
                 {
                     string reqId = _remoteControl.Request("local", "lockscreen", "");
-                    return "Workstation lock request submitted: " + reqId;
+                    return ConsentRequestResult(reqId, "Workstation lock request");
                 }
                 return "Remote control subsystem inactive.";
             }
@@ -7981,7 +8117,7 @@ namespace UssdApp
                 if (_remoteControl != null)
                 {
                     string reqId = _remoteControl.Request("local", "screenshot", "");
-                    return "Screenshot capture requested: " + reqId;
+                    return ConsentRequestResult(reqId, "Screenshot capture request");
                 }
                 return "Remote control subsystem inactive.";
             }
@@ -8014,8 +8150,14 @@ namespace UssdApp
                 return "VoIP service inactive.";
             }
             if (string.Equals(verb, "status", StringComparison.OrdinalIgnoreCase))
-                return "USSD Manager is open. Modem status: " + (_status != null ? _status.Text : "unknown") +
-                    ". Device controls remain in Laptop Tracker and were not triggered.";
+            {
+                SimSnapshot snap = _simSnap;
+                string sim = snap == null ? "unknown"
+                    : (snap.SimPresent ? "present" : "absent") + ", PIN " +
+                      (snap.PinReady ? "ready" : "not ready") + ", " + (snap.Reg ?? "registration unknown");
+                return "USSD Manager is open. Modem: " + (_status != null ? _status.Text : "unknown") +
+                    ". SIM: " + sim + ". Device controls remain in Laptop Tracker and were not triggered.";
+            }
             if (string.Equals(verb, "say", StringComparison.OrdinalIgnoreCase))
             {
                 if (argument.Length == 0) return "Add text after /agent say. No speech was played.";
@@ -8027,14 +8169,14 @@ namespace UssdApp
             {
                 if (_remoteControl == null) return "Remote control subsystem inactive.";
                 string reqId = _remoteControl.Request("local", "opentracker", "");
-                return "FIND Laptop Tracker launch request submitted: " + reqId;
+                return ConsentRequestResult(reqId, "FIND Laptop Tracker launch request");
             }
             if (string.Equals(verb, "calls", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(verb, "opencalls", StringComparison.OrdinalIgnoreCase))
             {
                 if (_remoteControl == null) return "Remote control subsystem inactive.";
                 string reqId = _remoteControl.Request("local", "opencalls", "");
-                return "Calls companion launch request submitted: " + reqId;
+                return ConsentRequestResult(reqId, "Calls companion launch request");
             }
             if (string.Equals(verb, "call", StringComparison.OrdinalIgnoreCase))
             {
@@ -8045,7 +8187,7 @@ namespace UssdApp
                 string videoArg = parts.Length > 1 && parts[1].Trim().Equals("video", StringComparison.OrdinalIgnoreCase)
                     ? "video" : "voice";
                 string reqId = _remoteControl.Request("local", "startcall", target + "|" + videoArg);
-                return "Call request submitted for #" + target + " (" + videoArg + "): " + reqId;
+                return ConsentRequestResult(reqId, "Call request for #" + target + " (" + videoArg + ")");
             }
             if (string.Equals(verb, "answer", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(verb, "reject", StringComparison.OrdinalIgnoreCase) ||
@@ -8056,7 +8198,7 @@ namespace UssdApp
                     ? "answercall" : (string.Equals(verb, "reject", StringComparison.OrdinalIgnoreCase)
                         ? "rejectcall" : "endcall");
                 string reqId = _remoteControl.Request("local", rcCommand, "");
-                return "Call action request submitted (" + verb + "): " + reqId;
+                return ConsentRequestResult(reqId, "Call action request (" + verb + ")");
             }
             if (string.Equals(verb, "chat", StringComparison.OrdinalIgnoreCase))
             {
@@ -8075,7 +8217,7 @@ namespace UssdApp
                 if (argument.IndexOf('|') <= 0 || argument.Length <= argument.IndexOf('|') + 1)
                     return "Usage: /agent chat <number> <message>";
                 string reqId = _remoteControl.Request("local", "sendchat", argument);
-                return "Sealed chat request submitted: " + reqId;
+                return ConsentRequestResult(reqId, "Sealed chat request");
             }
             if (string.Equals(verb, "ussd", StringComparison.OrdinalIgnoreCase))
             {
@@ -8084,6 +8226,7 @@ namespace UssdApp
                 _txtCode.Text = argument;
                 ShowPage(5);
                 _txtCode.Focus();
+                ShowUssdNotice(argument + " is ready. Press SEND to contact your carrier.", "USSD code ready", BrushAccent);
                 return "Prepared " + argument + ". Review the code and press SEND to contact your carrier.";
             }
             if (string.Equals(verb, "opencodes", StringComparison.OrdinalIgnoreCase))
@@ -8250,7 +8393,7 @@ namespace UssdApp
             string title, string publisher, string description, string meta,
             string status, string primaryLabel, Action primary,
             string secondaryLabel, Action secondary,
-            out TextBlock statusBlock, out Button primaryButton)
+            out TextBlock statusBlock, out Button primaryButton, out TextBlock metaBlock)
         {
             Border card = new Border
             {
@@ -8326,14 +8469,15 @@ namespace UssdApp
                 TextWrapping = TextWrapping.Wrap,
                 Height = 46
             });
-            body.Children.Add(new TextBlock
+            metaBlock = new TextBlock
             {
                 Text = meta,
                 Foreground = BrushGray,
                 FontSize = 10,
                 FontFamily = new FontFamily("JetBrains Mono, Consolas, monospace"),
                 Margin = new Thickness(0, 8, 0, 0)
-            });
+            };
+            body.Children.Add(metaBlock);
             Grid.SetRow(body, 1);
             content.Children.Add(body);
 
@@ -8465,24 +8609,22 @@ namespace UssdApp
                 "FIND Laptop Tracker",
                 "Laptop Tracker Project  \u00b7  Desktop app",
                 "Open the tracker desktop app where its device list, permission prompts, location reports, and companion servers run. Use it normally for Android, iOS, and laptop devices.",
-                File.Exists(_laptopTrackerExe ?? "") ? Path.GetFileName(_laptopTrackerExe) : "FIND.exe not found yet",
-                "", "Open", delegate { OpenLaptopTrackerFromStore(); },
+                "FIND.exe not found yet", "", "Open", delegate { OpenLaptopTrackerFromStore(); },
                 "Browse...", delegate { ChooseLaptopTrackerExe(); },
-                out trackerStatus, out _trackerStoreOpen);
+                out trackerStatus, out _trackerStoreOpen, out _trackerStoreMeta);
             _trackerStoreStatus = trackerStatus;
             shelf.Children.Add(trackerStoreCard);
 
-            string apkPath = FindLaptopTrackerApk();
-            Button unusedApkButton;
+            string apkPath = ResolveLaptopTrackerApk();
             Border apkStoreCard = MakeStoreAppCard(
                 "\u25A0", Theme.CallSoft, Theme.Success,
                 "FIND for Android",
                 "Laptop Tracker Project  \u00b7  Android package",
                 "The phone companion that pairs with the same tracker service. Install the APK on an Android device, then approve location and device access from the FIND app itself.",
-                string.IsNullOrEmpty(apkPath) ? "APK asset not present" : Path.GetFileName(apkPath),
-                "", "Open folder", delegate { OpenLaptopTrackerApkLocation(apkPath); },
-                "Browse...", delegate { ChooseLaptopTrackerApkLocation(); },
-                out apkStatus, out unusedApkButton);
+                string.IsNullOrEmpty(apkPath) ? "APK not chosen" : Path.GetFileName(apkPath),
+                "", "Open folder", delegate { OpenLaptopTrackerApkLocation(); },
+                "Browse...", delegate { ChooseLaptopTrackerApkFile(); },
+                out apkStatus, out _apkStoreOpen, out _apkStoreMeta);
             _apkStoreStatus = apkStatus;
             shelf.Children.Add(apkStoreCard);
 
@@ -8491,10 +8633,9 @@ namespace UssdApp
                 "USSD Manager Calls",
                 "USSD Manager  \u00b7  Cross-platform calls",
                 "Voice, video, and text companion for the same 700-series identity. Open it to join a call room and keep conversations available across devices and networks.",
-                File.Exists(_callsCompanionExe ?? "") ? Path.GetFileName(_callsCompanionExe) : "USSDCalls.exe not found yet",
-                "", "Open", delegate { OpenCallsCompanionFromStore(); },
+                "USSDCalls.exe not found yet", "", "Open", delegate { OpenCallsCompanionFromStore(); },
                 "Browse...", delegate { ChooseCallsCompanionExe(); },
-                out callsStatus, out _callsStoreOpen);
+                out callsStatus, out _callsStoreOpen, out _callsStoreMeta);
             _callsStoreStatus = callsStatus;
             shelf.Children.Add(callsStoreCard);
             storeBody.Children.Add(shelf);
@@ -8511,22 +8652,62 @@ namespace UssdApp
                 Margin = new Thickness(6, 0, 6, 6)
             };
 
-            if (string.IsNullOrEmpty(_laptopTrackerExe))
-                _laptopTrackerExe = AppConfig.Load().laptop_tracker_exe;
+            // Launched apps open as a full-page panel with their own title bar.
+            // The old version lived in row 3 with MinHeight=220, so the app ran
+            // in a thin strip under the module grid while the page it replaced
+            // stayed visible above it.
             Border trackerPanel = new Border
             {
-                Background = BrushBg,
-                BorderBrush = BrushBorder,
+                Background = Theme.Card,
+                BorderBrush = Theme.CardBorder,
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(10),
+                CornerRadius = new CornerRadius(14),
                 ClipToBounds = true,
-                MinHeight = 220,
                 Visibility = Visibility.Collapsed
             };
+            Grid trackerShell = new Grid();
+            trackerShell.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            trackerShell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            Border trackerBar = new Border
+            {
+                Background = Theme.Chrome,
+                BorderBrush = Theme.CardBorder,
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Padding = new Thickness(10, 8, 12, 8)
+            };
+            DockPanel trackerBarRow = new DockPanel { LastChildFill = true };
+            Button trackerBack = MakeButton("\u2190  Back to Apps");
+            trackerBack.Padding = new Thickness(14, 5, 14, 5);
+            trackerBack.VerticalAlignment = VerticalAlignment.Center;
+            trackerBack.Click += delegate { ShowAppsEmbeddedPanel(false); };
+            DockPanel.SetDock(trackerBack, Dock.Left);
+            trackerBarRow.Children.Add(trackerBack);
+            _appsTrackerState = new TextBlock
+            {
+                Text = "Laptop Tracker",
+                Foreground = BrushFg,
+                FontSize = 13,
+                FontWeight = FontWeights.Bold,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(12, 0, 0, 0)
+            };
+            trackerBarRow.Children.Add(_appsTrackerState);
+            trackerBar.Child = trackerBarRow;
+            Grid.SetRow(trackerBar, 0);
+            trackerShell.Children.Add(trackerBar);
+
+            Border trackerSurface = new Border { Background = BrushBg, ClipToBounds = true };
             _laptopTrackerHost = new TrackerWindowHost();
-            trackerPanel.Child = _laptopTrackerHost;
-            Grid.SetRow(trackerPanel, 3);
+            trackerSurface.Child = _laptopTrackerHost;
+            Grid.SetRow(trackerSurface, 1);
+            trackerShell.Children.Add(trackerSurface);
+
+            trackerPanel.Child = trackerShell;
+            Grid.SetRow(trackerPanel, 0);
+            Grid.SetRowSpan(trackerPanel, 6);
             g.Children.Add(trackerPanel);
+            _appsTrackerPanel = trackerPanel;
 
             List<Border> cards = new List<Border>();
             UniformGrid grid = new UniformGrid { Columns = 3, Rows = 2 };
@@ -8537,7 +8718,7 @@ namespace UssdApp
                 "Active", "Local Guard v4.0.6.6", Theme.AccentSoft, Theme.Accent,
                 "Configure", delegate
                 {
-                    if (trackerPanel != null) trackerPanel.Visibility = Visibility.Visible;
+                    ShowAppsEmbeddedPanel(true);
                     LaunchLaptopTracker();
                 }, "active");
             cards.Add(trackerCard);
@@ -8575,10 +8756,15 @@ namespace UssdApp
                 "Router & MiFi Admin Gateway",
                 "Direct HTTP session diagnostics, WAN APN management, and client lease inspection for connected MiFi modems.",
                 "192.168.100.1", "HTTP API Ready", Theme.AccentSoft, Theme.Accent,
-                "Ping Gateway", delegate
+                "Ping Gateway", async delegate
                 {
                     ShowPage(5);
-                    Log("MiFi gateway check requested from Apps module.", BrushAccent);
+                    string ip = _txtMifiIp != null && !string.IsNullOrWhiteSpace(_txtMifiIp.Text)
+                        ? _txtMifiIp.Text.Trim() : "http://192.168.100.1";
+                    _appsStatus.Text = "Checking gateway " + ip + "...";
+                    string probe = await Task.Run(delegate { return MifiApi.Probe(ip); });
+                    _appsStatus.Text = "Gateway " + ip + ": " + probe + ".";
+                    Log("MiFi gateway check: " + probe + " at " + ip, BrushAccent);
                 }, "bridge");
             cards.Add(routerCard);
 
@@ -8617,9 +8803,13 @@ namespace UssdApp
             Button chooseTracker = MakeButton("Choose Laptop Tracker...");
             chooseTracker.Click += delegate { ChooseLaptopTrackerExe(); };
             actions.Children.Add(chooseTracker);
+            Button chooseApk = MakeButton("Choose Android APK...");
+            chooseApk.Margin = new Thickness(8, 0, 0, 0);
+            chooseApk.Click += delegate { ChooseLaptopTrackerApkFile(); };
+            actions.Children.Add(chooseApk);
             Button showApk = MakeButton("Show Android APK location");
             showApk.Margin = new Thickness(8, 0, 0, 0);
-            showApk.Click += delegate { ChooseLaptopTrackerApkLocation(); };
+            showApk.Click += delegate { OpenLaptopTrackerApkLocation(); };
             actions.Children.Add(showApk);
             Button chooseCalls = MakeButton("Choose cross-platform calls app...");
             chooseCalls.Margin = new Thickness(8, 0, 0, 0);
@@ -8630,7 +8820,36 @@ namespace UssdApp
 
             Grid.SetRow(_appsStatus, 5);
             g.Children.Add(_appsStatus);
+
+            // Everything that belongs to the normal Apps page. The embedded-app
+            // panel hides these instead of squeezing itself into one row.
+            _appsNormalChrome.Clear();
+            _appsNormalChrome.Add(headerCard);
+            _appsNormalChrome.Add(storeCard);
+            _appsNormalChrome.Add(grid);
+            _appsNormalChrome.Add(actions);
+            _appsNormalChrome.Add(_appsStatus);
             return g;
+        }
+
+        // Show or restore the full-page embedded app host (currently the
+        // Laptop Tracker). The host itself keeps running when hidden, so a
+        // launched app is never torn down just because the user glanced at
+        // the module list.
+        private void ShowAppsEmbeddedPanel(bool show)
+        {
+            _appsTrackerFull = show;
+            if (_appsTrackerPanel != null)
+                _appsTrackerPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            for (int i = 0; i < _appsNormalChrome.Count; i++)
+            {
+                UIElement el = _appsNormalChrome[i];
+                if (el != null) el.Visibility = show ? Visibility.Collapsed : Visibility.Visible;
+            }
+            if (show && _appsTrackerState != null)
+                _appsTrackerState.Text = "Laptop Tracker - running inside USSD Manager Pro";
+            if (!show && _appsStatus != null)
+                _appsStatus.Text = "Choose a module action below, or open Laptop Tracker again.";
         }
 
         private static string FindLaptopTrackerApk()
@@ -8683,14 +8902,51 @@ namespace UssdApp
             if (open != null) open.IsEnabled = available;
         }
 
+        // One config object owns the saved app paths. Writing a fresh AppConfig
+        // from a Browse handler let SaveState() overwrite the choice afterwards
+        // with its stale _cfg copy, which is why shortcuts disappeared.
+        private bool PersistAppPaths()
+        {
+            try
+            {
+                if (_cfg == null) _cfg = AppConfig.Load();
+                _cfg.laptop_tracker_exe = _laptopTrackerExe ?? "";
+                _cfg.calls_companion_exe = _callsCompanionExe ?? "";
+                _cfg.laptop_tracker_apk = _laptopTrackerApk ?? "";
+                _cfg.Save();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (_appsStatus != null)
+                    _appsStatus.Text = "The app choice could not be saved: " + ex.Message;
+                Log("App path save failed: " + ex.Message, BrushError);
+                return false;
+            }
+        }
+
+        private string ResolveLaptopTrackerApk()
+        {
+            if (!string.IsNullOrWhiteSpace(_laptopTrackerApk) && File.Exists(_laptopTrackerApk))
+                return Path.GetFullPath(_laptopTrackerApk);
+            return FindLaptopTrackerApk();
+        }
+
         private void RefreshCollaboratedAppStoreStatus()
         {
-            string apk = FindLaptopTrackerApk();
-            SetStoreAppAvailability(_trackerStoreStatus, _trackerStoreOpen,
-                !string.IsNullOrEmpty(_laptopTrackerExe) && File.Exists(_laptopTrackerExe));
-            SetStoreAppAvailability(_apkStoreStatus, null, !string.IsNullOrEmpty(apk) && File.Exists(apk));
-            SetStoreAppAvailability(_callsStoreStatus, _callsStoreOpen,
-                !string.IsNullOrEmpty(_callsCompanionExe) && File.Exists(_callsCompanionExe));
+            string apk = ResolveLaptopTrackerApk();
+            bool trackerOk = !string.IsNullOrWhiteSpace(_laptopTrackerExe) && File.Exists(_laptopTrackerExe);
+            bool apkOk = !string.IsNullOrWhiteSpace(apk) && File.Exists(apk);
+            bool callsOk = !string.IsNullOrWhiteSpace(_callsCompanionExe) && File.Exists(_callsCompanionExe);
+            SetStoreAppAvailability(_trackerStoreStatus, _trackerStoreOpen, trackerOk);
+            SetStoreAppAvailability(_apkStoreStatus, _apkStoreOpen, apkOk);
+            SetStoreAppAvailability(_callsStoreStatus, _callsStoreOpen, callsOk);
+            if (_trackerStoreMeta != null)
+                _trackerStoreMeta.Text = trackerOk ? Path.GetFileName(_laptopTrackerExe) : "FIND.exe not found yet";
+            if (_apkStoreMeta != null)
+                _apkStoreMeta.Text = apkOk ? Path.GetFileName(apk) : "APK not chosen";
+            if (_callsStoreMeta != null)
+                _callsStoreMeta.Text = callsOk ? Path.GetFileName(_callsCompanionExe) : "USSDCalls.exe not found yet";
         }
 
         private void ChooseLaptopTrackerExe()
@@ -8704,11 +8960,27 @@ namespace UssdApp
             };
             if (dialog.ShowDialog(this) != true) return;
             _laptopTrackerExe = Path.GetFullPath(dialog.FileName);
-            AppConfig config = AppConfig.Load();
-            config.laptop_tracker_exe = _laptopTrackerExe;
-            config.Save();
+            if (!PersistAppPaths()) return;
             RefreshCollaboratedAppStoreStatus();
             _appsStatus.Text = "Laptop Tracker selected. Press Open to start " + Path.GetFileName(_laptopTrackerExe) + ".";
+            Log("Laptop Tracker shortcut saved: " + _laptopTrackerExe, BrushSuccess);
+        }
+
+        private void ChooseLaptopTrackerApkFile()
+        {
+            Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Choose FIND for Android APK",
+                Filter = "Android package (*.apk)|*.apk|All files (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+            if (dialog.ShowDialog(this) != true) return;
+            _laptopTrackerApk = Path.GetFullPath(dialog.FileName);
+            if (!PersistAppPaths()) return;
+            RefreshCollaboratedAppStoreStatus();
+            _appsStatus.Text = "Android APK selected. Press Open folder to show " + Path.GetFileName(_laptopTrackerApk) + ".";
+            Log("Laptop Tracker APK shortcut saved: " + _laptopTrackerApk, BrushSuccess);
         }
 
         private void ChooseCallsCompanionExe()
@@ -8722,17 +8994,17 @@ namespace UssdApp
             };
             if (dialog.ShowDialog(this) != true) return;
             _callsCompanionExe = Path.GetFullPath(dialog.FileName);
-            AppConfig config = AppConfig.Load();
-            config.calls_companion_exe = _callsCompanionExe;
-            config.Save();
+            if (!PersistAppPaths()) return;
             RefreshCollaboratedAppStoreStatus();
             _appsStatus.Text = "Cross-platform calls app selected. Press Open to start " + Path.GetFileName(_callsCompanionExe) + ".";
+            Log("Calls companion shortcut saved: " + _callsCompanionExe, BrushSuccess);
         }
 
         private void OpenLaptopTrackerFromStore()
         {
             if (string.IsNullOrWhiteSpace(_laptopTrackerExe) || !File.Exists(_laptopTrackerExe))
                 _laptopTrackerExe = DiscoverLaptopTrackerExe();
+            ShowAppsEmbeddedPanel(true);
             LaunchLaptopTracker();
         }
 
@@ -8870,9 +9142,8 @@ namespace UssdApp
                 });
                 if (_callsCompanionProcess == null)
                     throw new InvalidOperationException("Windows did not return a process for USSD Manager Calls.");
-                AppConfig config = AppConfig.Load();
-                config.calls_companion_exe = path;
-                config.Save();
+                _callsCompanionExe = path;
+                PersistAppPaths();
                 _appsStatus.Text = "Cross-platform calls opened. Use the same calling service and invitation as your Android contact.";
                 Log("Opened the LiveKit call companion.", BrushSuccess);
             }
@@ -8892,7 +9163,10 @@ namespace UssdApp
                     IntPtr existingWindow = _laptopTrackerProcess.MainWindowHandle;
                     if (existingWindow != IntPtr.Zero && _laptopTrackerHost != null &&
                         _laptopTrackerHost.AttachWindow(existingWindow))
-                        _appsStatus.Text = "Laptop Tracker is open in this panel.";
+                    {
+                        ShowAppsEmbeddedPanel(true);
+                        _appsStatus.Text = "Laptop Tracker is open in the full Apps panel.";
+                    }
                     else
                         _appsStatus.Text = "Laptop Tracker is already starting. Please try again in a moment.";
                     return;
@@ -8911,9 +9185,8 @@ namespace UssdApp
                     return;
                 }
                 string path = Path.GetFullPath(_laptopTrackerExe);
-                AppConfig trackerConfig = AppConfig.Load();
-                trackerConfig.laptop_tracker_exe = path;
-                trackerConfig.Save();
+                _laptopTrackerExe = path;
+                PersistAppPaths();
                 _laptopTrackerProcess = Process.Start(new ProcessStartInfo
                 {
                     FileName = path,
@@ -8922,8 +9195,24 @@ namespace UssdApp
                 });
                 if (_laptopTrackerProcess == null)
                     throw new InvalidOperationException("Windows did not return a process for Laptop Tracker.");
-                _appsStatus.Text = "Starting Laptop Tracker in this panel...";
+                _appsStatus.Text = "Starting Laptop Tracker in the full Apps panel...";
                 Process tracker = _laptopTrackerProcess;
+                try
+                {
+                    tracker.EnableRaisingEvents = true;
+                    tracker.Exited += delegate
+                    {
+                        Dispatcher.BeginInvoke(new Action(delegate
+                        {
+                            if (_appsTrackerState != null)
+                                _appsTrackerState.Text = "Laptop Tracker has closed.";
+                            ShowAppsEmbeddedPanel(false);
+                            if (_appsStatus != null)
+                                _appsStatus.Text = "Laptop Tracker closed. Choose a module action below.";
+                        }));
+                    };
+                }
+                catch { }
                 Task.Run(delegate
                 {
                     IntPtr window = IntPtr.Zero;
@@ -8963,8 +9252,9 @@ namespace UssdApp
                             Log("Laptop Tracker window could not be embedded in the Apps panel.", BrushError);
                             return;
                         }
-                        _appsStatus.Text = "Laptop Tracker is open in this panel. Its own sign-in and permission prompts remain active.";
-                        Log("Opened Laptop Tracker in the Apps panel.", BrushSuccess);
+                        ShowAppsEmbeddedPanel(true);
+                        _appsStatus.Text = "Laptop Tracker is open in the full Apps panel. Its own sign-in and permission prompts remain active.";
+                        Log("Opened Laptop Tracker in full-page Apps panel.", BrushSuccess);
                     }));
                 });
             }
@@ -9122,12 +9412,17 @@ namespace UssdApp
             private static extern IntPtr GetModuleHandle(string moduleName);
         }
 
+        private void OpenLaptopTrackerApkLocation()
+        {
+            OpenLaptopTrackerApkLocation(ResolveLaptopTrackerApk());
+        }
+
         private void OpenLaptopTrackerApkLocation(string path)
         {
-            if (!File.Exists(path))
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             {
-                _appsStatus.Text = "Laptop Tracker Android APK was not found at " + path;
-                Log("Laptop Tracker APK is missing: " + path, BrushWarn);
+                _appsStatus.Text = "No Laptop Tracker APK is selected. Press Browse... to choose an .apk file, then open its folder.";
+                Log("Laptop Tracker APK is missing: " + (path ?? ""), BrushWarn);
                 return;
             }
             try
@@ -9145,19 +9440,6 @@ namespace UssdApp
                 _appsStatus.Text = "The APK could not be shown in File Explorer: " + ex.Message;
                 Log("Laptop Tracker APK open failed: " + ex.Message, BrushError);
             }
-        }
-
-        private void ChooseLaptopTrackerApkLocation()
-        {
-            Microsoft.Win32.OpenFileDialog dialog = new Microsoft.Win32.OpenFileDialog
-            {
-                Title = "Choose Laptop Tracker Android APK",
-                Filter = "Android application package (*.apk)|*.apk",
-                CheckFileExists = true,
-                Multiselect = false
-            };
-            if (dialog.ShowDialog(this) == true)
-                OpenLaptopTrackerApkLocation(dialog.FileName);
         }
 
         private Grid BuildTrackerTab()
@@ -9861,8 +10143,10 @@ namespace UssdApp
                 try { Clipboard.SetText(SanitizeNumber(_myNumber ?? "")); Log("App caller ID copied to clipboard.", BrushSuccess); } catch { }
             };
             modeRow.Children.Add(appIdNum);
+            _appIdText = appIdNum;   // refreshed when the saved number loads
 
             modeSwitcher.Child = modeRow;
+            modeSwitcher.Tag = "dialer.header";
             g.Children.Add(modeSwitcher);
 
             // Left: number + keypad
@@ -9871,8 +10155,17 @@ namespace UssdApp
             Grid.SetColumn(left, 0);
             left.Children.Add(new TextBlock { Text = "NUMBER", Foreground = BrushGray, FontWeight = FontWeights.Bold, FontSize = 11 });
             _txtNumber = MakeTextBox(0);
-            _txtNumber.FontSize = 24;
-            _txtNumber.Height = 40;
+            // The theme's TextBox padding is 12,8 and a 24px line box is ~32px,
+            // so a 40px-high box left roughly 22px of content area: every glyph
+            // was clipped and only the caret was visible. Size the box for the
+            // full line height and give the digits an explicit foreground.
+            _txtNumber.FontSize = 22;
+            _txtNumber.Height = 56;
+            _txtNumber.MinHeight = 56;
+            _txtNumber.Padding = new Thickness(10, 6, 10, 6);
+            _txtNumber.VerticalContentAlignment = VerticalAlignment.Center;
+            _txtNumber.Foreground = BrushFg;
+            _txtNumber.CaretBrush = BrushFg;
             _txtNumber.TextAlignment = TextAlignment.Center;
             _txtNumber.FontFamily = new FontFamily("Consolas");
             _txtNumber.Margin = new Thickness(0, 4, 6, 0);
@@ -10051,6 +10344,7 @@ namespace UssdApp
             };
             Grid.SetRow(leftScroll, 1);
             Grid.SetColumn(leftScroll, 0);
+            leftScroll.Tag = "dialer.left";
             g.Children.Add(leftScroll);
 
             // Right: VoIP / LAN call panel (modern card layout)
@@ -10323,6 +10617,7 @@ namespace UssdApp
             };
             Grid.SetRow(rightScroll, 1);
             Grid.SetColumn(rightScroll, 1);
+            rightScroll.Tag = "dialer.right";
             g.Children.Add(rightScroll);
 
             _dialerGrid = g;
@@ -10489,8 +10784,7 @@ namespace UssdApp
             _vidIdle = new StackPanel
             {
                 HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                IsHitTestVisible = false
+                VerticalAlignment = VerticalAlignment.Center
             };
             // Animated gradient avatar
             _vidIdleAvatar = new System.Windows.Shapes.Ellipse
@@ -10615,6 +10909,7 @@ namespace UssdApp
             Style ps2 = TryStyle("PrimaryButton"); if (ps2 != null) btnVidSend.Style = ps2;
             btnVidSend.Padding = new Thickness(10, 5, 10, 5);
             btnVidSend.Margin = new Thickness(6, 0, 0, 0);
+            btnVidSend.Click += delegate { SendVideoChat(); };
             DockPanel.SetDock(btnVidSend, Dock.Right);
             chatSendRow.Children.Add(btnVidSend);
             chatSendRow.Children.Add(_txtVideoChat);
@@ -10623,6 +10918,9 @@ namespace UssdApp
             chatDrawerGrid.Children.Add(chatInput);
             chatDrawer.Child = chatDrawerGrid;
             sg.Children.Add(chatDrawer);
+
+            // Pre-connection experience sits above the idle card, PiP and drawer.
+            sg.Children.Add(BuildConnectingOverlay(true));
 
             stage.Child = sg;
             Grid.SetRow(stage, 1);
@@ -11681,19 +11979,58 @@ namespace UssdApp
             stickerSection.Children.Add(stickerRow);
             _hubEmojiPicker.Children.Add(stickerSection);
 
+            // No third-party GIF service is bundled. This tab is honest about
+            // that and inserts a plain-text keyword the peer can still read.
+            StackPanel gifSection = new StackPanel
+            {
+                Margin = new Thickness(8, 6, 8, 8),
+                Visibility = Visibility.Collapsed
+            };
+            gifSection.Children.Add(new TextBlock
+            {
+                Text = "No GIF provider is configured. Insert a GIF keyword as plain text:",
+                Foreground = BrushGray,
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 6)
+            });
+            WrapPanel gifRow = new WrapPanel();
+            foreach (string kw in new string[] { "laugh", "wave", "party", "thanks" })
+            {
+                string gifWord = kw;
+                Button gb = MakeButton(gifWord);
+                gb.Margin = new Thickness(0, 0, 6, 4);
+                gb.Click += delegate
+                {
+                    if (_txtChatInput == null) return;
+                    int pos = _txtChatInput.CaretIndex;
+                    string token = ":" + gifWord + ":";
+                    _txtChatInput.Text = _txtChatInput.Text.Insert(pos, token);
+                    _txtChatInput.CaretIndex = pos + token.Length;
+                    _txtChatInput.Focus();
+                };
+                gifRow.Children.Add(gb);
+            }
+            gifSection.Children.Add(gifRow);
+            _hubEmojiPicker.Children.Add(gifSection);
+
             epTabEmoji.Click += delegate
             {
                 emojiScroll.Visibility = Visibility.Visible;
                 stickerSection.Visibility = Visibility.Collapsed;
+                gifSection.Visibility = Visibility.Collapsed;
                 epTabEmoji.Background = Theme.AccentSoft; epTabEmoji.Foreground = BrushAccent;
                 epTabStickers.Background = Brushes.Transparent; epTabStickers.Foreground = BrushGray;
+                epTabGif.Background = Brushes.Transparent; epTabGif.Foreground = BrushGray;
             };
             epTabStickers.Click += delegate
             {
                 emojiScroll.Visibility = Visibility.Collapsed;
                 stickerSection.Visibility = Visibility.Visible;
+                gifSection.Visibility = Visibility.Collapsed;
                 epTabStickers.Background = Theme.AccentSoft; epTabStickers.Foreground = BrushAccent;
                 epTabEmoji.Background = Brushes.Transparent; epTabEmoji.Foreground = BrushGray;
+                epTabGif.Background = Brushes.Transparent; epTabGif.Foreground = BrushGray;
             };
 
             // ── Custom sticker tab ──────────────────────────────────────
@@ -11720,18 +12057,33 @@ namespace UssdApp
             {
                 emojiScroll.Visibility = Visibility.Collapsed;
                 stickerSection.Visibility = Visibility.Collapsed;
+                gifSection.Visibility = Visibility.Collapsed;
                 customStickerScroll.Visibility = Visibility.Visible;
                 epTabCustom.Background = Theme.AccentSoft; epTabCustom.Foreground = BrushAccent;
                 epTabEmoji.Background = Brushes.Transparent; epTabEmoji.Foreground = BrushGray;
                 epTabStickers.Background = Brushes.Transparent; epTabStickers.Foreground = BrushGray;
+                epTabGif.Background = Brushes.Transparent; epTabGif.Foreground = BrushGray;
+            };
+            epTabGif.Click += delegate
+            {
+                emojiScroll.Visibility = Visibility.Collapsed;
+                stickerSection.Visibility = Visibility.Collapsed;
+                customStickerScroll.Visibility = Visibility.Collapsed;
+                gifSection.Visibility = Visibility.Visible;
+                epTabGif.Background = Theme.AccentSoft; epTabGif.Foreground = BrushAccent;
+                epTabEmoji.Background = Brushes.Transparent; epTabEmoji.Foreground = BrushGray;
+                epTabStickers.Background = Brushes.Transparent; epTabStickers.Foreground = BrushGray;
+                epTabCustom.Background = Brushes.Transparent; epTabCustom.Foreground = BrushGray;
             };
             epTabEmoji.Click += delegate
             {
                 customStickerScroll.Visibility = Visibility.Collapsed;
+                gifSection.Visibility = Visibility.Collapsed;
             };
             epTabStickers.Click += delegate
             {
                 customStickerScroll.Visibility = Visibility.Collapsed;
+                gifSection.Visibility = Visibility.Collapsed;
             };
 
             Grid.SetRow(emojiPickerBorder, 3);
@@ -13074,10 +13426,11 @@ HubShowWorkspace("chat");
                                 ? "\n" + r.LastResponse.Substring(0, Math.Min(60, r.LastResponse.Length))
                                 : "")
                 };
-                chip.Click += delegate
+                chip.Click += async delegate
                 {
                     if (_txtCode != null) _txtCode.Text = cap.Code;
-                    Log("Replay: " + cap.Code, BrushGray);
+                    ShowUssdNotice("Replaying " + cap.Code + "...", "USSD replay", BrushAccent);
+                    await SendUssdAsync();
                 };
                 _ussdReplayChips.Children.Add(chip);
             }
@@ -13768,6 +14121,9 @@ HubShowWorkspace("video");
         // ── Hub: show / hide Pane-3 workspaces ────────────────────────────
         private void HubShowWorkspace(string ws)
         {
+            // A security sheet belongs to one conversation. Leaving it above the
+            // chat pane after a call makes every chat click look like a no-op.
+            CloseChatSecuritySheet();
             if (_hubPane3Chat  != null) _hubPane3Chat.Visibility  = (ws == "chat")  ? Visibility.Visible : Visibility.Collapsed;
             if (_hubPane3Voice != null) _hubPane3Voice.Visibility = (ws == "voice") ? Visibility.Visible : Visibility.Collapsed;
             if (_hubPane3Video != null) _hubPane3Video.Visibility = (ws == "video") ? Visibility.Visible : Visibility.Collapsed;
@@ -14199,16 +14555,10 @@ HubShowWorkspace("video");
         // ── Hub: AI assistant (calls configured API) ───────────────────────
         private async Task HubAiAssistAsync()
         {
-            if (!_aiEnabled)
+            if (!AiIsUsable())
             {
-                Log("AI: disabled — go to Settings > AI to enable it and add an API key.", BrushWarn);
+                Log("AI: " + AiUnavailableReason(), BrushWarn);
                 // Open settings dialog on the AI tab
-                ShowSettingsDialog();
-                return;
-            }
-            if (string.IsNullOrEmpty(_aiApiKey))
-            {
-                Log("AI: no API key — add one in Settings > AI.", BrushWarn);
                 ShowSettingsDialog();
                 return;
             }
@@ -14243,6 +14593,56 @@ HubShowWorkspace("video");
             }
         }
 
+        // A local endpoint (Ollama, LM Studio, llama.cpp, a LAN box) does not
+        // need an API key. Treating "no key" as "AI is not configured" made an
+        // enabled local provider unreachable.
+        private static bool IsLocalAiHost(string endpoint)
+        {
+            if (string.IsNullOrWhiteSpace(endpoint)) return false;
+            try
+            {
+                string raw = endpoint.Trim();
+                if (raw.IndexOf("://", StringComparison.Ordinal) < 0) raw = "http://" + raw;
+                Uri u = new Uri(raw);
+                string host = (u.Host ?? "").ToLowerInvariant();
+                if (host == "localhost" || host == "::1" || host == "0.0.0.0") return true;
+                if (host == "host.docker.internal" || host.EndsWith(".local")) return true;
+                System.Net.IPAddress ip;
+                if (System.Net.IPAddress.TryParse(host, out ip))
+                {
+                    byte[] b = ip.GetAddressBytes();
+                    if (b.Length == 4)
+                    {
+                        if (b[0] == 127 || b[0] == 10) return true;
+                        if (b[0] == 192 && b[1] == 168) return true;
+                        if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
+                    }
+                    return ip.Equals(System.Net.IPAddress.IPv6Loopback);
+                }
+                return false;
+            }
+            catch { return false; }
+        }
+
+        private bool AiIsUsable()
+        {
+            if (!_aiEnabled) return false;
+            if (!string.IsNullOrEmpty(_aiApiKey)) return true;
+            return IsLocalAiHost(_aiEndpoint);
+        }
+
+        private string AiUnavailableReason()
+        {
+            if (!_aiEnabled)
+                return "The AI assistant is switched off. Turn it on in Settings > AI Integration.";
+            string ep = string.IsNullOrWhiteSpace(_aiEndpoint)
+                ? "https://api.openai.com/v1/chat/completions" : _aiEndpoint.Trim();
+            return "AI is enabled but no API key is set for " + ep +
+                ". Add a key in Settings > AI Integration, or point the endpoint at a local " +
+                "Ollama/LM Studio server (for example http://localhost:11434/v1/chat/completions) " +
+                "which needs no key.";
+        }
+
         private string CallAiApi(string prompt)
         {
             try
@@ -14253,7 +14653,8 @@ HubShowWorkspace("video");
                     (System.Net.HttpWebRequest)System.Net.WebRequest.Create(_aiEndpoint);
                 req.Method = "POST";
                 req.ContentType = "application/json";
-                req.Headers["Authorization"] = "Bearer " + _aiApiKey;
+                if (!string.IsNullOrEmpty(_aiApiKey))
+                    req.Headers["Authorization"] = "Bearer " + _aiApiKey;
                 req.Timeout = 30000;
 
                 // Sanitise prompt for JSON: escape backslash, quote, and control chars
@@ -14336,6 +14737,261 @@ HubShowWorkspace("video");
         }
 
         // ── Hub: build Google Meet-style video call view ───────────────────
+        // ── Shared pre-connection panel ────────────────────────────────────
+        // Shown from the moment a VoIP call is placed until the media key is
+        // confirmed. Replaces the old behaviour where the stage claimed to be
+        // "Live" while the two ends were still signalling, and the only hint
+        // that anything was happening was a line of log text.
+        private static void AnimateConnectRing(System.Windows.Shapes.Ellipse ring, double delaySeconds)
+        {
+            ScaleTransform st = ring.RenderTransform as ScaleTransform;
+            if (st == null) return;
+            DoubleAnimation grow = new DoubleAnimation(0.82, 1.55, TimeSpan.FromSeconds(2.4));
+            grow.RepeatBehavior = RepeatBehavior.Forever;
+            grow.BeginTime = TimeSpan.FromSeconds(delaySeconds);
+            grow.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+            st.BeginAnimation(ScaleTransform.ScaleXProperty, grow);
+            st.BeginAnimation(ScaleTransform.ScaleYProperty, grow);
+
+            DoubleAnimation fade = new DoubleAnimation(0.45, 0.0, TimeSpan.FromSeconds(2.4));
+            fade.RepeatBehavior = RepeatBehavior.Forever;
+            fade.BeginTime = TimeSpan.FromSeconds(delaySeconds);
+            fade.EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+            ring.BeginAnimation(UIElement.OpacityProperty, fade);
+        }
+
+        private static string ConnectInitials(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return "?";
+            string s = name.Trim().TrimStart('#');
+            if (s.Length == 0) return "?";
+            return s.Substring(0, Math.Min(2, s.Length)).ToUpperInvariant();
+        }
+
+        private static string ConnectWords(string state)
+        {
+            if (string.IsNullOrEmpty(state)) return "Connecting\u2026";
+            if (state.IndexOf("Ringing", StringComparison.OrdinalIgnoreCase) >= 0) return "Ringing\u2026";
+            if (state.IndexOf("Calling", StringComparison.OrdinalIgnoreCase) >= 0) return "Calling\u2026";
+            if (state.IndexOf("accepted", StringComparison.OrdinalIgnoreCase) >= 0) return "Connecting\u2026";
+            if (state.IndexOf("Connecting", StringComparison.OrdinalIgnoreCase) >= 0) return "Connecting\u2026";
+            return "Connecting\u2026";
+        }
+
+        private static string ConnectHint(string state)
+        {
+            if (string.IsNullOrEmpty(state)) return "Waiting for the other person to answer";
+            if (state.IndexOf("Ringing", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Their phone is ringing. The call starts when they answer.";
+            if (state.IndexOf("accepted", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Answer received. Establishing the encrypted media channel\u2026";
+            if (state.IndexOf("Connecting", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Reaching the other device and securing the channel\u2026";
+            return "Waiting for the other person to answer";
+        }
+
+        private Grid BuildConnectingOverlay(bool video)
+        {
+            Grid overlay = new Grid
+            {
+                Background = new LinearGradientBrush(
+                    new GradientStopCollection(new GradientStop[]
+                    {
+                        new GradientStop(Color.FromRgb(0x07, 0x0b, 0x14), 0),
+                        new GradientStop(Color.FromRgb(0x0f, 0x1a, 0x2e), 0.55),
+                        new GradientStop(Color.FromRgb(0x08, 0x0c, 0x16), 1)
+                    }), 90),
+                Visibility = Visibility.Collapsed
+            };
+
+            StackPanel center = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                MaxWidth = 560
+            };
+
+            Grid ringHost = new Grid { Width = 240, Height = 240, HorizontalAlignment = HorizontalAlignment.Center };
+            Color accent = Color.FromRgb(0x60, 0xa5, 0xfa);
+            System.Windows.Shapes.Ellipse ringA = new System.Windows.Shapes.Ellipse
+            {
+                Width = 168, Height = 168, Stroke = new SolidColorBrush(accent), StrokeThickness = 2,
+                Opacity = 0.35, HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new ScaleTransform(1, 1)
+            };
+            System.Windows.Shapes.Ellipse ringB = new System.Windows.Shapes.Ellipse
+            {
+                Width = 168, Height = 168, Stroke = new SolidColorBrush(accent), StrokeThickness = 2,
+                Opacity = 0.25, HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new ScaleTransform(1, 1)
+            };
+            ringHost.Children.Add(ringA);
+            ringHost.Children.Add(ringB);
+
+            Border avatar = new Border
+            {
+                Width = 124, Height = 124,
+                CornerRadius = new CornerRadius(62),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Background = new LinearGradientBrush(
+                    new GradientStopCollection(new GradientStop[]
+                    {
+                        new GradientStop(Color.FromRgb(0x25, 0x63, 0xeb), 0),
+                        new GradientStop(Color.FromRgb(0x7c, 0x3a, 0xed), 1)
+                    }), 135),
+                Effect = new System.Windows.Media.Effects.DropShadowEffect
+                {
+                    Color = accent, BlurRadius = 30, ShadowDepth = 0, Opacity = 0.55
+                }
+            };
+            TextBlock initial = new TextBlock
+            {
+                Text = "?",
+                Foreground = Brushes.White,
+                FontSize = 44,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            avatar.Child = initial;
+            ringHost.Children.Add(avatar);
+            center.Children.Add(ringHost);
+
+            TextBlock peer = new TextBlock
+            {
+                Text = "Connecting",
+                Foreground = Brushes.White,
+                FontSize = 23,
+                FontWeight = FontWeights.Bold,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 16, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            center.Children.Add(peer);
+
+            TextBlock role = new TextBlock
+            {
+                Text = video ? "Video call" : "Voice call",
+                Foreground = new SolidColorBrush(Color.FromRgb(0x8f, 0x9f, 0xb8)),
+                FontSize = 12,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+            center.Children.Add(role);
+
+            TextBlock stateText = new TextBlock
+            {
+                Text = "Calling\u2026",
+                Foreground = new SolidColorBrush(Color.FromRgb(0x93, 0xc5, 0xfd)),
+                FontSize = 16,
+                FontWeight = FontWeights.SemiBold,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 16, 0, 0)
+            };
+            center.Children.Add(stateText);
+
+            TextBlock timer = new TextBlock
+            {
+                Text = "00:00",
+                Foreground = new SolidColorBrush(Color.FromRgb(0xa8, 0xb6, 0xcc)),
+                FontFamily = new FontFamily("Consolas"),
+                FontSize = 14,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(0, 6, 0, 0)
+            };
+            center.Children.Add(timer);
+
+            TextBlock hint = new TextBlock
+            {
+                Text = "Waiting for the other person to answer",
+                Foreground = new SolidColorBrush(Color.FromRgb(0x7c, 0x8b, 0xa3)),
+                FontSize = 11,
+                TextAlignment = TextAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 14, 0, 0),
+                MaxWidth = 360
+            };
+            center.Children.Add(hint);
+
+            Button cancel = MakeButton("\u2715   Cancel call");
+            Style danger = TryStyle("DangerButton");
+            if (danger != null) cancel.Style = danger;
+            cancel.Padding = new Thickness(22, 8, 22, 8);
+            cancel.Margin = new Thickness(0, 26, 0, 0);
+            cancel.HorizontalAlignment = HorizontalAlignment.Center;
+            cancel.Click += delegate
+            {
+                HangupVoip();
+                HideConnectingOverlays();
+                HubShowWorkspace("chat");
+                UpdateVideoStage();
+            };
+            center.Children.Add(cancel);
+
+            overlay.Children.Add(center);
+            overlay.Tag = video ? "connect-video" : "connect-voice";
+            overlay.Loaded += delegate
+            {
+                AnimateConnectRing(ringA, 0);
+                AnimateConnectRing(ringB, 1.2);
+            };
+
+            _connectOverlays.Add(overlay);
+            _connectPeerLabels.Add(peer);
+            _connectStateLabels.Add(stateText);
+            _connectHintLabels.Add(hint);
+            _connectTimerLabels.Add(timer);
+            _connectInitialLabels.Add(initial);
+            return overlay;
+        }
+
+        private void HideConnectingOverlays()
+        {
+            for (int i = 0; i < _connectOverlays.Count; i++)
+                if (_connectOverlays[i] != null) _connectOverlays[i].Visibility = Visibility.Collapsed;
+        }
+
+        private void UpdateConnectingUi(string state)
+        {
+            bool connecting = _voip != null && _voip.InCall && !_voipConnected;
+            if (!connecting)
+            {
+                HideConnectingOverlays();
+                return;
+            }
+            string peerRaw = _voipPeerName ?? "";
+            string peer = string.IsNullOrEmpty(peerRaw) ? "Unknown contact" : peerRaw;
+            string initials = ConnectInitials(peer);
+            string words = ConnectWords(state);
+            string hint = ConnectHint(state);
+            for (int i = 0; i < _connectOverlays.Count; i++)
+            {
+                if (_connectOverlays[i] != null) _connectOverlays[i].Visibility = Visibility.Visible;
+                if (_connectPeerLabels[i] != null) _connectPeerLabels[i].Text = peer;
+                if (_connectStateLabels[i] != null) _connectStateLabels[i].Text = words;
+                if (_connectHintLabels[i] != null) _connectHintLabels[i].Text = hint;
+                if (_connectInitialLabels[i] != null) _connectInitialLabels[i].Text = initials;
+            }
+        }
+
+        private static bool VoipStateIsConnected(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            return s.IndexOf("encrypted", StringComparison.OrdinalIgnoreCase) >= 0
+                || s.IndexOf("verified", StringComparison.OrdinalIgnoreCase) >= 0
+                || s.IndexOf("Key confirmed", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private Grid BuildHubVideoView()
         {
             Grid g = new Grid();
@@ -14385,6 +15041,7 @@ HubShowWorkspace("video");
             Image localImg = new Image { Stretch = Stretch.UniformToFill };
             pip.Child = localImg;
             sg.Children.Add(pip);
+            sg.Children.Add(BuildConnectingOverlay(true));
 
             stage.Child = sg;
             Grid.SetRow(stage, 1);
@@ -14494,6 +15151,12 @@ HubShowWorkspace("video");
             vcCtrl.Child = vcSp;
             Grid.SetRow(vcCtrl, 2);
             g.Children.Add(vcCtrl);
+
+            // Cover the whole voice workspace while the call is still connecting.
+            Grid voiceConnect = BuildConnectingOverlay(false);
+            Grid.SetRow(voiceConnect, 0);
+            Grid.SetRowSpan(voiceConnect, 3);
+            g.Children.Add(voiceConnect);
 
             return g;
         }
@@ -14830,7 +15493,7 @@ HubShowWorkspace("video");
             left.Children.Add(histGroup);
 
             WrapPanel presetsPanel = new WrapPanel { Margin = new Thickness(4, 2, 4, 2) };
-            GroupBox presetGroup = MakeGroup("Quick Codes \u2014 one-click carrier execution");
+            GroupBox presetGroup = MakeGroup("Quick Codes \u2014 tap to send now");
             presetGroup.Content = presetsPanel;
             Grid.SetRow(presetGroup, 0);
             right.Children.Add(presetGroup);
@@ -15007,10 +15670,10 @@ HubShowWorkspace("video");
                 b.Margin = new Thickness(4, 3, 4, 3);
                 b.Padding = new Thickness(8, 3, 8, 3);
                 string code = p.Code;
-                b.Click += delegate
+                b.Click += async delegate
                 {
                     _txtCode.Text = code;
-                    _txtCode.Focus();
+                    await SendUssdAsync();
                 };
                 _presetPanel.Children.Add(b);
             }
@@ -15080,8 +15743,13 @@ HubShowWorkspace("video");
                 {
                     _txtUssdReply.Text = replyVal;
                     _txtUssdReply.Focus();
+                    SetStatus("Choice " + replyVal + " ready - press REPLY or double-click", BrushAccent);
                 };
-                chip.MouseDoubleClick += async delegate { await SendUssdReplyAsync(); };
+                chip.MouseDoubleClick += async delegate
+                {
+                    _txtUssdReply.Text = replyVal;
+                    await SendUssdReplyAsync();
+                };
                 _ussdChips.Children.Add(chip);
                 if (++n >= 12) break;
             }
@@ -15101,35 +15769,52 @@ HubShowWorkspace("video");
         private async Task SendUssdReplyAsync()
         {
             string reply = _txtUssdReply.Text.Trim();
-            if (reply.Length == 0) { Log("Type or tap a menu choice first.", BrushWarn); return; }
+            if (reply.Length == 0)
+            {
+                ShowUssdNotice("Type or tap a menu choice first. Nothing was sent.", "USSD needs a choice", BrushWarn);
+                return;
+            }
             await SendUssdRawAsync("AT+CUSD=1,\"" + reply + "\",15", "reply " + reply);
         }
 
         private async Task CancelUssdAsync()
         {
-            if (!_modem.IsOpen) { Log("Connect the modem first.", BrushError); return; }
+            if (!_modem.IsOpen)
+            {
+                ShowUssdNotice("Connect the modem first. There is no live USSD session to cancel.",
+                    "Modem not connected", BrushError);
+                return;
+            }
             _busy = true;
             try
             {
-                Log("Cancelling USSD session...", BrushAccent);
+                ShowUssdNotice("Cancelling USSD session...", "USSD cancelling", BrushAccent);
                 await Task.Run(delegate { _modem.SendCommand("AT+CUSD=2", "^(OK|ERROR)", 8000); });
                 _ussdSessionActive = false;
                 _ussdChips.Children.Clear();
-                Log("USSD session cancelled.", BrushGray);
-                SetStatus("USSD cancelled", BrushGray);
+                ShowUssdNotice("USSD session cancelled.", "USSD cancelled", BrushGray);
             }
-            catch (Exception ex) { Log("Cancel error: " + ex.Message, BrushError); }
+            catch (Exception ex) { ShowUssdNotice("Cancel error: " + ex.Message, "USSD cancel error", BrushError); }
             finally { _busy = false; }
         }
 
         private async Task SendUssdRawAsync(string at, string what)
         {
-            if (_busy) { Log("Busy - please wait...", BrushWarn); return; }
-            if (!_modem.IsOpen) { Log("Connect the modem first (Connect bar).", BrushError); return; }
+            if (_busy)
+            {
+                ShowUssdNotice("Busy - please wait for the current USSD request.", "USSD busy", BrushWarn);
+                return;
+            }
+            if (!_modem.IsOpen)
+            {
+                ShowUssdNotice("Connect the modem first (Connect bar). Nothing was sent to your carrier.",
+                    "Modem not connected", BrushError);
+                return;
+            }
             _busy = true;
             try
             {
-                Log("Sending USSD " + what + " ...", BrushAccent);
+                ShowUssdNotice("Sending USSD " + what + "...", "USSD sending", BrushAccent);
                 string result = await Task.Run(delegate
                 {
                     string[] r = _modem.SendCommand(at, "^(OK|ERROR|\\+CME ERROR|\\+CUSD)", 35000);
@@ -15140,7 +15825,7 @@ HubShowWorkspace("video");
                 Log("USSD response: " + parsed, BrushSuccess);
                 SetStatus("USSD done", BrushSuccess);
             }
-            catch (Exception ex) { Log("USSD error: " + ex.Message, BrushError); }
+            catch (Exception ex) { ShowUssdNotice("USSD error: " + ex.Message, "USSD error", BrushError); }
             finally { _busy = false; }
         }
 
@@ -15267,6 +15952,7 @@ _sidebarCol.Width = new GridLength(58);
         private void ShowPage(int index)
         {
             if (index < 0 || index >= _pages.Count) return;
+            DismissFirstRunWelcome();
             _pages[_pageIndex].Visibility = Visibility.Collapsed;
             _pageIndex = index;
             _pages[_pageIndex].Visibility = Visibility.Visible;
@@ -15281,6 +15967,16 @@ _sidebarCol.Width = new GridLength(58);
                 _pageIndex < 0 || _pageIndex >= _pageLabels.Count) return;
             _shellPageTitle.Text = _pageLabels[_pageIndex];
             _shellPageDescription.Text = _pageDescriptions[_pageIndex];
+        }
+
+        // Dialer refusals have no response box, so put the reason in the header
+        // state text as well as the status pill. A hidden log line reads as a
+        // dead CALL button.
+        private static void SetDialerVisibleStatus(TextBlock state, string text, Brush color)
+        {
+            if (string.IsNullOrEmpty(text)) text = "";
+            if (text.Length > 48) text = text.Substring(0, 45) + "...";
+            if (state != null) { state.Text = text; state.Foreground = color; }
         }
 
         // Switch the dialer between Cellular and VoIP transport modes.
@@ -15304,7 +16000,16 @@ _sidebarCol.Width = new GridLength(58);
             }
             // When switching to VoIP, jump to the Video Call page if a call is active
             // so the user sees the full-bleed stage. When going back to cellular, stay.
-            Log("Transport: " + (isCellular ? "Cellular (GSM modem)" : "VoIP / LAN"), BrushGray);
+            string label = isCellular ? "Cellular (GSM modem)" : "VoIP / LAN";
+            SetStatus("Transport: " + label, BrushAccent);
+            // Only claim the idle state. Overwriting an active call's state here
+            // would make the header lie until the next UpdateCallUi tick.
+            if (_callStateText != null && _call == CallState.Idle && (_voip == null || !_voip.InCall))
+            {
+                _callStateText.Text = isCellular ? "Cellular ready" : "VoIP ready";
+                _callStateText.Foreground = BrushAccent;
+            }
+            Log("Transport: " + label, BrushGray);
         }
 
         // ---------- responsive layout ----------
@@ -15323,32 +16028,53 @@ _sidebarCol.Width = new GridLength(58);
             ApplyLogHeight();
         }
 
+        private static FrameworkElement TaggedChild(Grid g, string tag)
+        {
+            if (g == null) return null;
+            for (int i = 0; i < g.Children.Count; i++)
+            {
+                FrameworkElement el = g.Children[i] as FrameworkElement;
+                if (el != null && tag.Equals(el.Tag as string, StringComparison.Ordinal)) return el;
+            }
+            return null;
+        }
+
         private static void SetPageStacked(Grid g, double wideColWidth, bool stacked)
         {
             if (g == null || g.ColumnDefinitions.Count < 2) return;
-            if (g.RowDefinitions.Count == 0)
+            // The dialer grid has a transport header in row 0, so its first two
+            // children are NOT the two columns. Find the panes by Tag instead of
+            // assuming build order; that assumption put the keypad over the header.
+            FrameworkElement header = TaggedChild(g, "dialer.header");
+            FrameworkElement left = TaggedChild(g, "dialer.left");
+            FrameworkElement right = TaggedChild(g, "dialer.right");
+            if (header == null && g.Children.Count >= 2)
             {
-                g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                left = g.Children[0] as FrameworkElement;
+                right = g.Children[1] as FrameworkElement;
             }
-            if (g.Children.Count < 2) return;
-            // Children are added in build order: 0 = left column, 1 = right column.
-            FrameworkElement left = g.Children[0] as FrameworkElement;
-            FrameworkElement right = g.Children[1] as FrameworkElement;
             if (left == null || right == null) return;
+            while (g.RowDefinitions.Count < 3)
+                g.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            if (header != null)
+            {
+                Grid.SetRow(header, 0); Grid.SetColumn(header, 0); Grid.SetColumnSpan(header, 2);
+            }
+            Grid.SetColumnSpan(left, 1);
+            Grid.SetColumnSpan(right, 1);
             if (stacked)
             {
                 g.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
-                g.ColumnDefinitions[1].Width = GridLength.Auto;
-                Grid.SetRow(left, 0); Grid.SetColumn(left, 0);
-                Grid.SetRow(right, 1); Grid.SetColumn(right, 0);
+                g.ColumnDefinitions[1].Width = new GridLength(0);
+                Grid.SetRow(left, 1); Grid.SetColumn(left, 0);
+                Grid.SetRow(right, 2); Grid.SetColumn(right, 0);
             }
             else
             {
                 g.ColumnDefinitions[0].Width = new GridLength(wideColWidth);
                 g.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
-                Grid.SetRow(left, 0); Grid.SetColumn(left, 0);
-                Grid.SetRow(right, 0); Grid.SetColumn(right, 1);
+                Grid.SetRow(left, 1); Grid.SetColumn(left, 0);
+                Grid.SetRow(right, 1); Grid.SetColumn(right, 1);
             }
         }
 
@@ -15440,6 +16166,30 @@ _sidebarCol.Width = new GridLength(58);
         // awake for days, so the visible log is bounded and old lines are
         // dropped (the breadcrumb file keeps everything).
         private const int MaxLogLines = 300;
+
+        // Called from the global exception hooks in Program.Main. The breadcrumb
+        // file keeps the full stack; the visible status line stops a click from
+        // looking like it did nothing.
+        public void ReportUnhandledException(Exception ex)
+        {
+            string detail = ex == null ? "Unknown unhandled error." : ex.ToString();
+            try { File.AppendAllText(Path.Combine(Home.Dir, "unhandled.log"), DateTime.Now.ToString("s") + " " + detail + "\r\n"); }
+            catch { }
+            if (!Dispatcher.CheckAccess())
+            {
+                try { Dispatcher.BeginInvoke((Action)delegate { ReportUnhandledException(ex); }); }
+                catch { }
+                return;
+            }
+            string msg = "Unhandled error: " + (ex == null ? "unknown" : ex.Message);
+            try
+            {
+                if (_appsStatus != null) _appsStatus.Text = msg;
+                if (_agentStatus != null) _agentStatus.Text = msg;
+                Log(msg, BrushError);
+            }
+            catch { }
+        }
 
         public void Log(string text, Brush color)
         {
@@ -15718,22 +16468,44 @@ _sidebarCol.Width = new GridLength(58);
                     int sec = (int)(DateTime.Now - _callStart).TotalSeconds;
                     _callTimerText.Text = (sec / 60).ToString("00") + ":" + (sec % 60).ToString("00");
                 }
-                // VoIP call clock (drives the in-call overlay timer)
+                // VoIP call clock. While connecting it counts the connection
+                // attempt; the billable/in-call clock only starts once the media
+                // key is confirmed.
                 if (_voip != null && _voip.InCall)
                 {
-                    if (_voipStart == DateTime.MinValue) _voipStart = DateTime.Now;
-                    int sec = (int)(DateTime.Now - _voipStart).TotalSeconds;
-                    string mmss = (sec / 60).ToString("00") + ":" + (sec % 60).ToString("00");
-                    if (_ovTimer != null) _ovTimer.Text = mmss;
-                    if (_call != CallState.Active && _callTimerText != null) _callTimerText.Text = mmss;
-                    // Update hub voice call timer if open
-                    if (_hubCallTimer != null) _hubCallTimer.Text = mmss;
+                    if (_voipConnected)
+                    {
+                        if (_voipStart == DateTime.MinValue) _voipStart = DateTime.Now;
+                        int sec = (int)(DateTime.Now - _voipStart).TotalSeconds;
+                        string mmss = (sec / 60).ToString("00") + ":" + (sec % 60).ToString("00");
+                        if (_ovTimer != null) _ovTimer.Text = mmss;
+                        if (_call != CallState.Active && _callTimerText != null) _callTimerText.Text = mmss;
+                        if (_hubCallTimer != null) _hubCallTimer.Text = mmss;
+                        TextBlock stageTimer = _stageTag as TextBlock;
+                        if (stageTimer != null) stageTimer.Text = mmss;
+                    }
+                    else
+                    {
+                        if (_connectSince == DateTime.MinValue) _connectSince = DateTime.Now;
+                        int sec = (int)(DateTime.Now - _connectSince).TotalSeconds;
+                        string mmss = (sec / 60).ToString("00") + ":" + (sec % 60).ToString("00");
+                        for (int i = 0; i < _connectTimerLabels.Count; i++)
+                            if (_connectTimerLabels[i] != null) _connectTimerLabels[i].Text = mmss;
+                        if (_hubCallTimer != null) _hubCallTimer.Text = mmss;
+                        TextBlock stageTimer = _stageTag as TextBlock;
+                        if (stageTimer != null) stageTimer.Text = mmss;
+                    }
                 }
-                else if (_voipStart != DateTime.MinValue)
+                else if (_voipStart != DateTime.MinValue || _connectSince != DateTime.MinValue)
                 {
                     _voipStart = DateTime.MinValue;
+                    _connectSince = DateTime.MinValue;
                     if (_ovTimer != null) _ovTimer.Text = "00:00";
                     if (_hubCallTimer != null) _hubCallTimer.Text = "00:00";
+                    for (int i = 0; i < _connectTimerLabels.Count; i++)
+                        if (_connectTimerLabels[i] != null) _connectTimerLabels[i].Text = "00:00";
+                    TextBlock stageTimer = _stageTag as TextBlock;
+                    if (stageTimer != null) stageTimer.Text = "";
                 }
                 // Network quality indicator — update every 5 seconds
                 if (_tickCount % 5 == 0) UpdateNetworkQualityIndicator();
@@ -15975,6 +16747,8 @@ _sidebarCol.Width = new GridLength(58);
             {
                 if (_voip == null)
                 {
+                    SetDialerVisibleStatus(_callStateText, "App call unavailable - VoIP not running", BrushError);
+                    SetStatus("App call unavailable", BrushError);
                     Log("App call: VoIP service not running.", BrushError);
                     return;
                 }
@@ -16009,12 +16783,16 @@ _sidebarCol.Width = new GridLength(58);
             {
                 // The seam exists so a bridge can be added without reworking
                 // routing; there is no built-in adapter in this build.
-                Log("Would use " + route.Why + " - but no gateway adapter is implemented yet. " +
-                    "See IEgressGateway in CallRouter.cs.", BrushWarn);
+                string msg = "No gateway adapter is implemented for " + route.Why;
+                SetDialerVisibleStatus(_callStateText, "Gateway not available", BrushWarn);
+                SetStatus("Gateway adapter missing", BrushWarn);
+                Log(msg + ". See IEgressGateway in CallRouter.cs.", BrushWarn);
                 return;
             }
             if (route.Path == EgressPath.None)
             {
+                SetDialerVisibleStatus(_callStateText, "Cannot dial: " + route.Why, BrushError);
+                SetStatus("Call blocked", BrushError);
                 Log("Cannot dial: " + route.Why, BrushError);
                 if (!string.IsNullOrEmpty(route.Fix)) Log("To fix it: " + route.Fix, BrushWarn);
                 return;
@@ -16022,10 +16800,28 @@ _sidebarCol.Width = new GridLength(58);
             // EgressPath.Cellular falls through to the modem dial below.
 
             // ── GSM MODEM CALL ────────────────────────────────────────────
-            if (!_modem.IsOpen) { Log("Connect the modem first (or dial a 700-XXXXXXX app number for modem-free calls).", BrushError); return; }
+            if (!_modem.IsOpen)
+            {
+                SetDialerVisibleStatus(_callStateText, "Connect the modem or use a 700-XXXXXXX app number", BrushError);
+                SetStatus("Modem not connected", BrushError);
+                Log("Connect the modem first (or dial a 700-XXXXXXX app number for modem-free calls).", BrushError);
+                return;
+            }
             if (_call == CallState.Ringing) { await AnswerCallAsync(); return; }
-            if (_call != CallState.Idle) { Log("A call is already in progress.", BrushWarn); return; }
-            if (num.Length < 3) { Log("Enter a valid number.", BrushWarn); return; }
+            if (_call != CallState.Idle)
+            {
+                SetDialerVisibleStatus(_callStateText, "A call is already in progress", BrushWarn);
+                SetStatus("Call already active", BrushWarn);
+                Log("A call is already in progress.", BrushWarn);
+                return;
+            }
+            if (num.Length < 3)
+            {
+                SetDialerVisibleStatus(_callStateText, "Enter a valid number", BrushWarn);
+                SetStatus("Invalid number", BrushWarn);
+                Log("Enter a valid number.", BrushWarn);
+                return;
+            }
             _peer = num;
             _call = CallState.Dialing;
             _callDir = "out";
@@ -18919,9 +19715,18 @@ _sidebarCol.Width = new GridLength(58);
 
         private async Task SendUssdAsync()
         {
-            if (_busy) { Log("Busy - please wait...", BrushWarn); return; }
+            if (_busy)
+            {
+                ShowUssdNotice("Busy - please wait for the current USSD request.", "USSD busy", BrushWarn);
+                return;
+            }
             string code = _txtCode.Text.Trim();
-            if (code.Length == 0) { Log("Enter a USSD code.", BrushWarn); return; }
+            if (code.Length == 0)
+            {
+                ShowUssdNotice("Enter a USSD code first. Nothing was sent to your carrier.", "USSD needs a code", BrushWarn);
+                return;
+            }
+            ShowUssdNotice("Sending USSD " + code + "...", "USSD sending", BrushAccent);
             bool serial = _radioSerial.IsChecked == true;
 
             // Auto-fallback: if Method 1 is selected but the MiFi firmware has no
@@ -18948,7 +19753,8 @@ _sidebarCol.Width = new GridLength(58);
                     if (fallbackNote != null) Log(fallbackNote, BrushWarn);
                     if (!_modem.IsOpen)
                     {
-                        Log("Connect the modem first (Connect bar) - USSD needs the USB AT port.", BrushError);
+                        ShowUssdNotice("Connect the modem first (Connect bar) - USSD needs the USB AT port.",
+                            "Modem not connected", BrushError);
                         return;
                     }
                     Log("Sending USSD " + code + " via modem ...", BrushAccent);
@@ -18977,9 +19783,9 @@ _sidebarCol.Width = new GridLength(58);
             {
                 string msg = wex.Message;
                 if (wex.Response != null) msg += " [" + (int)((HttpWebResponse)wex.Response).StatusCode + "]";
-                Log("Network error: " + msg, BrushError);
+                ShowUssdNotice("Network error: " + msg, "USSD network error", BrushError);
             }
-            catch (Exception ex) { Log("USSD error: " + ex.Message, BrushError); }
+            catch (Exception ex) { ShowUssdNotice("USSD error: " + ex.Message, "USSD error", BrushError); }
             finally { _busy = false; }
         }
 
@@ -19393,10 +20199,15 @@ _sidebarCol.Width = new GridLength(58);
             // ── Tab 3: AI Integration ─────────────────────────────────────
             StackPanel t3 = new StackPanel { Margin = new Thickness(16, 12, 16, 12) };
             t3.Children.Add(new TextBlock { Text = "AI Integration", FontSize = 15, FontWeight = FontWeights.Bold, Foreground = BrushFg, Margin = new Thickness(0, 0, 0, 4) });
-            t3.Children.Add(new TextBlock { Text = "Add an API key to use the 🤖 AI button in the chat input bar. Supports OpenAI, Gemini, Groq, Ollama (local) and any OpenAI-compatible endpoint.", Foreground = BrushGray, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
+            t3.Children.Add(new TextBlock { Text = "Enable the assistant and point it at a provider. A hosted provider (OpenAI, Gemini, Groq) needs an API key; a local server (Ollama, LM Studio) does not. The switch below is saved immediately.", Foreground = BrushGray, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
 
             CheckBox chkAiEnabled = new CheckBox { Content = "Enable AI assistant", Foreground = BrushFg, IsChecked = _aiEnabled, Margin = new Thickness(0, 0, 0, 10) };
             t3.Children.Add(chkAiEnabled);
+            // Persist the switch the moment it is flipped. Previously it only
+            // took effect when Save was pressed, so a user who enabled AI and
+            // closed the dialog kept the old (disabled) value on disk.
+            chkAiEnabled.Checked += delegate { PersistAiToggle(true); };
+            chkAiEnabled.Unchecked += delegate { PersistAiToggle(false); };
 
             t3.Children.Add(MakeKey("MODEL PROVIDER"));
             ComboBox providerBox = new ComboBox { Margin = new Thickness(0, 2, 0, 10) };
@@ -19430,7 +20241,7 @@ _sidebarCol.Width = new GridLength(58);
                 string testKey = apiKeyBox.Password;
                 string testEp = endpointBox.Text.Trim();
                 string testModel = modelBox.Text.Trim();
-                if (string.IsNullOrEmpty(testKey) || string.IsNullOrEmpty(testEp)) { Log("AI: fill endpoint and key before testing.", BrushWarn); return; }
+                if (string.IsNullOrEmpty(testEp) || (string.IsNullOrEmpty(testKey) && !IsLocalAiHost(testEp))) { Log("AI: fill an endpoint, and a key unless the endpoint is local.", BrushWarn); return; }
                 Log("AI: testing connection to " + testEp + " ...", BrushGray);
                 try
                 {
@@ -19693,6 +20504,10 @@ _sidebarCol.Width = new GridLength(58);
             c.EnsureIdentity();
             try { c.Save(); } catch { }   // persist minted identity on first run
             _cfg = c;
+            _laptopTrackerExe = c.laptop_tracker_exe;
+            _laptopTrackerApk = c.laptop_tracker_apk;
+            _callsCompanionExe = c.calls_companion_exe;
+            RefreshCollaboratedAppStoreStatus();
             _myNumber = (Cli.NumberOverride != null && Cli.NumberOverride.Length > 0)
                 ? Cli.NumberOverride : c.virtual_number;
             if (Cli.RelayOverride != null) c.relay_server = Cli.RelayOverride;
@@ -19727,6 +20542,7 @@ _sidebarCol.Width = new GridLength(58);
                     c.always_awake ? BrushGray : BrushWarn);
             }
             if (_txtMyNumber != null) _txtMyNumber.Text = AppNum.Format(_myNumber);
+            if (_appIdText != null) _appIdText.Text = AppNum.Format(_myNumber);
             if (_chkCarryPeers != null)
             {
                 // Same rule as the wake agent tick: loading a setting restores the
@@ -19798,6 +20614,28 @@ _sidebarCol.Width = new GridLength(58);
             Log("USSD Manager Pro ready - Dialer, Contacts, Video Call, SMS, SIM, USSD.", BrushAccent);
         }
 
+        // Save the AI enable switch on its own so flipping it in Settings takes
+        // effect even if the user closes the dialog without pressing Save.
+        private void PersistAiToggle(bool enabled)
+        {
+            _aiEnabled = enabled;
+            try
+            {
+                if (_cfg == null) _cfg = AppConfig.Load();
+                _cfg.ai_enabled = enabled;
+                _cfg.ai_api_key = _aiApiKey ?? "";
+                _cfg.ai_model = _aiModel ?? "gpt-4o-mini";
+                _cfg.ai_endpoint = _aiEndpoint ?? "https://api.openai.com/v1/chat/completions";
+                _cfg.Save();
+            }
+            catch { }
+            if (_agentStatus != null)
+                _agentStatus.Text = enabled
+                    ? (AiIsUsable() ? "AI assistant enabled and ready."
+                                    : "AI assistant enabled. Add a key, or use a local endpoint that needs none.")
+                    : "AI assistant switched off. Local /agent commands still work.";
+        }
+
         private void SaveState()
         {
             if (_cfg == null) _cfg = AppConfig.Load();
@@ -19817,8 +20655,8 @@ _sidebarCol.Width = new GridLength(58);
             _cfg.ai_model = _aiModel ?? "gpt-4o-mini";
             _cfg.ai_endpoint = _aiEndpoint ?? "https://api.openai.com/v1/chat/completions";
             _cfg.ai_enabled = _aiEnabled;
-            _cfg.laptop_tracker_exe = _laptopTrackerExe ?? "";
-            _cfg.Save();
+            if (!PersistAppPaths()) return;
+            RefreshCollaboratedAppStoreStatus();
         }
 
         // ---------- wake agent (C1) ----------
@@ -19970,49 +20808,77 @@ _sidebarCol.Width = new GridLength(58);
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
             // ── System Tray: minimize to tray instead of exiting ──────────
-            if (_trayIcon != null && !_trayMinimized)
+            if (_trayIcon != null && !_trayMinimized && !_shutdownStarted)
             {
                 e.Cancel = true;      // don't close
                 _trayMinimized = true;
                 Hide();               // hide the window
                 _trayIcon.Visible = true;
                 _trayIcon.ShowBalloonTip(2500, "USSD Manager Pro",
-                    "Still running in the background — receiving calls & messages.",
+                    "Still running in the background - receiving calls & messages.",
                     System.Windows.Forms.ToolTipIcon.Info);
                 return;
             }
+            if (_shutdownStarted) { base.OnClosing(e); return; }
+            _shutdownStarted = true;
+
             // ── Actual exit ───────────────────────────────────────────────
+            // Everything that must be durable is written synchronously here.
+            // The services that can block (modem close, relay stop, VoIP
+            // dispose, audio device close) run on a background thread, and a
+            // watchdog ends the process even if one of them never returns.
+            // Previously a wedged modem/audio driver kept the window on screen
+            // holding the exe lock, so the only way out was Task Manager.
             try { if (_trayStateTimer != null) _trayStateTimer.Stop(); } catch { }
-            try { if (_trayIcon != null) { _trayIcon.Visible = false; _trayIcon.Dispose(); } } catch { }
-            try { ToneSynth.StopRing(); } catch { }
-            if (_agentSpeech != null)
-            {
-                _agentSpeech.SpeakAsyncCancelAll();
-                _agentSpeech.Dispose();
-                _agentSpeech = null;
-            }
-            try { StopRecording(); } catch { }
-            try { StopCamera(); } catch { }
-            try { _bgRunning = false; if (_bgReconnectThread != null) _bgReconnectThread.Interrupt(); } catch { }
-            try { if (_voip != null) _voip.Dispose(); } catch { }
             try
             {
-                VoipAudio va = _voipAudio;
-                _voipAudio = null;
-                if (va != null)
+                if (_trayIcon != null)
                 {
-                    Thread t = new Thread((ThreadStart)delegate { try { va.Dispose(); } catch { } });
-                    t.IsBackground = true;
-                    t.Start();
+                    _trayIcon.Visible = false;
+                    _trayIcon.Dispose();
+                    _trayIcon = null;
                 }
             }
             catch { }
-            try { if (_callServer != null) _callServer.Stop(); } catch { }
+            try { ToneSynth.StopRing(); } catch { }
+            try
+            {
+                if (_agentSpeech != null)
+                {
+                    _agentSpeech.SpeakAsyncCancelAll();
+                    _agentSpeech.Dispose();
+                    _agentSpeech = null;
+                }
+            }
+            catch { }
+            try { _bgRunning = false; if (_bgReconnectThread != null) _bgReconnectThread.Interrupt(); } catch { }
             try { SaveState(); } catch { }
-            HandOffToAgent();
             try { SaveContacts(); } catch { }
-            try { _modem.Dispose(); } catch { }
-            base.OnClosing(e);
+            try { HandOffToAgent(); } catch { }
+
+            Thread cleanup = new Thread((ThreadStart)delegate
+            {
+                try { StopRecording(); } catch { }
+                try { StopCamera(); } catch { }
+                try { if (_voipAudio != null) { VoipAudio va2 = _voipAudio; _voipAudio = null; va2.Dispose(); } } catch { }
+                try { if (_voip != null) _voip.Dispose(); } catch { }
+                try { if (_callServer != null) _callServer.Stop(); } catch { }
+                try { _modem.Dispose(); } catch { }
+            });
+            cleanup.IsBackground = true;
+            cleanup.Start();
+
+            Thread exitWatchdog = new Thread((ThreadStart)delegate
+            {
+                try { cleanup.Join(2500); } catch { }
+                Environment.Exit(0);
+            });
+            exitWatchdog.IsBackground = true;
+            exitWatchdog.Start();
+
+            // We end the process from the watchdog: letting WPF continue would
+            // re-enter the same service teardown on the UI thread.
+            e.Cancel = true;
         }
 
         // ── System Tray setup ─────────────────────────────────────────────

@@ -124,7 +124,7 @@ namespace UssdApp
                     return "{\"jsonrpc\":\"2.0\",\"id\":" + (id ?? "null") + ",\"result\":{\"isError\":true,\"content\":[{\"type\":\"text\",\"text\":\"Tool execution rejected or rate-limited.\"}]}}";
                 }
 
-                return "{\"jsonrpc\":\"2.0\",\"id\":" + (id ?? "null") + ",\"result\":{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"Request queued with consent gate ID: " + reqId + "\"}]}}";
+                return "{\"jsonrpc\":\"2.0\",\"id\":" + (id ?? "null") + ",\"result\":{\"isError\":false,\"content\":[{\"type\":\"text\",\"text\":\"Queued for consent approval (not yet executed). Consent gate ID: " + reqId + "\"}]}}";
             }
 
             return ErrorResponse(id, -32601, "Unsupported method: " + method);
